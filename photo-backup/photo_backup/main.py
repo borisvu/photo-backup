@@ -5,9 +5,11 @@ Photo Backup System - Main CLI Entry Point
 This module provides the command-line interface for the photo backup system.
 """
 
+import logging
 import click
 from .__version__ import __version__
 from .config import Config
+from .logger import setup_logger
 
 
 @click.command()
@@ -24,10 +26,19 @@ def main(test_mode, version):
     config = Config(test_mode=test_mode)
     settings = config.load_config()
     
-    # Display startup message
+    # Initialize logger with appropriate level based on mode
+    log_level = logging.DEBUG if test_mode else logging.INFO
+    logger = setup_logger("photo_backup", log_level)
+    
+    # Log startup message
+    mode_text = "TEST MODE" if test_mode else "PRODUCTION MODE"
+    logger.info(f"Photo Backup v{__version__} starting in {mode_text}")
+    
+    # Display startup message to user
     click.echo(f"Photo Backup v{__version__}")
     
     if test_mode:
+        logger.debug("Initializing test mode configuration")
         click.echo("Running in TEST MODE - using Minio instead of Wasabi")
         click.echo("Test mode configuration:")
         click.echo(f"  - Endpoint: {config.get('storage.endpoint')}")
@@ -35,13 +46,21 @@ def main(test_mode, version):
         click.echo(f"  - Source: {config.get('backup.source_path')}")
         click.echo(f"  - Destination: {config.get('backup.destination')}")
         click.echo(f"  - State directory: {config.get('state.directory')}")
+        logger.debug(f"Test mode endpoint: {config.get('storage.endpoint')}")
+        logger.debug(f"Test mode source: {config.get('backup.source_path')}")
     else:
+        logger.info("Initializing production mode configuration")
         click.echo("Running in PRODUCTION MODE")
         click.echo("Configuration:")
         click.echo(f"  - Source: {config.get('backup.source_path')}")
         click.echo(f"  - Destination: {config.get('backup.destination')}")
         click.echo(f"  - Endpoint: {config.get('storage.endpoint')}")
         click.echo(f"  - State directory: {config.get('state.directory')}")
+        logger.info(f"Production mode endpoint: {config.get('storage.endpoint')}")
+        logger.info(f"Production mode source: {config.get('backup.source_path')}")
+    
+    # Log completion of initialization
+    logger.info("CLI initialization completed successfully")
     
     # For now, just show the mode and exit
     click.echo("CLI interface ready. Additional commands will be added in future tasks.")
