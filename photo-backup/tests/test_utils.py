@@ -160,7 +160,7 @@ if __name__ == "__main__":
     for path in sorted(TEST_PHOTO_DIR.rglob("*")):
         print(path)
         
-    input("\nPress Enter to stop Minio and clean up...")
+    # input("\nPress Enter to stop Minio and clean up...")
     
     print("\n--- Stopping Minio ---")
     stop_minio_container()
