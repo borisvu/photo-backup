@@ -70,3 +70,9 @@ Key Conventions
    - Structure routes and dependencies clearly to optimize readability and maintainability.
 
 Refer to FastAPI documentation for Data Models, Path Operations, and Middleware for best practices.
+
+Testing
+
+1. Use PyTest for writing tests.
+2. Follow best practices for working with PyTest and python testing in general.
+3. Ensure that all tests pass after each execution.

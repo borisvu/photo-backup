@@ -11,4 +11,4 @@ Commit changes to Git after updating the progress.
 
 ## Language-Specific Rules
 
-For detailed Python/Django rules, see: `.cursor/rules/fast-apy.mdc`
+For detailed Python rules, ensure to read: `.cursor/rules/fast-apy.mdc`
