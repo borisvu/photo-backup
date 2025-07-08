@@ -1,15 +1,19 @@
-"""Test utilities and infrastructure tests."""
+"""
+Shared pytest fixtures and configuration for photo backup tests.
+"""
 
 import subprocess
 import os
 import shutil
 import time
-import json
+import tempfile
 from pathlib import Path
 import pytest
 
+# Test constants
 MINIO_CONTAINER_NAME = "photo-backup-minio-test"
 TEST_PHOTO_DIR = Path("/tmp/photo-backup-test-photos")
+
 
 def run_docker_command(cmd, capture_output=True, timeout=30):
     """Run a docker command and return the result."""
@@ -26,15 +30,18 @@ def run_docker_command(cmd, capture_output=True, timeout=30):
     except FileNotFoundError:
         pytest.fail("Docker command not found. Please ensure Docker is installed.")
 
+
 def is_container_running(container_name):
     """Check if a container is running."""
     result = run_docker_command(['ps', '--filter', f'name={container_name}', '--format', '{{.Names}}'])
     return container_name in result.stdout
 
+
 def container_exists(container_name):
     """Check if a container exists (running or stopped)."""
     result = run_docker_command(['ps', '-a', '--filter', f'name={container_name}', '--format', '{{.Names}}'])
     return container_name in result.stdout
+
 
 def start_minio_container():
     """Starts a Minio Docker container for testing."""
@@ -86,6 +93,7 @@ def start_minio_container():
     
     return True
 
+
 def stop_minio_container():
     """Stops and removes the Minio Docker container."""
     if not container_exists(MINIO_CONTAINER_NAME):
@@ -96,6 +104,7 @@ def stop_minio_container():
     
     # Remove container
     run_docker_command(['rm', MINIO_CONTAINER_NAME])
+
 
 def create_test_photos(base_dir=TEST_PHOTO_DIR):
     """Creates a dummy photo directory structure and files."""
@@ -111,18 +120,21 @@ def create_test_photos(base_dir=TEST_PHOTO_DIR):
     
     return base_dir
 
+
 def cleanup_test_data(base_dir=TEST_PHOTO_DIR):
     """Removes the test photo directory."""
     if base_dir.exists():
         shutil.rmtree(base_dir)
 
+
 # Pytest fixtures
 @pytest.fixture(scope="session")
 def minio_container():
-    """Fixture to start/stop Minio container for tests."""
+    """Fixture to start/stop Minio container for integration tests."""
     start_minio_container()
     yield
     stop_minio_container()
+
 
 @pytest.fixture
 def test_photos():
@@ -131,33 +143,49 @@ def test_photos():
     yield photo_dir
     cleanup_test_data()
 
-# Test functions
-def test_docker_connectivity():
-    """Test that Docker is accessible."""
-    result = run_docker_command(['--version'])
-    assert result.returncode == 0, "Docker should be accessible"
-    assert "Docker version" in result.stdout, "Should show Docker version"
 
-def test_minio_container_lifecycle():
-    """Test Minio container start/stop cycle."""
-    # Clean up any existing container
-    if container_exists(MINIO_CONTAINER_NAME):
-        stop_minio_container()
-    
-    # Start container
-    assert start_minio_container(), "Should start Minio container"
-    assert is_container_running(MINIO_CONTAINER_NAME), "Container should be running"
-    
-    # Stop container
-    stop_minio_container()
-    assert not is_container_running(MINIO_CONTAINER_NAME), "Container should be stopped"
+@pytest.fixture
+def temp_dir():
+    """Fixture to provide a temporary directory."""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        yield Path(tmp_dir)
 
-def test_test_photo_creation(test_photos):
-    """Test test photo directory creation."""
-    assert test_photos.exists(), "Test photo directory should exist"
-    assert (test_photos / "2024" / "01" / "photo1.jpg").exists(), "Test photo should exist"
-    assert (test_photos / "2024" / "02" / "photo3.jpg").exists(), "Test photo should exist"
+
+@pytest.fixture
+def sample_config():
+    """Fixture to provide sample configuration data."""
+    return {
+        'backup': {
+            'source_path': '/test/photos',
+            'destination': 'test-bucket'
+        },
+        'storage': {
+            'endpoint': 'localhost:9000',
+            'access_key': 'minioadmin',
+            'secret_key': 'minioadmin'
+        }
+    }
+
+
+@pytest.fixture
+def cli_runner():
+    """Fixture to provide CLI command runner."""
+    import subprocess
+    import sys
+    from pathlib import Path
     
-    # Count files
-    photo_files = list(test_photos.rglob("*.jpg"))
-    assert len(photo_files) == 3, "Should have 3 test photos"
+    def run_command(args, timeout=10):
+        cmd = [sys.executable, "-m", "photo_backup.main"] + args
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                cwd=Path(__file__).parent.parent  # Go up from tests/ to photo-backup/
+            )
+            return result
+        except subprocess.TimeoutExpired:
+            pytest.fail(f"CLI command timed out: {' '.join(cmd)}")
+    
+    return run_command
