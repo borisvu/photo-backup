@@ -21,8 +21,8 @@ phases:
   phase_2_utilities:
     name: "Core Utilities"
     tasks_total: 11
-    tasks_completed: 0
-    status: "ready_to_start"
+    tasks_completed: 1
+    status: "in_progress"
     
   phase_3_configuration:
     name: "Configuration System"
@@ -146,6 +146,13 @@ tasks:
     status: "completed"
     completed_date: "2025-01-27"
     notes: "Comprehensive integration test created with standalone and pytest versions. Tests all foundation components working together with full infrastructure integration. Fixed pytest marker configuration."
+
+  # Phase 2: Core Utilities (Tasks 12-22) - IN PROGRESS
+  task_012:
+    name: "Create Utils Module"
+    status: "completed"
+    completed_date: "2025-01-27"
+    notes: "Created photo_backup/utils.py with format_bytes() and ensure_directory() functions. Added CLI commands (format-size, create-dir, test-utils) for functional testing. Comprehensive pytest test suite covers both CLI integration and direct function testing. All tests pass."
 
 # Current state summary
 current_state:
