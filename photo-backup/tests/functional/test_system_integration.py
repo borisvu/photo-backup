@@ -18,7 +18,8 @@ class TestSystemIntegration:
         from photo_backup.main import main
         from photo_backup.config import Config
         from photo_backup.logger import setup_logger
-        from photo_backup.utils import format_bytes, ensure_directory
+        from photo_backup.format_utils import format_bytes
+        from photo_backup.fs_utils import ensure_directory
         
         assert main is not None
         assert Config is not None
@@ -54,7 +55,8 @@ class TestSystemIntegration:
     @pytest.mark.functional
     def test_utils_system_integration(self, temp_dir):
         """Test that utils system works."""
-        from photo_backup.utils import format_bytes, ensure_directory
+        from photo_backup.format_utils import format_bytes
+        from photo_backup.fs_utils import ensure_directory
         
         # Test format_bytes
         assert format_bytes(1048576) == "1.00 MB"
@@ -114,7 +116,8 @@ class TestSystemIntegration:
         """Test integration between config, logger, and utils."""
         from photo_backup.config import Config
         from photo_backup.logger import setup_logger
-        from photo_backup.utils import ensure_directory, format_bytes
+        from photo_backup.fs_utils import ensure_directory
+        from photo_backup.format_utils import format_bytes
         import logging
         
         # Initialize config in test mode
@@ -144,7 +147,8 @@ class TestSystemIntegration:
     @pytest.mark.functional
     def test_error_handling_integration(self):
         """Test that error handling works across components."""
-        from photo_backup.utils import ensure_directory, format_bytes
+        from photo_backup.fs_utils import ensure_directory
+        from photo_backup.format_utils import format_bytes
         
         # Test utils error handling
         success, error = ensure_directory("/root/should_fail")
@@ -214,7 +218,8 @@ class TestSystemIntegration:
         """Test a complete workflow using all components."""
         from photo_backup.config import Config
         from photo_backup.logger import setup_logger
-        from photo_backup.utils import ensure_directory, format_bytes
+        from photo_backup.fs_utils import ensure_directory
+        from photo_backup.format_utils import format_bytes
         import logging
         
         # Step 1: Initialize config

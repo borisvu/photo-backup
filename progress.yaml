@@ -230,6 +230,18 @@ current_state:
     - "tests/test_config_example.py"
     - "test_basic.py"
     - "tests/test_basic_integration.py"
+    - "photo_backup/fs_utils.py"
+    - "photo_backup/state_utils.py"
+    - "photo_backup/lock_utils.py"
+    - "photo_backup/time_utils.py"
+    - "photo_backup/process_utils.py"
+    - "photo_backup/format_utils.py"
+    - "tests/unit/test_format_utils.py"
+    - "tests/unit/test_fs_utils.py"
+    - "tests/unit/test_state_utils.py"
+    - "tests/unit/test_lock_utils.py"
+    - "tests/unit/test_time_utils.py"
+    - "tests/unit/test_process_utils.py"
     
   foundation_complete:
     - "CLI entry point with click framework"
@@ -301,3 +313,4 @@ notes:
   - "Integration testing proves all foundation components work together"
   - "Ready to begin Phase 2: Core Utilities development"
   - "All core utility helpers implemented and tested, including refactoring to consts.py for best practices."
+  - "Major refactor: Split utils.py and test_utils.py into modular utility and test files. All tests pass after refactor."
