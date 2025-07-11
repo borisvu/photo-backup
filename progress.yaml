@@ -21,7 +21,7 @@ phases:
   phase_2_utilities:
     name: "Core Utilities"
     tasks_total: 11
-    tasks_completed: 7
+    tasks_completed: 8
     status: "in_progress"
     
   phase_3_configuration:
@@ -189,6 +189,12 @@ tasks:
     status: "completed"
     completed_date: "2025-06-21"
     notes: "Added run_command() to utils.py for safe shell command execution with timeout and output capture. Comprehensive unit tests for normal, error, timeout, and shell command cases. All tests pass."
+
+  task_019:
+    name: "Add Retry Decorator"
+    status: "completed"
+    completed_date: "2025-06-21"
+    notes: "Added retry decorator to utils.py with support for max attempts, backoff, custom exceptions, and logging. Comprehensive unit tests for retry logic, backoff, and exception handling. All tests pass."
 
 # Current state summary
 current_state:

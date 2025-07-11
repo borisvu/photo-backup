@@ -6,7 +6,7 @@ These tests focus on individual utility functions in isolation.
 
 import os
 import pytest
-from photo_backup.utils import format_bytes, ensure_directory, validate_path, get_state_directories, save_json_state, load_json_state, acquire_lock, release_lock, parse_interval, format_duration, run_command
+from photo_backup.utils import format_bytes, ensure_directory, validate_path, get_state_directories, save_json_state, load_json_state, acquire_lock, release_lock, parse_interval, format_duration, run_command, retry
 
 
 class TestFormatBytes:
@@ -461,3 +461,66 @@ class TestUtilsIntegration:
             assert file_path.is_file()
             actual_size = file_path.stat().st_size
             assert actual_size == expected_size
+
+
+class TestRetryDecorator:
+    """Test cases for the retry decorator."""
+
+    @pytest.mark.unit
+    def test_retry_success_first_try(self, monkeypatch):
+        calls = []
+        @retry(max_attempts=3, backoff=0)
+        def func():
+            calls.append(1)
+            return 42
+        assert func() == 42
+        assert len(calls) == 1
+
+    @pytest.mark.unit
+    def test_retry_success_after_retries(self, monkeypatch):
+        calls = []
+        @retry(max_attempts=3, backoff=0)
+        def func():
+            if len(calls) < 2:
+                calls.append('fail')
+                raise ValueError("fail")
+            calls.append('ok')
+            return "done"
+        assert func() == "done"
+        assert calls == ['fail', 'fail', 'ok']
+
+    @pytest.mark.unit
+    def test_retry_exceeds_max_attempts(self, monkeypatch):
+        calls = []
+        @retry(max_attempts=2, backoff=0)
+        def func():
+            calls.append(1)
+            raise RuntimeError("fail")
+        with pytest.raises(RuntimeError):
+            func()
+        assert len(calls) == 2
+
+    @pytest.mark.unit
+    def test_retry_backoff(self, monkeypatch):
+        sleep_calls = []
+        monkeypatch.setattr("time.sleep", lambda s: sleep_calls.append(s))
+        calls = []
+        @retry(max_attempts=3, backoff=0.1)
+        def func():
+            calls.append(1)
+            raise Exception("fail")
+        with pytest.raises(Exception):
+            func()
+        assert sleep_calls == [0.1, 0.1]
+
+    @pytest.mark.unit
+    def test_retry_custom_exception(self):
+        class MyError(Exception): pass
+        calls = []
+        @retry(max_attempts=2, backoff=0, exceptions=(MyError,))
+        def func():
+            calls.append(1)
+            raise MyError("fail")
+        with pytest.raises(MyError):
+            func()
+        assert len(calls) == 2
