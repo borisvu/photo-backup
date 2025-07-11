@@ -101,6 +101,36 @@ def validate_path(path):
         return False, f"Error validating path {path}: {str(e)}"
 
 
+def get_state_directories(test_mode=False):
+    """Create and return state, config, and temp directories for the application.
+    
+    Args:
+        test_mode (bool): If True, use /tmp/photo-backup-test/ as base dir. Otherwise, use user's Application Support.
+    Returns:
+        dict: { 'base': str, 'state': str, 'config': str, 'temp': str }
+    Raises:
+        RuntimeError: If any directory cannot be created.
+    """
+    if test_mode:
+        base_dir = "/tmp/photo-backup-test"
+    else:
+        base_dir = os.path.expanduser("~/Library/Application Support/photo-backup")
+    subdirs = ["state", "config", "temp"]
+    paths = {"base": os.path.abspath(base_dir)}
+    # Create base dir
+    success, error = ensure_directory(base_dir)
+    if not success:
+        raise RuntimeError(f"Failed to create base directory: {error}")
+    # Create subdirs
+    for sub in subdirs:
+        sub_path = os.path.join(base_dir, sub)
+        success, error = ensure_directory(sub_path)
+        if not success:
+            raise RuntimeError(f"Failed to create {sub} directory: {error}")
+        paths[sub] = os.path.abspath(sub_path)
+    return paths
+
+
 # Quick test functionality for development
 if __name__ == "__main__":
     # Test format_bytes

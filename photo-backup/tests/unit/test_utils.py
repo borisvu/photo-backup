@@ -6,7 +6,7 @@ These tests focus on individual utility functions in isolation.
 
 import os
 import pytest
-from photo_backup.utils import format_bytes, ensure_directory, validate_path
+from photo_backup.utils import format_bytes, ensure_directory, validate_path, get_state_directories
 
 
 class TestFormatBytes:
@@ -201,6 +201,44 @@ class TestValidatePath:
         finally:
             # Restore permissions so pytest can clean up
             test_dir.chmod(0o700)
+
+
+class TestGetStateDirectories:
+    """Test cases for get_state_directories function."""
+
+    @pytest.mark.unit
+    def test_get_state_directories_test_mode(self, tmp_path, monkeypatch):
+        # Patch /tmp to a temp dir to avoid polluting real /tmp
+        monkeypatch.setenv("TMPDIR", str(tmp_path))
+        # Patch base dir to use a subdir of tmp_path
+        monkeypatch.setattr("photo_backup.utils.os.path.expanduser", lambda p: str(tmp_path / "Library/Application Support/photo-backup") if p.startswith("~") else p)
+        # Test test_mode
+        dirs = get_state_directories(test_mode=True)
+        assert dirs["base"].startswith("/tmp/photo-backup-test")
+        for sub in ["state", "config", "temp"]:
+            assert sub in dirs
+            assert os.path.isdir(dirs[sub])
+            # Check permissions (should be 0o755)
+            mode = os.stat(dirs[sub]).st_mode & 0o777
+            assert mode == 0o755
+
+    @pytest.mark.unit
+    def test_get_state_directories_normal_mode(self, tmp_path, monkeypatch):
+        # Patch expanduser to use tmp_path for home
+        monkeypatch.setattr("photo_backup.utils.os.path.expanduser", lambda p: str(tmp_path / "Library/Application Support/photo-backup") if p.startswith("~") else p)
+        dirs = get_state_directories(test_mode=False)
+        assert "base" in dirs and "state" in dirs and "config" in dirs and "temp" in dirs
+        for sub in ["base", "state", "config", "temp"]:
+            assert os.path.isdir(dirs[sub])
+            mode = os.stat(dirs[sub]).st_mode & 0o777
+            assert mode == 0o755
+
+    @pytest.mark.unit
+    def test_get_state_directories_error(self, monkeypatch):
+        # Simulate ensure_directory failure
+        monkeypatch.setattr("photo_backup.utils.ensure_directory", lambda path: (False, "fail"))
+        with pytest.raises(RuntimeError):
+            get_state_directories(test_mode=True)
 
 
 class TestUtilsIntegration:

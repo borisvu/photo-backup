@@ -21,7 +21,7 @@ phases:
   phase_2_utilities:
     name: "Core Utilities"
     tasks_total: 11
-    tasks_completed: 2
+    tasks_completed: 3
     status: "in_progress"
     
   phase_3_configuration:
@@ -159,6 +159,12 @@ tasks:
     status: "completed"
     completed_date: "2025-06-21"
     notes: "Added validate_path() to utils.py with comprehensive unit tests for valid, invalid, and inaccessible paths. All tests pass."
+
+  task_014:
+    name: "Create State Directory Manager"
+    status: "completed"
+    completed_date: "2025-06-21"
+    notes: "Added get_state_directories() to utils.py to create and manage state, config, and temp directories in both normal and test modes. Comprehensive unit tests verify correct creation, permissions, and error handling. All tests pass."
 
 # Current state summary
 current_state:
