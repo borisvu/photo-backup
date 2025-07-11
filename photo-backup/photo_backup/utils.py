@@ -4,6 +4,8 @@ import os
 import stat
 import json
 import errno
+import re
+from .consts import TEST_UTILS_DIR, TEST_MODE_BASE_DIR, PROD_MODE_BASE_DIR, DEFAULT_LOCK_FILENAME
 
 
 def format_bytes(bytes_value):
@@ -107,16 +109,16 @@ def get_state_directories(test_mode=False):
     """Create and return state, config, and temp directories for the application.
     
     Args:
-        test_mode (bool): If True, use /tmp/photo-backup-test/ as base dir. Otherwise, use user's Application Support.
+        test_mode (bool): If True, use TEST_MODE_BASE_DIR as base dir. Otherwise, use PROD_MODE_BASE_DIR.
     Returns:
         dict: { 'base': str, 'state': str, 'config': str, 'temp': str }
     Raises:
         RuntimeError: If any directory cannot be created.
     """
     if test_mode:
-        base_dir = "/tmp/photo-backup-test"
+        base_dir = TEST_MODE_BASE_DIR
     else:
-        base_dir = os.path.expanduser("~/Library/Application Support/photo-backup")
+        base_dir = os.path.expanduser(PROD_MODE_BASE_DIR)
     subdirs = ["state", "config", "temp"]
     paths = {"base": os.path.abspath(base_dir)}
     # Create base dir
@@ -173,7 +175,7 @@ def load_json_state(filename, test_mode=False):
         return None, f"Error loading JSON state: {str(e)}"
 
 
-def acquire_lock(lock_name="process.lock", test_mode=False):
+def acquire_lock(lock_name=DEFAULT_LOCK_FILENAME, test_mode=False):
     """Acquire a process lock using a PID file in the temp directory.
     Args:
         lock_name (str): Name of the lock file (default 'process.lock')
@@ -210,7 +212,7 @@ def acquire_lock(lock_name="process.lock", test_mode=False):
     except Exception as e:
         return False, f"Error acquiring lock: {str(e)}"
 
-def release_lock(lock_name="process.lock", test_mode=False):
+def release_lock(lock_name=DEFAULT_LOCK_FILENAME, test_mode=False):
     """Release a process lock by removing the PID file in the temp directory.
     Args:
         lock_name (str): Name of the lock file (default 'process.lock')
@@ -235,6 +237,61 @@ def release_lock(lock_name="process.lock", test_mode=False):
         return False, f"Error releasing lock: {str(e)}"
 
 
+def parse_interval(interval_str):
+    """Parse a time interval string (e.g., '4h', '30m', '2d', '1h30m') to seconds.
+    Supports days (d), hours (h), minutes (m), seconds (s).
+    Args:
+        interval_str (str): Interval string
+    Returns:
+        int: Total seconds
+    Raises:
+        ValueError: If the format is invalid
+    """
+    if not isinstance(interval_str, str) or not interval_str.strip():
+        raise ValueError("Interval string must be a non-empty string")
+    pattern = re.compile(r"(?P<value>\d+)(?P<unit>[dhms])", re.IGNORECASE)
+    total_seconds = 0
+    for match in pattern.finditer(interval_str):
+        value = int(match.group("value"))
+        unit = match.group("unit").lower()
+        if unit == "d":
+            total_seconds += value * 86400
+        elif unit == "h":
+            total_seconds += value * 3600
+        elif unit == "m":
+            total_seconds += value * 60
+        elif unit == "s":
+            total_seconds += value
+        else:
+            raise ValueError(f"Unknown time unit: {unit}")
+    if total_seconds == 0:
+        raise ValueError(f"Invalid interval string: {interval_str}")
+    return total_seconds
+
+def format_duration(seconds):
+    """Format a duration in seconds to a human-readable string (e.g., '1h 23m 45s').
+    Args:
+        seconds (int): Number of seconds
+    Returns:
+        str: Formatted duration
+    """
+    if not isinstance(seconds, (int, float)) or seconds < 0:
+        return "0s"
+    seconds = int(seconds)
+    parts = []
+    days, seconds = divmod(seconds, 86400)
+    if days:
+        parts.append(f"{days}d")
+    hours, seconds = divmod(seconds, 3600)
+    if hours:
+        parts.append(f"{hours}h")
+    minutes, seconds = divmod(seconds, 60)
+    if minutes:
+        parts.append(f"{minutes}m")
+    if seconds or not parts:
+        parts.append(f"{seconds}s")
+    return " ".join(parts)
+
 # Quick test functionality for development
 if __name__ == "__main__":
     # Test format_bytes
@@ -245,7 +302,7 @@ if __name__ == "__main__":
     
     # Test ensure_directory
     print("\nTesting ensure_directory:")
-    test_dir = "/tmp/photo-backup-utils-test"
+    test_dir = TEST_UTILS_DIR
     success, error = ensure_directory(test_dir)
     print(f"  Create {test_dir}: {'Success' if success else f'Failed: {error}'}")
     
