@@ -80,6 +80,27 @@ def ensure_directory(path):
         return False, f"Unexpected error creating directory {path}: {str(e)}"
 
 
+def validate_path(path):
+    """Validate if a file or directory path exists and is accessible.
+    
+    Args:
+        path (str): Path to validate
+    Returns:
+        tuple: (valid: bool, error: str or None)
+    """
+    if not path or not isinstance(path, str):
+        return False, "Path must be a non-empty string"
+    try:
+        abs_path = os.path.abspath(path)
+        if not os.path.exists(abs_path):
+            return False, f"Path does not exist: {abs_path}"
+        if not os.access(abs_path, os.R_OK):
+            return False, f"Path is not accessible (read permission denied): {abs_path}"
+        return True, None
+    except Exception as e:
+        return False, f"Error validating path {path}: {str(e)}"
+
+
 # Quick test functionality for development
 if __name__ == "__main__":
     # Test format_bytes

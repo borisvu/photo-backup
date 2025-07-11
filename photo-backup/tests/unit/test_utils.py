@@ -6,7 +6,7 @@ These tests focus on individual utility functions in isolation.
 
 import os
 import pytest
-from photo_backup.utils import format_bytes, ensure_directory
+from photo_backup.utils import format_bytes, ensure_directory, validate_path
 
 
 class TestFormatBytes:
@@ -151,6 +151,56 @@ class TestEnsureDirectory:
             assert (temp_dir / relative_path).is_dir()
         finally:
             os.chdir(original_cwd)
+
+
+class TestValidatePath:
+    """Test cases for validate_path function."""
+
+    @pytest.mark.unit
+    def test_validate_path_valid_file(self, tmp_path):
+        test_file = tmp_path / "file.txt"
+        test_file.write_text("test")
+        valid, error = validate_path(str(test_file))
+        assert valid is True
+        assert error is None
+
+    @pytest.mark.unit
+    def test_validate_path_valid_directory(self, tmp_path):
+        valid, error = validate_path(str(tmp_path))
+        assert valid is True
+        assert error is None
+
+    @pytest.mark.unit
+    def test_validate_path_nonexistent(self, tmp_path):
+        non_existent = tmp_path / "does_not_exist.txt"
+        valid, error = validate_path(str(non_existent))
+        assert valid is False
+        assert "does not exist" in error
+
+    @pytest.mark.unit
+    def test_validate_path_empty_and_none(self):
+        valid, error = validate_path("")
+        assert valid is False
+        assert "non-empty string" in error
+        valid, error = validate_path(None)
+        assert valid is False
+        assert "non-empty string" in error
+
+    @pytest.mark.unit
+    def test_validate_path_permission_denied(self, tmp_path, monkeypatch):
+        # Create a directory and remove read permissions
+        test_dir = tmp_path / "no_access_dir"
+        test_dir.mkdir()
+        test_file = test_dir / "file.txt"
+        test_file.write_text("test")
+        test_dir.chmod(0o000)
+        try:
+            valid, error = validate_path(str(test_dir))
+            assert valid is False
+            assert "not accessible" in error or "Permission denied" in error
+        finally:
+            # Restore permissions so pytest can clean up
+            test_dir.chmod(0o700)
 
 
 class TestUtilsIntegration:
