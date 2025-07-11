@@ -6,7 +6,7 @@ These tests focus on individual utility functions in isolation.
 
 import os
 import pytest
-from photo_backup.utils import format_bytes, ensure_directory, validate_path, get_state_directories, save_json_state, load_json_state, acquire_lock, release_lock, parse_interval, format_duration, run_command, retry
+from photo_backup.utils import format_bytes, ensure_directory, validate_path, get_state_directories, save_json_state, load_json_state, acquire_lock, release_lock, parse_interval, format_duration, run_command, retry, calculate_directory_size
 
 
 class TestFormatBytes:
@@ -524,3 +524,63 @@ class TestRetryDecorator:
         with pytest.raises(MyError):
             func()
         assert len(calls) == 2
+
+
+class TestCalculateDirectorySize:
+    """Test cases for calculate_directory_size function."""
+
+    @pytest.mark.unit
+    def test_calculate_directory_size_basic(self, tmp_path):
+        # Create files
+        f1 = tmp_path / "file1.txt"
+        f1.write_bytes(b"a" * 100)
+        f2 = tmp_path / "file2.txt"
+        f2.write_bytes(b"b" * 200)
+        total, count = calculate_directory_size(str(tmp_path))
+        assert total == 300
+        assert count == 2
+
+    @pytest.mark.unit
+    def test_calculate_directory_size_nested(self, tmp_path):
+        d1 = tmp_path / "dir1"
+        d1.mkdir()
+        d2 = d1 / "dir2"
+        d2.mkdir()
+        (d1 / "a.txt").write_bytes(b"x" * 50)
+        (d2 / "b.txt").write_bytes(b"y" * 150)
+        total, count = calculate_directory_size(str(tmp_path))
+        assert total == 200
+        assert count == 2
+
+    @pytest.mark.unit
+    def test_calculate_directory_size_empty(self, tmp_path):
+        total, count = calculate_directory_size(str(tmp_path))
+        assert total == 0
+        assert count == 0
+
+    @pytest.mark.unit
+    def test_calculate_directory_size_permission_error(self, tmp_path):
+        d1 = tmp_path / "dir1"
+        d1.mkdir()
+        f1 = d1 / "file.txt"
+        f1.write_bytes(b"z" * 123)
+        # Remove read permission from dir1
+        d1.chmod(0o000)
+        try:
+            total, count = calculate_directory_size(str(tmp_path))
+            # Should skip dir1 and not raise
+            assert total == 0
+            assert count == 0
+        finally:
+            d1.chmod(0o700)
+
+    @pytest.mark.unit
+    def test_calculate_directory_size_symlink(self, tmp_path):
+        f1 = tmp_path / "file.txt"
+        f1.write_bytes(b"abc" * 10)
+        symlink = tmp_path / "link.txt"
+        symlink.symlink_to(f1)
+        total, count = calculate_directory_size(str(tmp_path))
+        # Should count only the real file, not the symlink
+        assert total == 30
+        assert count == 1

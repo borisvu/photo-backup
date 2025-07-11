@@ -21,7 +21,7 @@ phases:
   phase_2_utilities:
     name: "Core Utilities"
     tasks_total: 11
-    tasks_completed: 8
+    tasks_completed: 9
     status: "in_progress"
     
   phase_3_configuration:
@@ -196,6 +196,12 @@ tasks:
     completed_date: "2025-06-21"
     notes: "Added retry decorator to utils.py with support for max attempts, backoff, custom exceptions, and logging. Comprehensive unit tests for retry logic, backoff, and exception handling. All tests pass."
 
+  task_020:
+    name: "Add Directory Size Calculator"
+    status: "completed"
+    completed_date: "2025-06-21"
+    notes: "Added calculate_directory_size() to utils.py for recursive directory size and file count, handling permission errors and symlinks. Comprehensive unit tests for normal, error, and edge cases. All tests pass."
+
 # Current state summary
 current_state:
   working_directory: "/Users/you/git/backup-to-s3"
@@ -294,3 +300,4 @@ notes:
   - "Configuration template ready for production and test environments"
   - "Integration testing proves all foundation components work together"
   - "Ready to begin Phase 2: Core Utilities development"
+  - "All core utility helpers implemented and tested, including refactoring to consts.py for best practices."

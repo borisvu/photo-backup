@@ -363,6 +363,29 @@ def retry(max_attempts=3, backoff=1, exceptions=(Exception,), logger=None):
         return wrapper
     return decorator
 
+def calculate_directory_size(path):
+    """Recursively calculate total size and file count of a directory.
+    Args:
+        path (str): Directory path
+    Returns:
+        tuple: (total_bytes: int, file_count: int)
+    Notes:
+        Skips files/dirs with permission errors and continues.
+    """
+    total_bytes = 0
+    file_count = 0
+    for root, dirs, files in os.walk(path, onerror=lambda e: None):
+        for f in files:
+            try:
+                fp = os.path.join(root, f)
+                if os.path.islink(fp):
+                    continue  # skip symlinks
+                total_bytes += os.path.getsize(fp)
+                file_count += 1
+            except (OSError, PermissionError):
+                continue
+    return total_bytes, file_count
+
 # Quick test functionality for development
 if __name__ == "__main__":
     # Test format_bytes
