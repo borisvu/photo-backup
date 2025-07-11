@@ -6,7 +6,7 @@ These tests focus on individual utility functions in isolation.
 
 import os
 import pytest
-from photo_backup.utils import format_bytes, ensure_directory, validate_path, get_state_directories, save_json_state, load_json_state, acquire_lock, release_lock, parse_interval, format_duration
+from photo_backup.utils import format_bytes, ensure_directory, validate_path, get_state_directories, save_json_state, load_json_state, acquire_lock, release_lock, parse_interval, format_duration, run_command
 
 
 class TestFormatBytes:
@@ -385,6 +385,39 @@ class TestTimeUtilities:
     @pytest.mark.parametrize("seconds", [-1, None, "abc", [], {}])
     def test_format_duration_invalid(self, seconds):
         assert format_duration(seconds) == "0s"
+
+
+class TestRunCommand:
+    """Test cases for run_command function."""
+
+    @pytest.mark.unit
+    def test_run_command_success(self):
+        result = run_command(["echo", "hello world"])
+        assert result["returncode"] == 0
+        assert "hello world" in result["stdout"]
+        assert result["stderr"] == ""
+        assert result["timeout"] is False
+
+    @pytest.mark.unit
+    def test_run_command_error(self):
+        result = run_command(["ls", "/nonexistentpath"])
+        assert result["returncode"] != 0
+        assert result["stdout"] == ""
+        assert result["stderr"] != ""
+        assert result["timeout"] is False
+
+    @pytest.mark.unit
+    def test_run_command_timeout(self):
+        result = run_command(["sleep", "2"], timeout=0.5)
+        assert result["timeout"] is True
+        assert result["returncode"] is None
+
+    @pytest.mark.unit
+    def test_run_command_shell_true(self):
+        result = run_command("echo shell test", shell=True)
+        assert result["returncode"] == 0
+        assert "shell test" in result["stdout"]
+        assert result["timeout"] is False
 
 
 class TestUtilsIntegration:

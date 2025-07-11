@@ -5,6 +5,7 @@ import stat
 import json
 import errno
 import re
+import subprocess
 from .consts import TEST_UTILS_DIR, TEST_MODE_BASE_DIR, PROD_MODE_BASE_DIR, DEFAULT_LOCK_FILENAME
 
 
@@ -291,6 +292,44 @@ def format_duration(seconds):
     if seconds or not parts:
         parts.append(f"{seconds}s")
     return " ".join(parts)
+
+def run_command(command, timeout=None, shell=False):
+    """Run a shell command and capture stdout, stderr, and return code.
+    Args:
+        command (list or str): Command to run (list preferred, or str if shell=True)
+        timeout (float or None): Timeout in seconds
+        shell (bool): Whether to run command in shell
+    Returns:
+        dict: { 'stdout': str, 'stderr': str, 'returncode': int, 'timeout': bool }
+    """
+    try:
+        result = subprocess.run(
+            command,
+            shell=shell,
+            capture_output=True,
+            text=True,
+            timeout=timeout
+        )
+        return {
+            'stdout': result.stdout,
+            'stderr': result.stderr,
+            'returncode': result.returncode,
+            'timeout': False
+        }
+    except subprocess.TimeoutExpired as e:
+        return {
+            'stdout': e.stdout or '',
+            'stderr': e.stderr or '',
+            'returncode': None,
+            'timeout': True
+        }
+    except Exception as e:
+        return {
+            'stdout': '',
+            'stderr': str(e),
+            'returncode': None,
+            'timeout': False
+        }
 
 # Quick test functionality for development
 if __name__ == "__main__":
