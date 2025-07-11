@@ -21,7 +21,7 @@ phases:
   phase_2_utilities:
     name: "Core Utilities"
     tasks_total: 11
-    tasks_completed: 4
+    tasks_completed: 5
     status: "in_progress"
     
   phase_3_configuration:
@@ -171,6 +171,12 @@ tasks:
     status: "completed"
     completed_date: "2025-06-21"
     notes: "Added save_json_state() and load_json_state() to utils.py for saving/loading JSON state files in the state directory. Comprehensive unit tests verify correct save/load, file not found, and error handling. All tests pass."
+
+  task_016:
+    name: "Add Process Lock"
+    status: "completed"
+    completed_date: "2025-06-21"
+    notes: "Added acquire_lock() and release_lock() to utils.py for process locking using a PID file in the temp directory. Comprehensive unit tests verify correct locking, releasing, stale PID handling, and error cases. All tests pass."
 
 # Current state summary
 current_state:
