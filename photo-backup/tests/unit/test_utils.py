@@ -6,7 +6,7 @@ These tests focus on individual utility functions in isolation.
 
 import os
 import pytest
-from photo_backup.utils import format_bytes, ensure_directory, validate_path, get_state_directories
+from photo_backup.utils import format_bytes, ensure_directory, validate_path, get_state_directories, save_json_state, load_json_state
 
 
 class TestFormatBytes:
@@ -239,6 +239,48 @@ class TestGetStateDirectories:
         monkeypatch.setattr("photo_backup.utils.ensure_directory", lambda path: (False, "fail"))
         with pytest.raises(RuntimeError):
             get_state_directories(test_mode=True)
+
+
+class TestJsonStateHelpers:
+    """Test cases for save_json_state and load_json_state functions."""
+
+    @pytest.mark.unit
+    def test_save_and_load_json_state(self, tmp_path, monkeypatch):
+        # Patch expanduser to use tmp_path for home
+        monkeypatch.setattr("photo_backup.utils.os.path.expanduser", lambda p: str(tmp_path / "Library/Application Support/photo-backup") if p.startswith("~") else p)
+        data = {"foo": 123, "bar": [1, 2, 3]}
+        filename = "test_state.json"
+        # Save
+        success, error = save_json_state(data, filename, test_mode=False)
+        assert success is True
+        assert error is None
+        # Load
+        loaded, error = load_json_state(filename, test_mode=False)
+        assert error is None
+        assert loaded == data
+
+    @pytest.mark.unit
+    def test_load_json_state_file_not_found(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("photo_backup.utils.os.path.expanduser", lambda p: str(tmp_path / "Library/Application Support/photo-backup") if p.startswith("~") else p)
+        loaded, error = load_json_state("does_not_exist.json", test_mode=False)
+        assert loaded is None
+        assert "does not exist" in error
+
+    @pytest.mark.unit
+    def test_save_json_state_error(self, monkeypatch):
+        # Simulate get_state_directories failure
+        monkeypatch.setattr("photo_backup.utils.get_state_directories", lambda test_mode=False: (_ for _ in ()).throw(RuntimeError("fail")))
+        success, error = save_json_state({}, "file.json", test_mode=False)
+        assert success is False
+        assert "Error saving JSON state" in error
+
+    @pytest.mark.unit
+    def test_load_json_state_error(self, monkeypatch):
+        # Simulate get_state_directories failure
+        monkeypatch.setattr("photo_backup.utils.get_state_directories", lambda test_mode=False: (_ for _ in ()).throw(RuntimeError("fail")))
+        loaded, error = load_json_state("file.json", test_mode=False)
+        assert loaded is None
+        assert "Error loading JSON state" in error
 
 
 class TestUtilsIntegration:

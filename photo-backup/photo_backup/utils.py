@@ -2,6 +2,7 @@
 
 import os
 import stat
+import json
 
 
 def format_bytes(bytes_value):
@@ -129,6 +130,46 @@ def get_state_directories(test_mode=False):
             raise RuntimeError(f"Failed to create {sub} directory: {error}")
         paths[sub] = os.path.abspath(sub_path)
     return paths
+
+
+def save_json_state(data, filename, test_mode=False):
+    """Save a dictionary as a JSON file in the state directory.
+    Args:
+        data (dict): Data to save
+        filename (str): Name of the JSON file (e.g., 'backup_state.json')
+        test_mode (bool): Use test mode state directory if True
+    Returns:
+        tuple: (success: bool, error: str or None)
+    """
+    try:
+        dirs = get_state_directories(test_mode=test_mode)
+        state_dir = dirs["state"]
+        file_path = os.path.join(state_dir, filename)
+        with open(file_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+        return True, None
+    except Exception as e:
+        return False, f"Error saving JSON state: {str(e)}"
+
+def load_json_state(filename, test_mode=False):
+    """Load a dictionary from a JSON file in the state directory.
+    Args:
+        filename (str): Name of the JSON file (e.g., 'backup_state.json')
+        test_mode (bool): Use test mode state directory if True
+    Returns:
+        tuple: (data: dict or None, error: str or None)
+    """
+    try:
+        dirs = get_state_directories(test_mode=test_mode)
+        state_dir = dirs["state"]
+        file_path = os.path.join(state_dir, filename)
+        if not os.path.exists(file_path):
+            return None, f"State file does not exist: {file_path}"
+        with open(file_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data, None
+    except Exception as e:
+        return None, f"Error loading JSON state: {str(e)}"
 
 
 # Quick test functionality for development

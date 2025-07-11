@@ -21,7 +21,7 @@ phases:
   phase_2_utilities:
     name: "Core Utilities"
     tasks_total: 11
-    tasks_completed: 3
+    tasks_completed: 4
     status: "in_progress"
     
   phase_3_configuration:
@@ -165,6 +165,12 @@ tasks:
     status: "completed"
     completed_date: "2025-06-21"
     notes: "Added get_state_directories() to utils.py to create and manage state, config, and temp directories in both normal and test modes. Comprehensive unit tests verify correct creation, permissions, and error handling. All tests pass."
+
+  task_015:
+    name: "Add JSON State Helper"
+    status: "completed"
+    completed_date: "2025-06-21"
+    notes: "Added save_json_state() and load_json_state() to utils.py for saving/loading JSON state files in the state directory. Comprehensive unit tests verify correct save/load, file not found, and error handling. All tests pass."
 
 # Current state summary
 current_state:
