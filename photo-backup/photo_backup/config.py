@@ -7,6 +7,7 @@ with support for test mode using Minio instead of Wasabi.
 
 import os
 import yaml
+import logging
 from pathlib import Path
 from typing import Dict, Any, Optional, Tuple, List
 
@@ -288,17 +289,35 @@ class Config:
         
         return self._config
     
+    def get_search_paths(self) -> List[Path]:
+        """Get the list of search paths for configuration files.
+        
+        Returns:
+            List of paths to search for configuration files in order
+        """
+        search_paths = []
+        
+        # Add test mode specific config location first if in test mode
+        if self.test_mode:
+            test_config_path = Path("/tmp/photo-backup-test/config.yaml")
+            search_paths.append(test_config_path)
+        
+        # Standard search paths
+        search_paths.extend([
+            Path.cwd() / "config.yaml",  # Current directory
+            Path.home() / ".config" / "photo-backup" / "config.yaml",  # User config
+            Path("/etc/photo-backup/config.yaml"),  # System config
+        ])
+        
+        return search_paths
+    
     def _find_config_file(self) -> Optional[Path]:
         """Find config file in standard locations.
         
         Returns:
             Path to config file if found, None otherwise
         """
-        search_paths = [
-            Path.cwd() / "config.yaml",  # Current directory
-            Path.home() / ".config" / "photo-backup" / "config.yaml",  # User config
-            Path("/etc/photo-backup/config.yaml"),  # System config
-        ]
+        search_paths = self.get_search_paths()
         
         for config_path in search_paths:
             if config_path.exists() and config_path.is_file():
@@ -314,15 +333,17 @@ class Config:
         """
         config_path = self._find_config_file()
         if config_path is None:
+            logging.info("No configuration file found, using default configuration")
             return None
         
         try:
             with open(config_path, 'r', encoding='utf-8') as f:
                 config = yaml.safe_load(f)
                 self._config_file_path = config_path
+                logging.info(f"Loaded configuration from: {config_path}")
                 return config
         except (yaml.YAMLError, OSError) as e:
-            print(f"Error loading config file {config_path}: {e}")
+            logging.error(f"Error loading config file {config_path}: {e}")
             return None
     
     def _expand_path(self, path: str) -> str:
