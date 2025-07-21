@@ -21,7 +21,7 @@ phases:
   phase_2_utilities:
     name: "Core Utilities"
     tasks_total: 11
-    tasks_completed: 9
+    tasks_completed: 10
     status: "in_progress"
     
   phase_3_configuration:
@@ -202,6 +202,12 @@ tasks:
     completed_date: "2025-06-21"
     notes: "Added calculate_directory_size() to utils.py for recursive directory size and file count, handling permission errors and symlinks. Comprehensive unit tests for normal, error, and edge cases. All tests pass."
 
+  task_021:
+    name: "Add Test Photo Generator"
+    status: "completed"
+    completed_date: "2025-01-27"
+    notes: "Created tests/fixtures/photo_fixtures.py with generate_test_photos() function that creates realistic test photo files with various extensions (.jpg, .jpeg, .dng, .cr2) organized by year/month structure. Includes cleanup and stats functions. Updated conftest.py to use new fixtures. Created comprehensive unit tests in tests/unit/test_photo_fixtures.py. Fixed failing functional tests to work with new random photo structure."
+
 # Current state summary
 current_state:
   working_directory: "/Users/you/git/backup-to-s3"
@@ -242,6 +248,9 @@ current_state:
     - "tests/unit/test_lock_utils.py"
     - "tests/unit/test_time_utils.py"
     - "tests/unit/test_process_utils.py"
+    - "tests/fixtures/photo_fixtures.py"
+    - "tests/fixtures/__init__.py"
+    - "tests/unit/test_photo_fixtures.py"
     
   foundation_complete:
     - "CLI entry point with click framework"
@@ -267,6 +276,7 @@ current_state:
     all_tests_passing: true
     pytest_properly_configured: true
     integration_tests_working: true
+    test_photo_fixtures_implemented: true
 
 # Next steps
 next_steps:

@@ -53,30 +53,53 @@ class TestPhotoInfrastructure:
     def test_test_photo_creation(self, test_photos):
         """Test test photo directory creation."""
         assert test_photos.exists(), "Test photo directory should exist"
-        assert (test_photos / "2024" / "01" / "photo1.jpg").exists(), "Test photo should exist"
-        assert (test_photos / "2024" / "02" / "photo3.jpg").exists(), "Test photo should exist"
         
-        # Count files
-        photo_files = list(test_photos.rglob("*.jpg"))
-        assert len(photo_files) == 3, "Should have 3 test photos"
+        # Count all photo files (should be 5 from conftest.py)
+        photo_files = list(test_photos.rglob("*"))
+        photo_files = [f for f in photo_files if f.is_file() and f.suffix.lower() in ['.jpg', '.jpeg', '.dng', '.cr2']]
+        assert len(photo_files) == 5, f"Should have 5 test photos, found {len(photo_files)}"
+        
+        # Check that we have some files in year/month structure
+        year_dirs = [d for d in test_photos.iterdir() if d.is_dir()]
+        assert len(year_dirs) > 0, "Should have year directories"
+        
+        # Check that at least one year directory has month directories
+        month_dirs = []
+        for year_dir in year_dirs:
+            month_dirs.extend([d for d in year_dir.iterdir() if d.is_dir()])
+        assert len(month_dirs) > 0, "Should have month directories"
     
     @pytest.mark.functional
     def test_test_photo_structure(self, test_photos):
         """Test that test photos have correct directory structure."""
-        # Check directory structure
-        assert (test_photos / "2024").is_dir()
-        assert (test_photos / "2024" / "01").is_dir()
-        assert (test_photos / "2024" / "02").is_dir()
+        # Check that we have year directories
+        year_dirs = [d for d in test_photos.iterdir() if d.is_dir()]
+        assert len(year_dirs) > 0, "Should have year directories"
         
-        # Check file contents
-        photo1_content = (test_photos / "2024" / "01" / "photo1.jpg").read_text()
-        assert photo1_content == "dummy photo 1"
+        # Check that year directories contain month directories
+        for year_dir in year_dirs:
+            month_dirs = [d for d in year_dir.iterdir() if d.is_dir()]
+            assert len(month_dirs) > 0, f"Year directory {year_dir.name} should have month directories"
+            
+            # Check that month directories contain photo files
+            for month_dir in month_dirs:
+                photo_files = [f for f in month_dir.iterdir() if f.is_file() and f.suffix.lower() in ['.jpg', '.jpeg', '.dng', '.cr2']]
+                assert len(photo_files) > 0, f"Month directory {month_dir.name} should have photo files"
+                
+                # Check that files have the expected naming pattern (IMG_XXXX.ext)
+                for photo_file in photo_files:
+                    assert photo_file.stem.startswith("IMG_"), f"File {photo_file.name} should start with IMG_"
+                    assert photo_file.stem[4:].isdigit(), f"File {photo_file.name} should have numeric part after IMG_"
         
-        photo2_content = (test_photos / "2024" / "01" / "photo2.jpg").read_text()
-        assert photo2_content == "dummy photo 2"
+        # Check that files have random content (not empty)
+        all_photo_files = list(test_photos.rglob("*"))
+        all_photo_files = [f for f in all_photo_files if f.is_file() and f.suffix.lower() in ['.jpg', '.jpeg', '.dng', '.cr2']]
+        assert len(all_photo_files) > 0, "Should have photo files"
         
-        photo3_content = (test_photos / "2024" / "02" / "photo3.jpg").read_text()
-        assert photo3_content == "dummy photo 3"
+        for photo_file in all_photo_files:
+            content = photo_file.read_text()
+            assert len(content) > 0, f"Photo file {photo_file.name} should have content"
+            assert len(content) > 100, f"Photo file {photo_file.name} should have substantial content"
     
     @pytest.mark.functional
     def test_test_photo_cleanup(self):

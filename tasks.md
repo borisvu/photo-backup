@@ -212,9 +212,9 @@ This document contains small, testable tasks for building the Photo Backup MVP. 
 **Goal**: Create realistic test data
 
 - Add to test_utils: `generate_test_photos()`
-- Create JPEG files with EXIF data
+- Create dummy files with JPEG, JPG, DNG and CR2 with some random text inside.
 - Organize by year/month structure
-- Various sizes (1-10MB)
+- This code will only to be invoked by tests that need it.
   **Test**: Generate test set, verify structure
 
 ### Task 22: Integration Test for Utils

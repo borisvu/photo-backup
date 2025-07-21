@@ -108,17 +108,9 @@ def stop_minio_container():
 
 def create_test_photos(base_dir=TEST_PHOTO_DIR):
     """Creates a dummy photo directory structure and files."""
-    if base_dir.exists():
-        shutil.rmtree(base_dir)
-    
-    (base_dir / "2024" / "01").mkdir(parents=True, exist_ok=True)
-    (base_dir / "2024" / "02").mkdir(exist_ok=True)
-    
-    (base_dir / "2024" / "01" / "photo1.jpg").write_text("dummy photo 1")
-    (base_dir / "2024" / "01" / "photo2.jpg").write_text("dummy photo 2")
-    (base_dir / "2024" / "02" / "photo3.jpg").write_text("dummy photo 3")
-    
-    return base_dir
+    # Import the enhanced test photo generator
+    from .fixtures.photo_fixtures import generate_test_photos
+    return generate_test_photos(str(base_dir), num_files=5, min_size_mb=1, max_size_mb=2)
 
 
 def cleanup_test_data(base_dir=TEST_PHOTO_DIR):

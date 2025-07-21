@@ -96,8 +96,11 @@ class TestSystemIntegration:
         """Test complete integration with all infrastructure components."""
         # Verify test photos exist
         assert test_photos.exists()
-        photo_files = list(test_photos.rglob("*.jpg"))
-        assert len(photo_files) == 3
+        
+        # Count all photo files (should be 5 from conftest.py)
+        photo_files = list(test_photos.rglob("*"))
+        photo_files = [f for f in photo_files if f.is_file() and f.suffix.lower() in ['.jpg', '.jpeg', '.dng', '.cr2']]
+        assert len(photo_files) == 5, f"Should have 5 test photos, found {len(photo_files)}"
         
         # Run CLI in test mode
         result = cli_runner(["--test-mode"])
