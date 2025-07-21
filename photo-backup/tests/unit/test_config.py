@@ -1075,3 +1075,252 @@ class TestConfigValidationIntegration:
                     assert "Configuration validation failed:" in error_message
                     # Check that the specific error is mentioned
                     assert any("backup.source_path" in error for error in error_message.split('\n'))
+
+
+class TestConfigDefaults:
+    """Test cases for default configuration functionality."""
+    
+    @pytest.mark.unit
+    def test_default_config_structure(self):
+        """Test that DEFAULT_CONFIG has the expected structure."""
+        from photo_backup.config import DEFAULT_CONFIG
+        
+        # Check that all required sections exist
+        required_sections = ['backup', 'storage', 'monitoring', 'logging', 'state']
+        for section in required_sections:
+            assert section in DEFAULT_CONFIG
+            assert isinstance(DEFAULT_CONFIG[section], dict)
+        
+        # Check that backup section has required fields
+        backup = DEFAULT_CONFIG['backup']
+        assert 'source_path' in backup
+        assert 'destination' in backup
+        assert 'strategy' in backup
+        assert backup['strategy'] == 'incremental'
+        
+        # Check that storage section has required fields
+        storage = DEFAULT_CONFIG['storage']
+        assert 'endpoint' in storage
+        assert 'access_key' in storage
+        assert 'secret_key' in storage
+        assert storage['endpoint'] == 's3.wasabisys.com'
+        
+        # Check that monitoring section has required fields
+        monitoring = DEFAULT_CONFIG['monitoring']
+        assert 'check_interval_hours' in monitoring
+        assert 'mount_delay_minutes' in monitoring
+        assert 'change_delay_minutes' in monitoring
+    
+    @pytest.mark.unit
+    def test_default_config_documentation(self):
+        """Test that DEFAULT_CONFIG_DOCS has documentation for all settings."""
+        from photo_backup.config import DEFAULT_CONFIG_DOCS, DEFAULT_CONFIG
+        
+        # Check that all sections in DEFAULT_CONFIG have documentation
+        for section in DEFAULT_CONFIG:
+            assert section in DEFAULT_CONFIG_DOCS
+            assert isinstance(DEFAULT_CONFIG_DOCS[section], dict)
+            
+            # Check that all fields in each section have documentation
+            for field in DEFAULT_CONFIG[section]:
+                if isinstance(DEFAULT_CONFIG[section][field], dict):
+                    # For nested dictionaries, check if the field itself has documentation
+                    if field in DEFAULT_CONFIG_DOCS[section]:
+                        assert isinstance(DEFAULT_CONFIG_DOCS[section][field], dict)
+                else:
+                    # For simple fields, check that documentation exists
+                    assert field in DEFAULT_CONFIG_DOCS[section]
+                    assert isinstance(DEFAULT_CONFIG_DOCS[section][field], str)
+                    assert len(DEFAULT_CONFIG_DOCS[section][field]) > 0
+    
+    @pytest.mark.unit
+    def test_test_mode_defaults(self):
+        """Test that TEST_MODE_DEFAULTS has appropriate test settings."""
+        from photo_backup.config import TEST_MODE_DEFAULTS
+        
+        # Check that test mode has faster intervals
+        monitoring = TEST_MODE_DEFAULTS['monitoring']
+        assert monitoring['check_interval_hours'] == 0.1  # 6 minutes
+        assert monitoring['mount_delay_minutes'] == 1
+        assert monitoring['change_delay_minutes'] == 1
+        
+        # Check that test mode uses local storage
+        storage = TEST_MODE_DEFAULTS['storage']
+        assert storage['endpoint'] == 'localhost:9000'
+        assert storage['access_key'] == 'minioadmin'
+        assert storage['secret_key'] == 'minioadmin'
+        assert storage['use_ssl'] is False
+        
+        # Check that test mode uses debug logging
+        logging = TEST_MODE_DEFAULTS['logging']
+        assert logging['level'] == 'DEBUG'
+        assert '/tmp/photo-backup-test' in logging['directory']
+    
+    @pytest.mark.unit
+    def test_get_config_documentation(self):
+        """Test get_config_documentation method."""
+        config = Config()
+        docs = config.get_config_documentation()
+        
+        # Check that documentation is returned
+        assert isinstance(docs, dict)
+        assert 'backup' in docs
+        assert 'storage' in docs
+        assert 'monitoring' in docs
+        assert 'logging' in docs
+        assert 'state' in docs
+        
+        # Check that it's a copy, not the original
+        assert docs is not config.get_config_documentation()
+    
+    @pytest.mark.unit
+    def test_get_default_value(self):
+        """Test get_default_value method."""
+        config = Config()
+        
+        # Test simple key
+        value = config.get_default_value('backup.source_path')
+        assert value == '/Volumes/4TB-SSD/Photo'
+        
+        # Test nested key
+        value = config.get_default_value('storage.endpoint')
+        assert value == 's3.wasabisys.com'
+        
+        # Test non-existent key
+        value = config.get_default_value('nonexistent.key')
+        assert value is None
+        
+        # Test section key
+        value = config.get_default_value('backup')
+        assert isinstance(value, dict)
+        assert 'source_path' in value
+    
+    @pytest.mark.unit
+    def test_get_default_documentation(self):
+        """Test get_default_documentation method."""
+        config = Config()
+        
+        # Test simple key documentation
+        doc = config.get_default_documentation('backup.source_path')
+        assert isinstance(doc, str)
+        assert 'Absolute path' in doc
+        
+        # Test nested key documentation
+        doc = config.get_default_documentation('storage.endpoint')
+        assert isinstance(doc, str)
+        assert 'S3-compatible' in doc
+        
+        # Test non-existent key
+        doc = config.get_default_documentation('nonexistent.key')
+        assert doc is None
+        
+        # Test section documentation (returns dict of field docs)
+        doc = config.get_default_documentation('backup')
+        assert isinstance(doc, dict)
+        assert 'source_path' in doc
+        assert isinstance(doc['source_path'], str)
+    
+    @pytest.mark.unit
+    def test_get_default_config_returns_copy(self):
+        """Test that _get_default_config returns a copy, not the original."""
+        config = Config()
+        default1 = config._get_default_config()
+        default2 = config._get_default_config()
+        
+        # Should be different objects
+        assert default1 is not default2
+        
+        # But should have the same content
+        assert default1 == default2
+    
+    @pytest.mark.unit
+    def test_default_config_has_new_sections(self):
+        """Test that DEFAULT_CONFIG includes new sections."""
+        from photo_backup.config import DEFAULT_CONFIG
+        
+        # Check for new sections
+        assert 'security' in DEFAULT_CONFIG
+        assert 'performance' in DEFAULT_CONFIG
+        assert 'notifications' in DEFAULT_CONFIG
+        
+        # Check security section
+        security = DEFAULT_CONFIG['security']
+        assert 'encrypt_backups' in security
+        assert 'verify_checksums' in security
+        assert 'checksum_algorithm' in security
+        
+        # Check performance section
+        performance = DEFAULT_CONFIG['performance']
+        assert 'buffer_size_mb' in performance
+        assert 'max_memory_usage_mb' in performance
+        assert 'parallel_uploads' in performance
+        
+        # Check notifications section
+        notifications = DEFAULT_CONFIG['notifications']
+        assert 'enabled' in notifications
+        assert 'email' in notifications
+        assert 'webhook' in notifications
+    
+    @pytest.mark.unit
+    def test_test_mode_defaults_optimized_for_testing(self):
+        """Test that test mode defaults are optimized for testing."""
+        from photo_backup.config import TEST_MODE_DEFAULTS
+        
+        # Check performance settings are reduced for testing
+        performance = TEST_MODE_DEFAULTS['performance']
+        assert performance['buffer_size_mb'] == 1  # Smaller buffer
+        assert performance['max_memory_usage_mb'] == 64  # Lower memory
+        assert performance['chunk_size_mb'] == 1  # Smaller chunks
+        assert performance['enable_caching'] is False  # No caching
+        
+        # Check security settings are relaxed for testing
+        security = TEST_MODE_DEFAULTS['security']
+        assert security['verify_checksums'] is False  # Skip verification
+        assert security['encrypt_backups'] is False  # No encryption
+        
+        # Check backup settings are optimized for testing
+        backup = TEST_MODE_DEFAULTS['backup']
+        assert backup['compression'] is False  # No compression
+        assert backup['verify_after_backup'] is False  # Skip verification
+    
+    @pytest.mark.unit
+    def test_default_config_backward_compatibility(self):
+        """Test that default config maintains backward compatibility."""
+        config = Config()
+        default_config = config._get_default_config()
+        
+        # Check that original fields still exist with same values
+        assert default_config['backup']['source_path'] == '/Volumes/4TB-SSD/Photo'
+        assert default_config['backup']['destination'] == 'wasabi-photo:my-photo-backup-bucket'
+        assert default_config['storage']['endpoint'] == 's3.wasabisys.com'
+        assert default_config['storage']['access_key'] is None
+        assert default_config['storage']['secret_key'] is None
+        assert default_config['storage']['use_ssl'] is True
+        assert default_config['monitoring']['check_interval_hours'] == 4
+        assert default_config['monitoring']['mount_delay_minutes'] == 15
+        assert default_config['monitoring']['change_delay_minutes'] == 30
+        assert default_config['logging']['level'] == 'INFO'
+        assert default_config['logging']['directory'] == '~/Library/Logs/photo-backup'
+        assert default_config['state']['directory'] == '~/Library/Application Support/photo-backup'
+    
+    @pytest.mark.unit
+    def test_config_works_without_file(self):
+        """Test that config works without a config file using defaults."""
+        config = Config(test_mode=False)
+        
+        # Should load defaults when no file exists
+        settings = config.load_config()
+        
+        # Should have all default values
+        assert settings['backup']['source_path'] == '/Volumes/4TB-SSD/Photo'
+        assert settings['storage']['endpoint'] == 's3.wasabisys.com'
+        assert settings['monitoring']['check_interval_hours'] == 4
+        assert settings['logging']['level'] == 'INFO'
+        
+        # Should have new sections
+        assert 'security' in settings
+        assert 'performance' in settings
+        assert 'notifications' in settings
+        
+        # Should indicate no config file was loaded
+        assert config.get_config_file_path() is None
