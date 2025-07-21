@@ -183,14 +183,17 @@ class TestConfigFileLoading:
         with patch('builtins.open', mock_open(read_data=yaml.dump(test_config))):
             with patch.object(Path, 'exists', return_value=True):
                 with patch.object(Path, 'is_file', return_value=True):
-                    config = Config(test_mode=False)
-                    config.load_config()
-                    
-                    # Should use file config values
-                    assert config.get('backup.source_path') == '/custom/photos'
-                    assert config.get('storage.endpoint') == 'custom.s3.com'
-                    assert config.get('monitoring.check_interval_hours') == 2
-                    assert config.get('logging.level') == 'WARNING'
+                    # Mock path validation to pass
+                    with patch.object(Path, 'is_dir', return_value=True):
+                        with patch('os.access', return_value=True):
+                            config = Config(test_mode=False)
+                            config.load_config()
+                            
+                            # Should use file config values
+                            assert config.get('backup.source_path') == '/custom/photos'
+                            assert config.get('storage.endpoint') == 'custom.s3.com'
+                            assert config.get('monitoring.check_interval_hours') == 2
+                            assert config.get('logging.level') == 'WARNING'
     
     @pytest.mark.unit
     def test_load_config_from_file_not_found(self):
@@ -256,15 +259,18 @@ class TestConfigFileLoading:
         with patch('builtins.open', mock_open(read_data=yaml.dump(test_config))):
             with patch.object(Path, 'exists', return_value=True):
                 with patch.object(Path, 'is_file', return_value=True):
-                    config = Config(test_mode=True)
-                    config.load_config()
-                    
-                    # Test mode should override file config
-                    assert config.get('backup.source_path') == '/tmp/photo-backup-test-photos'
-                    assert config.get('storage.endpoint') == 'localhost:9000'
-                    assert config.get('storage.access_key') == 'minioadmin'
-                    assert config.get('monitoring.check_interval_hours') == 0.1
-                    assert config.get('logging.level') == 'DEBUG'
+                    # Mock path validation to pass
+                    with patch.object(Path, 'is_dir', return_value=True):
+                        with patch('os.access', return_value=True):
+                            config = Config(test_mode=True)
+                            config.load_config()
+                            
+                            # Test mode should override file config
+                            assert config.get('backup.source_path') == '/tmp/photo-backup-test-photos'
+                            assert config.get('storage.endpoint') == 'localhost:9000'
+                            assert config.get('storage.access_key') == 'minioadmin'
+                            assert config.get('monitoring.check_interval_hours') == 0.1
+                            assert config.get('logging.level') == 'DEBUG'
 
 
 class TestConfigSchemaValidation:
@@ -299,8 +305,7 @@ class TestConfigSchemaValidation:
             }
         }
         
-        is_valid, errors = config._validate_config_schema(valid_config)
-        assert is_valid is True
+        errors = config._validate_config_schema(valid_config)
         assert len(errors) == 0
     
     @pytest.mark.unit
@@ -315,8 +320,7 @@ class TestConfigSchemaValidation:
             # Missing storage, monitoring, logging, state sections
         }
         
-        is_valid, errors = config._validate_config_schema(invalid_config)
-        assert is_valid is False
+        errors = config._validate_config_schema(invalid_config)
         assert len(errors) == 4
         assert "Missing required section: storage" in errors
         assert "Missing required section: monitoring" in errors
@@ -351,8 +355,7 @@ class TestConfigSchemaValidation:
             }
         }
         
-        is_valid, errors = config._validate_config_schema(invalid_config)
-        assert is_valid is False
+        errors = config._validate_config_schema(invalid_config)
         assert "backup.source_path is required" in errors
         assert "backup.destination is required" in errors
     
@@ -385,8 +388,7 @@ class TestConfigSchemaValidation:
             }
         }
         
-        is_valid, errors = config._validate_config_schema(invalid_config)
-        assert is_valid is False
+        errors = config._validate_config_schema(invalid_config)
         assert "backup.source_path must be a string" in errors
         assert "storage.use_ssl must be a boolean" in errors
         assert "monitoring.check_interval_hours must be a number" in errors
@@ -420,9 +422,404 @@ class TestConfigSchemaValidation:
             }
         }
         
-        is_valid, errors = config._validate_config_schema(valid_config)
-        assert is_valid is True
+        errors = config._validate_config_schema(valid_config)
         assert len(errors) == 0
+
+
+class TestConfigPathValidation:
+    """Test cases for path validation functionality."""
+    
+    @pytest.mark.unit
+    def test_validate_paths_valid_absolute_paths(self):
+        """Test validation of valid absolute paths."""
+        config = Config()
+        valid_config = {
+            'backup': {
+                'source_path': '/tmp/test-photos',
+                'destination': 'custom:backup'
+            },
+            'storage': {
+                'endpoint': 'custom.s3.com',
+                'access_key': 'custom_key',
+                'secret_key': 'custom_secret',
+                'use_ssl': True
+            },
+            'monitoring': {
+                'check_interval_hours': 2,
+                'mount_delay_minutes': 10,
+                'change_delay_minutes': 20
+            },
+            'logging': {
+                'level': 'WARNING',
+                'directory': '/tmp/test-logs'
+            },
+            'state': {
+                'directory': '/tmp/test-state'
+            }
+        }
+        
+        with patch.object(Path, 'exists', return_value=True):
+            with patch.object(Path, 'is_dir', return_value=True):
+                with patch('os.access', return_value=True):
+                    errors = config._validate_paths(valid_config)
+                    assert len(errors) == 0
+    
+    @pytest.mark.unit
+    def test_validate_paths_relative_path_error(self):
+        """Test validation rejects relative paths."""
+        config = Config()
+        invalid_config = {
+            'backup': {
+                'source_path': 'relative/path',  # Should be absolute
+                'destination': 'custom:backup'
+            },
+            'storage': {
+                'endpoint': 'custom.s3.com',
+                'access_key': 'custom_key',
+                'secret_key': 'custom_secret',
+                'use_ssl': True
+            },
+            'monitoring': {
+                'check_interval_hours': 2,
+                'mount_delay_minutes': 10,
+                'change_delay_minutes': 20
+            },
+            'logging': {
+                'level': 'WARNING',
+                'directory': '/tmp/test-logs'
+            },
+            'state': {
+                'directory': '/tmp/test-state'
+            }
+        }
+        
+        errors = config._validate_paths(invalid_config)
+        # Check that the specific error is in the list
+        assert any("backup.source_path must be an absolute path" in error for error in errors)
+    
+    @pytest.mark.unit
+    def test_validate_paths_nonexistent_path_error(self):
+        """Test validation rejects nonexistent paths."""
+        config = Config()
+        invalid_config = {
+            'backup': {
+                'source_path': '/nonexistent/path',
+                'destination': 'custom:backup'
+            },
+            'storage': {
+                'endpoint': 'custom.s3.com',
+                'access_key': 'custom_key',
+                'secret_key': 'custom_secret',
+                'use_ssl': True
+            },
+            'monitoring': {
+                'check_interval_hours': 2,
+                'mount_delay_minutes': 10,
+                'change_delay_minutes': 20
+            },
+            'logging': {
+                'level': 'WARNING',
+                'directory': '/tmp/test-logs'
+            },
+            'state': {
+                'directory': '/tmp/test-state'
+            }
+        }
+        
+        with patch.object(Path, 'exists', return_value=False):
+            errors = config._validate_paths(invalid_config)
+            # Check that the specific error is in the list
+            assert any("backup.source_path does not exist" in error for error in errors)
+    
+    @pytest.mark.unit
+    def test_validate_paths_not_directory_error(self):
+        """Test validation rejects non-directory paths."""
+        config = Config()
+        invalid_config = {
+            'backup': {
+                'source_path': '/tmp/test-file',  # Should be directory
+                'destination': 'custom:backup'
+            },
+            'storage': {
+                'endpoint': 'custom.s3.com',
+                'access_key': 'custom_key',
+                'secret_key': 'custom_secret',
+                'use_ssl': True
+            },
+            'monitoring': {
+                'check_interval_hours': 2,
+                'mount_delay_minutes': 10,
+                'change_delay_minutes': 20
+            },
+            'logging': {
+                'level': 'WARNING',
+                'directory': '/tmp/test-logs'
+            },
+            'state': {
+                'directory': '/tmp/test-state'
+            }
+        }
+        
+        with patch.object(Path, 'exists', return_value=True):
+            with patch.object(Path, 'is_dir', return_value=False):
+                errors = config._validate_paths(invalid_config)
+                # Check that the specific error is in the list
+                assert any("backup.source_path must be a directory" in error for error in errors)
+    
+    @pytest.mark.unit
+    def test_validate_paths_not_readable_error(self):
+        """Test validation rejects non-readable paths."""
+        config = Config()
+        invalid_config = {
+            'backup': {
+                'source_path': '/tmp/test-photos',
+                'destination': 'custom:backup'
+            },
+            'storage': {
+                'endpoint': 'custom.s3.com',
+                'access_key': 'custom_key',
+                'secret_key': 'custom_secret',
+                'use_ssl': True
+            },
+            'monitoring': {
+                'check_interval_hours': 2,
+                'mount_delay_minutes': 10,
+                'change_delay_minutes': 20
+            },
+            'logging': {
+                'level': 'WARNING',
+                'directory': '/tmp/test-logs'
+            },
+            'state': {
+                'directory': '/tmp/test-state'
+            }
+        }
+        
+        with patch.object(Path, 'exists', return_value=True):
+            with patch.object(Path, 'is_dir', return_value=True):
+                with patch('os.access', return_value=False):
+                    errors = config._validate_paths(invalid_config)
+                    # Check that the specific error is in the list
+                    assert any("backup.source_path is not readable" in error for error in errors)
+    
+    @pytest.mark.unit
+    def test_expand_path(self):
+        """Test path expansion functionality."""
+        config = Config()
+        
+        # Test home directory expansion
+        expanded = config._expand_path("~/test")
+        assert expanded.startswith("/")
+        assert "test" in expanded
+        
+        # Test absolute path (no change)
+        expanded = config._expand_path("/absolute/path")
+        assert expanded == "/absolute/path"
+        
+        # Test relative path (becomes absolute)
+        expanded = config._expand_path("relative/path")
+        assert expanded.startswith("/")
+        assert expanded.endswith("relative/path")
+
+
+class TestConfigNumericValidation:
+    """Test cases for numeric range validation."""
+    
+    @pytest.mark.unit
+    def test_validate_numeric_ranges_valid(self):
+        """Test validation of valid numeric ranges."""
+        config = Config()
+        valid_config = {
+            'backup': {
+                'source_path': '/tmp/test-photos',
+                'destination': 'custom:backup'
+            },
+            'storage': {
+                'endpoint': 'custom.s3.com',
+                'access_key': 'custom_key',
+                'secret_key': 'custom_secret',
+                'use_ssl': True
+            },
+            'monitoring': {
+                'check_interval_hours': 2,  # Valid range: 0.1 to 24
+                'mount_delay_minutes': 10,  # Valid range: 1 to 60
+                'change_delay_minutes': 20  # Valid range: 1 to 120
+            },
+            'logging': {
+                'level': 'WARNING',
+                'directory': '/tmp/test-logs',
+                'max_size_mb': 100,  # Valid range: 1 to 1000
+                'backup_count': 5    # Valid range: 1 to 50
+            },
+            'state': {
+                'directory': '/tmp/test-state'
+            }
+        }
+        
+        errors = config._validate_numeric_ranges(valid_config)
+        assert len(errors) == 0
+    
+    @pytest.mark.unit
+    def test_validate_numeric_ranges_check_interval_too_low(self):
+        """Test validation rejects check_interval_hours below minimum."""
+        config = Config()
+        invalid_config = {
+            'backup': {
+                'source_path': '/tmp/test-photos',
+                'destination': 'custom:backup'
+            },
+            'storage': {
+                'endpoint': 'custom.s3.com',
+                'access_key': 'custom_key',
+                'secret_key': 'custom_secret',
+                'use_ssl': True
+            },
+            'monitoring': {
+                'check_interval_hours': 0.05,  # Too low: minimum is 0.1
+                'mount_delay_minutes': 10,
+                'change_delay_minutes': 20
+            },
+            'logging': {
+                'level': 'WARNING',
+                'directory': '/tmp/test-logs'
+            },
+            'state': {
+                'directory': '/tmp/test-state'
+            }
+        }
+        
+        errors = config._validate_numeric_ranges(invalid_config)
+        assert "monitoring.check_interval_hours must be between 0.1 and 24 hours" in errors
+    
+    @pytest.mark.unit
+    def test_validate_numeric_ranges_check_interval_too_high(self):
+        """Test validation rejects check_interval_hours above maximum."""
+        config = Config()
+        invalid_config = {
+            'backup': {
+                'source_path': '/tmp/test-photos',
+                'destination': 'custom:backup'
+            },
+            'storage': {
+                'endpoint': 'custom.s3.com',
+                'access_key': 'custom_key',
+                'secret_key': 'custom_secret',
+                'use_ssl': True
+            },
+            'monitoring': {
+                'check_interval_hours': 25,  # Too high: maximum is 24
+                'mount_delay_minutes': 10,
+                'change_delay_minutes': 20
+            },
+            'logging': {
+                'level': 'WARNING',
+                'directory': '/tmp/test-logs'
+            },
+            'state': {
+                'directory': '/tmp/test-state'
+            }
+        }
+        
+        errors = config._validate_numeric_ranges(invalid_config)
+        assert "monitoring.check_interval_hours must be between 0.1 and 24 hours" in errors
+    
+    @pytest.mark.unit
+    def test_validate_numeric_ranges_mount_delay_too_low(self):
+        """Test validation rejects mount_delay_minutes below minimum."""
+        config = Config()
+        invalid_config = {
+            'backup': {
+                'source_path': '/tmp/test-photos',
+                'destination': 'custom:backup'
+            },
+            'storage': {
+                'endpoint': 'custom.s3.com',
+                'access_key': 'custom_key',
+                'secret_key': 'custom_secret',
+                'use_ssl': True
+            },
+            'monitoring': {
+                'check_interval_hours': 2,
+                'mount_delay_minutes': 0,  # Too low: minimum is 1
+                'change_delay_minutes': 20
+            },
+            'logging': {
+                'level': 'WARNING',
+                'directory': '/tmp/test-logs'
+            },
+            'state': {
+                'directory': '/tmp/test-state'
+            }
+        }
+        
+        errors = config._validate_numeric_ranges(invalid_config)
+        assert "monitoring.mount_delay_minutes must be between 1 and 60 minutes" in errors
+    
+    @pytest.mark.unit
+    def test_validate_numeric_ranges_max_size_mb_too_high(self):
+        """Test validation rejects max_size_mb above maximum."""
+        config = Config()
+        invalid_config = {
+            'backup': {
+                'source_path': '/tmp/test-photos',
+                'destination': 'custom:backup'
+            },
+            'storage': {
+                'endpoint': 'custom.s3.com',
+                'access_key': 'custom_key',
+                'secret_key': 'custom_secret',
+                'use_ssl': True
+            },
+            'monitoring': {
+                'check_interval_hours': 2,
+                'mount_delay_minutes': 10,
+                'change_delay_minutes': 20
+            },
+            'logging': {
+                'level': 'WARNING',
+                'directory': '/tmp/test-logs',
+                'max_size_mb': 1500  # Too high: maximum is 1000
+            },
+            'state': {
+                'directory': '/tmp/test-state'
+            }
+        }
+        
+        errors = config._validate_numeric_ranges(invalid_config)
+        assert "logging.max_size_mb must be between 1 and 1000 MB" in errors
+    
+    @pytest.mark.unit
+    def test_validate_numeric_ranges_backup_count_not_integer(self):
+        """Test validation rejects non-integer backup_count."""
+        config = Config()
+        invalid_config = {
+            'backup': {
+                'source_path': '/tmp/test-photos',
+                'destination': 'custom:backup'
+            },
+            'storage': {
+                'endpoint': 'custom.s3.com',
+                'access_key': 'custom_key',
+                'secret_key': 'custom_secret',
+                'use_ssl': True
+            },
+            'monitoring': {
+                'check_interval_hours': 2,
+                'mount_delay_minutes': 10,
+                'change_delay_minutes': 20
+            },
+            'logging': {
+                'level': 'WARNING',
+                'directory': '/tmp/test-logs',
+                'backup_count': 5.5  # Should be integer
+            },
+            'state': {
+                'directory': '/tmp/test-state'
+            }
+        }
+        
+        errors = config._validate_numeric_ranges(invalid_config)
+        assert "logging.backup_count must be an integer" in errors
 
 
 class TestConfigSearchPaths:
@@ -467,7 +864,7 @@ class TestConfigSearchPaths:
         
         # Test that the method returns None when no config file exists
         # This is a simpler test that doesn't require complex mocking
-        with patch('pathlib.Path.exists', return_value=False):
+        with patch.object(Path, 'exists', return_value=False):
             config_path = config._find_config_file()
             assert config_path is None
     
@@ -559,3 +956,122 @@ class TestConfigMergeAndOverride:
         # Test that the method exists and returns the expected type
         config_path = config.get_config_file_path()
         assert config_path is None or isinstance(config_path, Path)
+
+
+class TestConfigValidationIntegration:
+    """Test cases for comprehensive config validation integration."""
+    
+    @pytest.mark.unit
+    def test_validate_config_comprehensive_valid(self):
+        """Test comprehensive validation of valid config."""
+        config = Config()
+        valid_config = {
+            'backup': {
+                'source_path': '/tmp/test-photos',
+                'destination': 'custom:backup'
+            },
+            'storage': {
+                'endpoint': 'custom.s3.com',
+                'access_key': 'custom_key',
+                'secret_key': 'custom_secret',
+                'use_ssl': True
+            },
+            'monitoring': {
+                'check_interval_hours': 2,
+                'mount_delay_minutes': 10,
+                'change_delay_minutes': 20
+            },
+            'logging': {
+                'level': 'WARNING',
+                'directory': '/tmp/test-logs',
+                'max_size_mb': 100,
+                'backup_count': 5
+            },
+            'state': {
+                'directory': '/tmp/test-state'
+            }
+        }
+        
+        with patch.object(Path, 'exists', return_value=True):
+            with patch.object(Path, 'is_dir', return_value=True):
+                with patch('os.access', return_value=True):
+                    is_valid, errors = config.validate_config(valid_config)
+                    assert is_valid is True
+                    assert len(errors) == 0
+    
+    @pytest.mark.unit
+    def test_validate_config_comprehensive_invalid(self):
+        """Test comprehensive validation of invalid config."""
+        config = Config()
+        invalid_config = {
+            'backup': {
+                'source_path': 'relative/path',  # Should be absolute
+                'destination': 'custom:backup'
+            },
+            'storage': {
+                'endpoint': 'custom.s3.com',
+                'access_key': 'custom_key',
+                'secret_key': 'custom_secret',
+                'use_ssl': True
+            },
+            'monitoring': {
+                'check_interval_hours': 25,  # Too high
+                'mount_delay_minutes': 10,
+                'change_delay_minutes': 20
+            },
+            'logging': {
+                'level': 'WARNING',
+                'directory': '/tmp/test-logs'
+            },
+            'state': {
+                'directory': '/tmp/test-state'
+            }
+        }
+        
+        is_valid, errors = config.validate_config(invalid_config)
+        assert is_valid is False
+        assert len(errors) >= 2  # Should have at least 2 errors
+        # Check that specific errors are present
+        error_messages = [error for error in errors]
+        assert any("backup.source_path must be an absolute path" in error for error in error_messages)
+        assert any("monitoring.check_interval_hours must be between 0.1 and 24 hours" in error for error in error_messages)
+    
+    @pytest.mark.unit
+    def test_load_config_fails_early_on_validation_error(self):
+        """Test that load_config fails early when validation fails."""
+        config = Config()
+        invalid_config = {
+            'backup': {
+                'source_path': 'relative/path',  # Invalid
+                'destination': 'custom:backup'
+            },
+            'storage': {
+                'endpoint': 'custom.s3.com',
+                'access_key': 'custom_key',
+                'secret_key': 'custom_secret',
+                'use_ssl': True
+            },
+            'monitoring': {
+                'check_interval_hours': 2,
+                'mount_delay_minutes': 10,
+                'change_delay_minutes': 20
+            },
+            'logging': {
+                'level': 'WARNING',
+                'directory': '/tmp/test-logs'
+            },
+            'state': {
+                'directory': '/tmp/test-state'
+            }
+        }
+        
+        with patch('builtins.open', mock_open(read_data=yaml.dump(invalid_config))):
+            with patch.object(Path, 'exists', return_value=True):
+                with patch.object(Path, 'is_file', return_value=True):
+                    with pytest.raises(ValueError) as exc_info:
+                        config.load_config()
+                    
+                    error_message = str(exc_info.value)
+                    assert "Configuration validation failed:" in error_message
+                    # Check that the specific error is mentioned
+                    assert any("backup.source_path" in error for error in error_message.split('\n'))
