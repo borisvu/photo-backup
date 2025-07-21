@@ -8,7 +8,7 @@ This module provides the command-line interface for the photo backup system.
 import logging
 import click
 from .__version__ import __version__
-from .config import Config
+from .config.config import Config
 from .logger import setup_logger
 
 

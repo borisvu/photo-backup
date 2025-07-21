@@ -153,7 +153,7 @@ class TestConfigFileLoading:
     """Test cases for YAML file loading functionality."""
     
     @pytest.mark.unit
-    def test_load_config_from_file_valid_yaml(self):
+    def testload_config_from_file_valid_yaml(self):
         """Test loading valid YAML configuration file."""
         test_config = {
             'backup': {
@@ -196,7 +196,7 @@ class TestConfigFileLoading:
                             assert config.get('logging.level') == 'WARNING'
     
     @pytest.mark.unit
-    def test_load_config_from_file_not_found(self):
+    def testload_config_from_file_not_found(self):
         """Test behavior when no config file is found."""
         with patch.object(Path, 'exists', return_value=False):
             config = Config(test_mode=False)
@@ -205,10 +205,10 @@ class TestConfigFileLoading:
             # Should use default values
             assert config.get('backup.source_path') == '/Volumes/4TB-SSD/Photo'
             assert config.get('storage.endpoint') == 's3.wasabisys.com'
-            assert config.get_config_file_path() is None
+            assert config.loader.get_config_file_path() is None
     
     @pytest.mark.unit
-    def test_load_config_from_file_invalid_yaml(self):
+    def testload_config_from_file_invalid_yaml(self):
         """Test behavior when config file contains invalid YAML."""
         invalid_yaml = """
         backup:
@@ -222,14 +222,14 @@ class TestConfigFileLoading:
             with patch.object(Path, 'exists', return_value=True):
                 with patch.object(Path, 'is_file', return_value=True):
                     config = Config(test_mode=False)
-                    config.load_config()
+                    config.loader.load_config_from_file()
                     
                     # Should fall back to defaults
                     assert config.get('backup.source_path') == '/Volumes/4TB-SSD/Photo'
                     assert config.get('storage.endpoint') == 's3.wasabisys.com'
     
     @pytest.mark.unit
-    def test_load_config_from_file_with_test_mode_override(self):
+    def testload_config_from_file_with_test_mode_override(self):
         """Test that test mode overrides file config."""
         test_config = {
             'backup': {
@@ -263,7 +263,7 @@ class TestConfigFileLoading:
                     with patch.object(Path, 'is_dir', return_value=True):
                         with patch('os.access', return_value=True):
                             config = Config(test_mode=True)
-                            config.load_config()
+                            config.loader.load_config_from_file()
                             
                             # Test mode should override file config
                             assert config.get('backup.source_path') == '/tmp/photo-backup-test-photos'
@@ -836,7 +836,7 @@ class TestConfigSearchPaths:
                 mock_exists.return_value = True
                 mock_is_file.return_value = True
                 
-                config_path = config._find_config_file()
+                config_path = config.loader._find_config_file()
                 assert config_path == Path.cwd() / "config.yaml"
     
     @pytest.mark.unit
@@ -865,7 +865,7 @@ class TestConfigSearchPaths:
         # Test that the method returns None when no config file exists
         # This is a simpler test that doesn't require complex mocking
         with patch.object(Path, 'exists', return_value=False):
-            config_path = config._find_config_file()
+            config_path = config.loader._find_config_file()
             assert config_path is None
     
     @pytest.mark.unit
@@ -874,14 +874,14 @@ class TestConfigSearchPaths:
         config = Config()
         
         with patch.object(Path, 'exists', return_value=False):
-            config_path = config._find_config_file()
+            config_path = config.loader._find_config_file()
             assert config_path is None
     
     @pytest.mark.unit
     def test_get_search_paths_production_mode(self):
         """Test search paths in production mode."""
         config = Config(test_mode=False)
-        search_paths = config.get_search_paths()
+        search_paths = config.loader.get_search_paths()
         
         # Should have 3 standard paths, no test path
         assert len(search_paths) == 3
@@ -893,7 +893,7 @@ class TestConfigSearchPaths:
     def test_get_search_paths_test_mode(self):
         """Test search paths in test mode."""
         config = Config(test_mode=True)
-        search_paths = config.get_search_paths()
+        search_paths = config.loader.get_search_paths()
         
         # Should have 4 paths, with test path first
         assert len(search_paths) == 4
@@ -908,7 +908,7 @@ class TestConfigSearchPaths:
         config = Config(test_mode=True)
         
         # Test that test mode includes the test config path first
-        search_paths = config.get_search_paths()
+        search_paths = config.loader.get_search_paths()
         assert search_paths[0] == Path("/tmp/photo-backup-test/config.yaml")
         
         # Test that the search paths are in the correct order
@@ -923,13 +923,13 @@ class TestConfigSearchPaths:
         config = Config()
         test_config = {'backup': {'source_path': '/test/path'}}
         
-        with patch.object(config, '_find_config_file') as mock_find:
+        with patch.object(config.loader, '_find_config_file') as mock_find:
             with patch('builtins.open', mock_open(read_data='backup:\n  source_path: /test/path')):
                 with patch('yaml.safe_load', return_value=test_config):
                     with patch('logging.info') as mock_log:
                         mock_find.return_value = Path("/test/config.yaml")
                         
-                        result = config._load_config_from_file()
+                        result = config.loader.load_config_from_file()
                         
                         # Should log the config file location
                         mock_log.assert_called_with("Loaded configuration from: /test/config.yaml")
@@ -940,9 +940,9 @@ class TestConfigSearchPaths:
         """Test logging when no config file is found."""
         config = Config()
         
-        with patch.object(config, '_find_config_file', return_value=None):
+        with patch.object(config.loader, '_find_config_file', return_value=None):
             with patch('logging.info') as mock_log:
-                result = config._load_config_from_file()
+                result = config.loader.load_config_from_file()
                 
                 # Should log that no config file was found
                 mock_log.assert_called_with("No configuration file found, using default configuration")
@@ -953,12 +953,12 @@ class TestConfigSearchPaths:
         """Test logging when config file has errors."""
         config = Config()
         
-        with patch.object(config, '_find_config_file') as mock_find:
+        with patch.object(config.loader, '_find_config_file') as mock_find:
             with patch('builtins.open', side_effect=OSError("File not found")):
                 with patch('logging.error') as mock_log:
                     mock_find.return_value = Path("/test/config.yaml")
                     
-                    result = config._load_config_from_file()
+                    result = config.loader.load_config_from_file()
                     
                     # Should log the error
                     mock_log.assert_called_with("Error loading config file /test/config.yaml: File not found")

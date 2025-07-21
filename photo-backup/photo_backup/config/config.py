@@ -5,14 +5,12 @@ This module handles loading and managing configuration settings,
 with support for test mode using Minio instead of Wasabi.
 """
 
-import os
-import yaml
-import logging
 from pathlib import Path
-from typing import Dict, Any, Optional, Tuple, List
+from typing import Dict, Any, Optional
 
-from .config_defaults import DEFAULT_CONFIG, DEFAULT_CONFIG_DOCS, TEST_MODE_DEFAULTS
-from .config_validator import ConfigValidator
+from .defaults import DEFAULT_CONFIG, DEFAULT_CONFIG_DOCS, TEST_MODE_DEFAULTS
+from .validator import ConfigValidator
+from .loader import ConfigLoader
 
 class Config:
     """Configuration manager for photo backup system."""
@@ -25,7 +23,7 @@ class Config:
         """
         self.test_mode = test_mode
         self._config = None
-        self._config_file_path = None
+        self.loader = ConfigLoader(test_mode=test_mode)
         self.validator = ConfigValidator(test_mode=test_mode)
 
     def load_config(self):
@@ -36,7 +34,7 @@ class Config:
         """
         if self._config is None:
             # Try to load from file first
-            file_config = self._load_config_from_file()
+            file_config = self.loader.load_config_from_file()
             
             if file_config is not None:
                 # Validate loaded config
@@ -57,63 +55,6 @@ class Config:
         
         return self._config
     
-    def get_search_paths(self) -> List[Path]:
-        """Get the list of search paths for configuration files.
-        
-        Returns:
-            List of paths to search for configuration files in order
-        """
-        search_paths = []
-        
-        # Add test mode specific config location first if in test mode
-        if self.test_mode:
-            test_config_path = Path("/tmp/photo-backup-test/config.yaml")
-            search_paths.append(test_config_path)
-        
-        # Standard search paths
-        search_paths.extend([
-            Path.cwd() / "config.yaml",  # Current directory
-            Path.home() / ".config" / "photo-backup" / "config.yaml",  # User config
-            Path("/etc/photo-backup/config.yaml"),  # System config
-        ])
-        
-        return search_paths
-    
-    def _find_config_file(self) -> Optional[Path]:
-        """Find config file in standard locations.
-        
-        Returns:
-            Path to config file if found, None otherwise
-        """
-        search_paths = self.get_search_paths()
-        
-        for config_path in search_paths:
-            if config_path.exists() and config_path.is_file():
-                return config_path
-        
-        return None
-    
-    def _load_config_from_file(self) -> Optional[Dict[str, Any]]:
-        """Load configuration from YAML file.
-        
-        Returns:
-            Loaded configuration dict or None if file not found/invalid
-        """
-        config_path = self._find_config_file()
-        if config_path is None:
-            logging.info("No configuration file found, using default configuration")
-            return None
-        
-        try:
-            with open(config_path, 'r', encoding='utf-8') as f:
-                config = yaml.safe_load(f)
-                self._config_file_path = config_path
-                logging.info(f"Loaded configuration from: {config_path}")
-                return config
-        except (yaml.YAMLError, OSError) as e:
-            logging.error(f"Error loading config file {config_path}: {e}")
-            return None
-
     def _get_default_config(self) -> Dict[str, Any]:
         """Get default configuration that can be overridden.
         
@@ -222,7 +163,7 @@ class Config:
         """
         if self._config is None:
             self.load_config()
-        return self._config_file_path
+        return self.loader._config_file_path
     
     def get(self, key, default=None):
         """Get configuration value by key.
