@@ -305,7 +305,7 @@ class TestConfigSchemaValidation:
             }
         }
         
-        errors = config._validate_config_schema(valid_config)
+        errors = config.validator._validate_config_schema(valid_config)
         assert len(errors) == 0
     
     @pytest.mark.unit
@@ -320,7 +320,7 @@ class TestConfigSchemaValidation:
             # Missing storage, monitoring, logging, state sections
         }
         
-        errors = config._validate_config_schema(invalid_config)
+        errors = config.validator._validate_config_schema(invalid_config)
         assert len(errors) == 4
         assert "Missing required section: storage" in errors
         assert "Missing required section: monitoring" in errors
@@ -355,7 +355,7 @@ class TestConfigSchemaValidation:
             }
         }
         
-        errors = config._validate_config_schema(invalid_config)
+        errors = config.validator._validate_config_schema(invalid_config)
         assert "backup.source_path is required" in errors
         assert "backup.destination is required" in errors
     
@@ -388,7 +388,7 @@ class TestConfigSchemaValidation:
             }
         }
         
-        errors = config._validate_config_schema(invalid_config)
+        errors = config.validator._validate_config_schema(invalid_config)
         assert "backup.source_path must be a string" in errors
         assert "storage.use_ssl must be a boolean" in errors
         assert "monitoring.check_interval_hours must be a number" in errors
@@ -422,7 +422,7 @@ class TestConfigSchemaValidation:
             }
         }
         
-        errors = config._validate_config_schema(valid_config)
+        errors = config.validator._validate_config_schema(valid_config)
         assert len(errors) == 0
 
 
@@ -461,7 +461,7 @@ class TestConfigPathValidation:
         with patch.object(Path, 'exists', return_value=True):
             with patch.object(Path, 'is_dir', return_value=True):
                 with patch('os.access', return_value=True):
-                    errors = config._validate_paths(valid_config)
+                    errors = config.validator._validate_paths(valid_config)
                     assert len(errors) == 0
     
     @pytest.mark.unit
@@ -493,7 +493,7 @@ class TestConfigPathValidation:
             }
         }
         
-        errors = config._validate_paths(invalid_config)
+        errors = config.validator._validate_paths(invalid_config)
         # Check that the specific error is in the list
         assert any("backup.source_path must be an absolute path" in error for error in errors)
     
@@ -527,7 +527,7 @@ class TestConfigPathValidation:
         }
         
         with patch.object(Path, 'exists', return_value=False):
-            errors = config._validate_paths(invalid_config)
+            errors = config.validator._validate_paths(invalid_config)
             # Check that the specific error is in the list
             assert any("backup.source_path does not exist" in error for error in errors)
     
@@ -562,7 +562,7 @@ class TestConfigPathValidation:
         
         with patch.object(Path, 'exists', return_value=True):
             with patch.object(Path, 'is_dir', return_value=False):
-                errors = config._validate_paths(invalid_config)
+                errors = config.validator._validate_paths(invalid_config)
                 # Check that the specific error is in the list
                 assert any("backup.source_path must be a directory" in error for error in errors)
     
@@ -598,7 +598,7 @@ class TestConfigPathValidation:
         with patch.object(Path, 'exists', return_value=True):
             with patch.object(Path, 'is_dir', return_value=True):
                 with patch('os.access', return_value=False):
-                    errors = config._validate_paths(invalid_config)
+                    errors = config.validator._validate_paths(invalid_config)
                     # Check that the specific error is in the list
                     assert any("backup.source_path is not readable" in error for error in errors)
     
@@ -608,16 +608,16 @@ class TestConfigPathValidation:
         config = Config()
         
         # Test home directory expansion
-        expanded = config._expand_path("~/test")
+        expanded = config.validator._expand_path("~/test")
         assert expanded.startswith("/")
         assert "test" in expanded
         
         # Test absolute path (no change)
-        expanded = config._expand_path("/absolute/path")
+        expanded = config.validator._expand_path("/absolute/path")
         assert expanded == "/absolute/path"
         
         # Test relative path (becomes absolute)
-        expanded = config._expand_path("relative/path")
+        expanded = config.validator._expand_path("relative/path")
         assert expanded.startswith("/")
         assert expanded.endswith("relative/path")
 
@@ -656,7 +656,7 @@ class TestConfigNumericValidation:
             }
         }
         
-        errors = config._validate_numeric_ranges(valid_config)
+        errors = config.validator._validate_numeric_ranges(valid_config)
         assert len(errors) == 0
     
     @pytest.mark.unit
@@ -688,7 +688,7 @@ class TestConfigNumericValidation:
             }
         }
         
-        errors = config._validate_numeric_ranges(invalid_config)
+        errors = config.validator._validate_numeric_ranges(invalid_config)
         assert "monitoring.check_interval_hours must be between 0.1 and 24 hours" in errors
     
     @pytest.mark.unit
@@ -720,7 +720,7 @@ class TestConfigNumericValidation:
             }
         }
         
-        errors = config._validate_numeric_ranges(invalid_config)
+        errors = config.validator._validate_numeric_ranges(invalid_config)
         assert "monitoring.check_interval_hours must be between 0.1 and 24 hours" in errors
     
     @pytest.mark.unit
@@ -752,7 +752,7 @@ class TestConfigNumericValidation:
             }
         }
         
-        errors = config._validate_numeric_ranges(invalid_config)
+        errors = config.validator._validate_numeric_ranges(invalid_config)
         assert "monitoring.mount_delay_minutes must be between 1 and 60 minutes" in errors
     
     @pytest.mark.unit
@@ -785,7 +785,7 @@ class TestConfigNumericValidation:
             }
         }
         
-        errors = config._validate_numeric_ranges(invalid_config)
+        errors = config.validator._validate_numeric_ranges(invalid_config)
         assert "logging.max_size_mb must be between 1 and 1000 MB" in errors
     
     @pytest.mark.unit
@@ -818,7 +818,7 @@ class TestConfigNumericValidation:
             }
         }
         
-        errors = config._validate_numeric_ranges(invalid_config)
+        errors = config.validator._validate_numeric_ranges(invalid_config)
         assert "logging.backup_count must be an integer" in errors
 
 
@@ -1082,7 +1082,7 @@ class TestConfigValidationIntegration:
         with patch.object(Path, 'exists', return_value=True):
             with patch.object(Path, 'is_dir', return_value=True):
                 with patch('os.access', return_value=True):
-                    is_valid, errors = config.validate_config(valid_config)
+                    is_valid, errors = config.validator.validate_config(valid_config)
                     assert is_valid is True
                     assert len(errors) == 0
     
@@ -1115,7 +1115,7 @@ class TestConfigValidationIntegration:
             }
         }
         
-        is_valid, errors = config.validate_config(invalid_config)
+        is_valid, errors = config.validator.validate_config(invalid_config)
         assert is_valid is False
         assert len(errors) >= 2  # Should have at least 2 errors
         # Check that specific errors are present
