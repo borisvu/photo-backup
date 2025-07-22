@@ -12,16 +12,22 @@ from .defaults import DEFAULT_CONFIG, DEFAULT_CONFIG_DOCS, TEST_MODE_DEFAULTS
 from .validator import ConfigValidator
 from .loader import ConfigLoader
 from .utils import ConfigUtils
+from .env_override import EnvOverride
 
 class Config:
     """Configuration manager for photo backup system."""
     
-    def __init__(self, test_mode=False):
+    def __init__(self, test_mode=None):
         """Initialize configuration.
         
         Args:
-            test_mode: If True, use test configuration with Minio
+            test_mode: If True, use test configuration with Minio.
+                      If None, check environment variable PHOTO_BACKUP_TEST_MODE
         """
+        # Check environment variable for test mode if not explicitly set
+        if test_mode is None:
+            test_mode = EnvOverride.is_test_mode_enabled()
+        
         self.test_mode = test_mode
         self._config = None
         self.loader = ConfigLoader(test_mode=test_mode)
@@ -54,6 +60,9 @@ class Config:
             # Apply test mode overrides if needed
             if self.test_mode:
                 self._config = self.utils.apply_test_mode_overrides(self._config, TEST_MODE_DEFAULTS)
+            
+            # Apply environment variable overrides (highest priority)
+            self._config = EnvOverride.apply_env_overrides(self._config)
         
         return self._config
     
@@ -125,3 +134,11 @@ class Config:
             Dictionary mapping config keys to their descriptions
         """
         return DEFAULT_CONFIG_DOCS.copy()
+    
+    def get_env_override_info(self) -> Dict[str, Any]:
+        """Get information about environment variable overrides.
+        
+        Returns:
+            Dictionary with override information including test mode status
+        """
+        return EnvOverride.get_env_override_info()

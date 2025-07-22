@@ -9,6 +9,7 @@ from .defaults import DEFAULT_CONFIG, DEFAULT_CONFIG_DOCS, TEST_MODE_DEFAULTS
 from .validator import ConfigValidator
 from .loader import ConfigLoader
 from .utils import ConfigUtils
+from .env_override import EnvOverride
 from .config import Config
 
 __all__ = [
@@ -16,6 +17,7 @@ __all__ = [
     'ConfigValidator', 
     'ConfigLoader',
     'ConfigUtils',
+    'EnvOverride',
     'DEFAULT_CONFIG',
     'DEFAULT_CONFIG_DOCS',
     'TEST_MODE_DEFAULTS'
