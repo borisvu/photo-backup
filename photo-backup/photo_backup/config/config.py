@@ -11,6 +11,7 @@ from typing import Dict, Any, Optional
 from .defaults import DEFAULT_CONFIG, DEFAULT_CONFIG_DOCS, TEST_MODE_DEFAULTS
 from .validator import ConfigValidator
 from .loader import ConfigLoader
+from .utils import ConfigUtils
 
 class Config:
     """Configuration manager for photo backup system."""
@@ -25,6 +26,7 @@ class Config:
         self._config = None
         self.loader = ConfigLoader(test_mode=test_mode)
         self.validator = ConfigValidator(test_mode=test_mode)
+        self.utils = ConfigUtils()
 
     def load_config(self):
         """Load configuration settings.
@@ -40,7 +42,7 @@ class Config:
                 # Validate loaded config
                 is_valid, errors = self.validator.validate_config(file_config)
                 if is_valid:
-                    self._config = self._merge_with_defaults(file_config)
+                    self._config = self.utils.merge_with_defaults(file_config, DEFAULT_CONFIG)
                 else:
                     # Fail early with detailed error messages
                     error_msg = "Configuration validation failed:\n" + "\n".join(f"  - {error}" for error in errors)
@@ -51,7 +53,7 @@ class Config:
             
             # Apply test mode overrides if needed
             if self.test_mode:
-                self._config = self._apply_test_mode_overrides(self._config)
+                self._config = self.utils.apply_test_mode_overrides(self._config, TEST_MODE_DEFAULTS)
         
         return self._config
     
@@ -63,98 +65,6 @@ class Config:
         """
         return DEFAULT_CONFIG.copy()
     
-    def get_config_documentation(self) -> Dict[str, Any]:
-        """Get documentation for all configuration options.
-        
-        Returns:
-            Dictionary mapping config keys to their descriptions
-        """
-        return DEFAULT_CONFIG_DOCS.copy()
-    
-    def get_default_value(self, key: str) -> Any:
-        """Get the default value for a specific configuration key.
-        
-        Args:
-            key: Configuration key (supports dot notation)
-            
-        Returns:
-            Default value for the key, or None if not found
-        """
-        keys = key.split('.')
-        value = DEFAULT_CONFIG
-        
-        try:
-            for k in keys:
-                value = value[k]
-            return value
-        except (KeyError, TypeError):
-            return None
-    
-    def get_default_documentation(self, key: str) -> Optional[str]:
-        """Get documentation for a specific configuration key.
-        
-        Args:
-            key: Configuration key (supports dot notation)
-            
-        Returns:
-            Documentation string for the key, or None if not found
-        """
-        keys = key.split('.')
-        value = DEFAULT_CONFIG_DOCS
-        
-        try:
-            for k in keys:
-                value = value[k]
-            return value
-        except (KeyError, TypeError):
-            return None
-    
-    def _merge_with_defaults(self, file_config: Dict[str, Any]) -> Dict[str, Any]:
-        """Merge file config with defaults.
-        
-        Args:
-            file_config: Configuration loaded from file
-            
-        Returns:
-            Merged configuration dictionary
-        """
-        default_config = self._get_default_config()
-        
-        def merge_dicts(default: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
-            """Recursively merge dictionaries."""
-            result = default.copy()
-            for key, value in override.items():
-                if key in result and isinstance(result[key], dict) and isinstance(value, dict):
-                    result[key] = merge_dicts(result[key], value)
-                else:
-                    result[key] = value
-            return result
-        
-        return merge_dicts(default_config, file_config)
-    
-    def _apply_test_mode_overrides(self, config: Dict[str, Any]) -> Dict[str, Any]:
-        """Apply test mode overrides to configuration.
-        
-        Args:
-            config: Base configuration
-            
-        Returns:
-            Configuration with test mode overrides applied
-        """
-        test_overrides = TEST_MODE_DEFAULTS.copy()
-        
-        def merge_dicts(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
-            """Recursively merge dictionaries."""
-            result = base.copy()
-            for key, value in override.items():
-                if key in result and isinstance(result[key], dict) and isinstance(value, dict):
-                    result[key] = merge_dicts(result[key], value)
-                else:
-                    result[key] = value
-            return result
-        
-        return merge_dicts(config, test_overrides)
-    
     def get_config_file_path(self) -> Optional[Path]:
         """Get the path of the loaded config file.
         
@@ -165,6 +75,15 @@ class Config:
             self.load_config()
         return self.loader._config_file_path
     
+    def is_test_mode(self):
+        """Check if running in test mode.
+        
+        Returns:
+            bool: True if in test mode
+        """
+        return self.test_mode
+    
+    #
     def get(self, key, default=None):
         """Get configuration value by key.
         
@@ -175,23 +94,34 @@ class Config:
         Returns:
             Configuration value or default
         """
-        config = self.load_config()
-        
-        # Support dot notation for nested keys
-        keys = key.split('.')
-        value = config
-        
-        try:
-            for k in keys:
-                value = value[k]
-            return value
-        except (KeyError, TypeError):
-            return default
+        return self.utils.get_nested_value(self.load_config(), key, default)
     
-    def is_test_mode(self):
-        """Check if running in test mode.
+    def get_default_value(self, key: str) -> Any:
+        """Get the default value for a specific configuration key.
+        
+        Args:
+            key: Configuration key (supports dot notation)
+            
+        Returns:
+            Default value for the key, or None if not found
+        """
+        return self.utils.get_nested_value(DEFAULT_CONFIG, key, None)
+    
+    def get_default_documentation(self, key: str) -> Optional[str]:
+        """Get documentation for a specific configuration key.
+        
+        Args:
+            key: Configuration key (supports dot notation)
+            
+        Returns:
+            Documentation string for the key, or None if not found
+        """
+        return self.utils.get_nested_value(DEFAULT_CONFIG_DOCS, key, None)
+       
+    def get_config_documentation(self) -> Dict[str, Any]:
+        """Get documentation for all configuration options.
         
         Returns:
-            bool: True if in test mode
+            Dictionary mapping config keys to their descriptions
         """
-        return self.test_mode
+        return DEFAULT_CONFIG_DOCS.copy()

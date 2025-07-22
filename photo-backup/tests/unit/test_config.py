@@ -10,7 +10,8 @@ import yaml
 from pathlib import Path
 from unittest.mock import patch, mock_open
 from photo_backup.config import Config
-
+from photo_backup.config.utils import ConfigUtils
+from photo_backup.config.defaults import DEFAULT_CONFIG, TEST_MODE_DEFAULTS
 
 class TestConfig:
     """Test cases for Config class."""
@@ -971,7 +972,7 @@ class TestConfigMergeAndOverride:
     @pytest.mark.unit
     def test_merge_with_defaults(self):
         """Test merging file config with defaults."""
-        config = Config()
+        configUtils = ConfigUtils()
         file_config = {
             'backup': {
                 'source_path': '/custom/photos'
@@ -983,7 +984,7 @@ class TestConfigMergeAndOverride:
             }
         }
         
-        merged = config._merge_with_defaults(file_config)
+        merged = configUtils.merge_with_defaults(file_config, DEFAULT_CONFIG)
         
         # File config should override defaults
         assert merged['backup']['source_path'] == '/custom/photos'
@@ -997,7 +998,7 @@ class TestConfigMergeAndOverride:
     @pytest.mark.unit
     def test_apply_test_mode_overrides(self):
         """Test applying test mode overrides to config."""
-        config = Config()
+        configUtils = ConfigUtils()
         base_config = {
             'backup': {
                 'source_path': '/custom/photos',
@@ -1023,7 +1024,7 @@ class TestConfigMergeAndOverride:
             }
         }
         
-        overridden = config._apply_test_mode_overrides(base_config)
+        overridden = configUtils.apply_test_mode_overrides(base_config, TEST_MODE_DEFAULTS)
         
         # Test mode should override all relevant fields
         assert overridden['backup']['source_path'] == '/tmp/photo-backup-test-photos'
