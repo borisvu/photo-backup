@@ -1,6 +1,7 @@
 import re
 
-def parse_interval(interval_str):
+
+def parse_interval(interval_str: str) -> int:
     """Parse a time interval string (e.g., '4h', '30m', '2d', '1h30m') to seconds.
     Supports days (d), hours (h), minutes (m), seconds (s).
     Args:
@@ -31,17 +32,18 @@ def parse_interval(interval_str):
         raise ValueError(f"Invalid interval string: {interval_str}")
     return total_seconds
 
-def format_duration(seconds):
+
+def format_duration(seconds: int) -> str:
     """Format a duration in seconds to a human-readable string (e.g., '1h 23m 45s').
     Args:
         seconds (int): Number of seconds
     Returns:
         str: Formatted duration
     """
-    if not isinstance(seconds, (int, float)) or seconds < 0:
+    if not isinstance(seconds, int | float) or seconds < 0:
         return "0s"
     seconds = int(seconds)
-    parts = []
+    parts: list[str] = []
     days, seconds = divmod(seconds, 86400)
     if days:
         parts.append(f"{days}d")

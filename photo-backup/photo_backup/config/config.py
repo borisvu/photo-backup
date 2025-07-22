@@ -5,21 +5,23 @@ This module handles loading and managing configuration settings,
 with support for test mode using Minio instead of Wasabi.
 """
 
+from typing import Any
+
 from pathlib import Path
-from typing import Dict, Any, Optional
 
 from .defaults import DEFAULT_CONFIG, DEFAULT_CONFIG_DOCS, TEST_MODE_DEFAULTS
-from .validator import ConfigValidator
+from .env_override import EnvOverride
 from .loader import ConfigLoader
 from .utils import ConfigUtils
-from .env_override import EnvOverride
+from .validator import ConfigValidator
+
 
 class Config:
     """Configuration manager for photo backup system."""
-    
+
     def __init__(self, test_mode=None):
         """Initialize configuration.
-        
+
         Args:
             test_mode: If True, use test configuration with Minio.
                       If None, check environment variable PHOTO_BACKUP_TEST_MODE
@@ -27,23 +29,23 @@ class Config:
         # Check environment variable for test mode if not explicitly set
         if test_mode is None:
             test_mode = EnvOverride.is_test_mode_enabled()
-        
+
         self.test_mode = test_mode
         self._config = None
         self.loader = ConfigLoader(test_mode=test_mode)
         self.validator = ConfigValidator(test_mode=test_mode)
         self.utils = ConfigUtils()
 
-    def load_config(self):
+    def load_config(self) -> dict[str, Any]:
         """Load configuration settings.
-        
+
         Returns:
             dict: Configuration dictionary
         """
         if self._config is None:
             # Try to load from file first
             file_config = self.loader.load_config_from_file()
-            
+
             if file_config is not None:
                 # Validate loaded config
                 is_valid, errors = self.validator.validate_config(file_config)
@@ -56,88 +58,92 @@ class Config:
             else:
                 # No config file found, use defaults
                 self._config = self._get_default_config()
-            
+
             # Apply test mode overrides if needed
             if self.test_mode:
                 self._config = self.utils.apply_test_mode_overrides(self._config, TEST_MODE_DEFAULTS)
-            
+
             # Apply environment variable overrides (highest priority)
             self._config = EnvOverride.apply_env_overrides(self._config)
-        
+
         return self._config
-    
-    def _get_default_config(self) -> Dict[str, Any]:
+
+    def _get_default_config(self) -> dict[str, Any]:
         """Get default configuration that can be overridden.
-        
+
         Returns:
             Default configuration dictionary with comprehensive settings
         """
         return DEFAULT_CONFIG.copy()
-    
-    def get_config_file_path(self) -> Optional[Path]:
+
+    def get_config_file_path(self) -> Path | None:
         """Get the path of the loaded config file.
-        
+
         Returns:
             Path to config file if loaded, None otherwise
         """
         if self._config is None:
             self.load_config()
         return self.loader._config_file_path
-    
-    def is_test_mode(self):
+
+    def is_test_mode(self) -> bool:
         """Check if running in test mode.
-        
+
         Returns:
             bool: True if in test mode
         """
         return self.test_mode
-    
+
     #
-    def get(self, key, default=None):
+    def get(self, key: str, default: Any = None) -> Any:
         """Get configuration value by key.
-        
+
         Args:
             key: Configuration key (supports dot notation like 'backup.source_path')
             default: Default value if key not found
-            
+
         Returns:
             Configuration value or default
         """
         return self.utils.get_nested_value(self.load_config(), key, default)
-    
+
     def get_default_value(self, key: str) -> Any:
         """Get the default value for a specific configuration key.
-        
+
         Args:
             key: Configuration key (supports dot notation)
-            
+
         Returns:
             Default value for the key, or None if not found
         """
         return self.utils.get_nested_value(DEFAULT_CONFIG, key, None)
-    
-    def get_default_documentation(self, key: str) -> Optional[str]:
+
+    def get_default_documentation(self, key: str) -> str | dict[str, str] | None:
         """Get documentation for a specific configuration key.
-        
+
         Args:
             key: Configuration key (supports dot notation)
-            
+
         Returns:
-            Documentation string for the key, or None if not found
+            Documentation string for the key, dictionary for sections, or None if not found
         """
-        return self.utils.get_nested_value(DEFAULT_CONFIG_DOCS, key, None)
-       
-    def get_config_documentation(self) -> Dict[str, Any]:
+        result: Any = self.utils.get_nested_value(DEFAULT_CONFIG_DOCS, key, None)
+        if isinstance(result, str | dict):
+            return result
+        else:
+            return None
+
+    def get_config_documentation(self) -> dict[str, Any]:
         """Get documentation for all configuration options.
-        
+
         Returns:
             Dictionary mapping config keys to their descriptions
         """
         return DEFAULT_CONFIG_DOCS.copy()
-    
-    def get_env_override_info(self) -> Dict[str, Any]:
+
+    def get_env_override_info(self) -> dict[str, Any]:
         """Get information about environment variable overrides.
-        
+
         Returns:
             Dictionary with override information including test mode status
         """

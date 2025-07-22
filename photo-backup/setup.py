@@ -1,11 +1,11 @@
 """Setup configuration for photo backup system."""
 
-from setuptools import setup, find_packages
 from pathlib import Path
+from setuptools import find_packages, setup
 
 # Read version from __version__.py
 version_file = Path(__file__).parent / "photo_backup" / "__version__.py"
-version_dict = {}
+version_dict: dict[str, str] = {}
 with open(version_file) as f:
     exec(f.read(), version_dict)
 
@@ -19,7 +19,7 @@ setup(
     version=version_dict["__version__"],
     description="Automated photo backup system to S3-compatible storage",
     packages=find_packages(),
-    python_requires=">=3.8",
+    python_requires=">=3.13",
     install_requires=requirements,
     entry_points={
         "console_scripts": [
@@ -31,9 +31,6 @@ setup(
         "Intended Audience :: End Users/Desktop",
         "License :: OSI Approved :: MIT License",
         "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.8",
-        "Programming Language :: Python :: 3.9",
-        "Programming Language :: Python :: 3.10",
-        "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.13",
     ],
 )

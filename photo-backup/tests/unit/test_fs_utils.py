@@ -1,81 +1,87 @@
 import os
+
 import pytest
-from photo_backup.fs_utils import ensure_directory, validate_path, calculate_directory_size
+
+from photo_backup.fs_utils import calculate_directory_size, ensure_directory, validate_path
+
 
 class TestEnsureDirectory:
     """Test cases for ensure_directory function."""
-    
+
     @pytest.mark.unit
     def test_ensure_directory_creates_new_directory(self, temp_dir):
         """Test creating a new directory."""
         test_dir = temp_dir / "new_directory"
-        
+
         success, error = ensure_directory(str(test_dir))
-        
+
         assert success is True
         assert error is None
         assert test_dir.is_dir()
-    
+
     @pytest.mark.unit
     def test_ensure_directory_handles_existing_directory(self, temp_dir):
         """Test with existing directory."""
         test_dir = temp_dir / "existing_dir"
         test_dir.mkdir()
-        
+
         success, error = ensure_directory(str(test_dir))
-        
+
         assert success is True
         assert error is None
         assert test_dir.is_dir()
-    
+
     @pytest.mark.unit
     def test_ensure_directory_creates_nested_directories(self, temp_dir):
         """Test creating nested directory structure."""
         nested_dir = temp_dir / "level1" / "level2" / "level3"
-        
+
         success, error = ensure_directory(str(nested_dir))
-        
+
         assert success is True
         assert error is None
         assert nested_dir.is_dir()
         assert (temp_dir / "level1").is_dir()
         assert (temp_dir / "level1" / "level2").is_dir()
-    
-    @pytest.mark.parametrize("invalid_path", [
-        "",
-        None,
-    ])
+
+    @pytest.mark.parametrize(
+        "invalid_path",
+        [
+            "",
+            None,
+        ],
+    )
     @pytest.mark.unit
     def test_ensure_directory_empty_path(self, invalid_path):
         """Test ensure_directory with empty or None path."""
         success, error = ensure_directory(invalid_path)
-        
+
         assert success is False
         assert "Path cannot be empty" in error
-    
+
     @pytest.mark.unit
     def test_ensure_directory_file_exists(self, temp_dir):
         """Test ensure_directory when a file exists at the path."""
         test_file = temp_dir / "test_file.txt"
         test_file.write_text("test content")
-        
+
         success, error = ensure_directory(str(test_file))
-        
+
         assert success is False
         assert "not a directory" in error
-    
+
     @pytest.mark.unit
     def test_ensure_directory_permission_denied(self):
         """Test ensure_directory with permission issues."""
         # Try to create directory in a location that should fail
         invalid_path = "/root/should_fail_permission_test"
-        
+
         success, error = ensure_directory(invalid_path)
-        
+
         assert success is False
         assert error is not None
-        assert ("Permission denied" in error or "OS error" in error)
-    
+        assert "Permission denied" in error or "OS error" in error
+
     @pytest.mark.unit
     def test_ensure_directory_returns_absolute_path(self, temp_dir):
         """Test that ensure_directory works with relative paths."""
@@ -84,9 +90,9 @@ class TestEnsureDirectory:
         try:
             os.chdir(str(temp_dir))
             relative_path = "relative_test_dir"
-            
+
             success, error = ensure_directory(relative_path)
-            
+
             assert success is True
             assert error is None
             assert (temp_dir / relative_path).is_dir()
@@ -128,7 +134,7 @@ class TestValidatePath:
         assert "non-empty string" in error
 
     @pytest.mark.unit
-    def test_validate_path_permission_denied(self, tmp_path, monkeypatch):
+    def test_validate_path_permission_denied(self, tmp_path):
         # Create a directory and remove read permissions
         test_dir = tmp_path / "no_access_dir"
         test_dir.mkdir()
@@ -142,6 +148,7 @@ class TestValidatePath:
         finally:
             # Restore permissions so pytest can clean up
             test_dir.chmod(0o700)
+
 
 class TestCalculateDirectorySize:
     """Test cases for calculate_directory_size function."""

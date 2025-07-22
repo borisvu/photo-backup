@@ -12,4 +12,4 @@ PROD_MODE_BASE_DIR = "~/Library/Application Support/photo-backup"
 # Default lock file name
 DEFAULT_LOCK_FILENAME = "process.lock"
 
-# Add more constants as needed for other magic values 
+# Add more constants as needed for other magic values

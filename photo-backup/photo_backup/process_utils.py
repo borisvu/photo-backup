@@ -1,8 +1,12 @@
+import logging
 import subprocess
 import time
+from collections.abc import Callable
 from functools import wraps
+from typing import Any
 
-def run_command(command, timeout=None, shell=False):
+
+def run_command(command: list[str] | str, timeout: float | None = None, shell: bool = False) -> dict[str, Any]:
     """Run a shell command and capture stdout, stderr, and return code.
     Args:
         command (list or str): Command to run (list preferred, or str if shell=True)
@@ -12,35 +16,20 @@ def run_command(command, timeout=None, shell=False):
         dict: { 'stdout': str, 'stderr': str, 'returncode': int, 'timeout': bool }
     """
     try:
-        result = subprocess.run(
-            command,
-            shell=shell,
-            capture_output=True,
-            text=True,
-            timeout=timeout
-        )
-        return {
-            'stdout': result.stdout,
-            'stderr': result.stderr,
-            'returncode': result.returncode,
-            'timeout': False
-        }
+        result = subprocess.run(command, shell=shell, capture_output=True, text=True, timeout=timeout)
+        return {"stdout": result.stdout, "stderr": result.stderr, "returncode": result.returncode, "timeout": False}
     except subprocess.TimeoutExpired as e:
-        return {
-            'stdout': e.stdout or '',
-            'stderr': e.stderr or '',
-            'returncode': None,
-            'timeout': True
-        }
+        return {"stdout": e.stdout or "", "stderr": e.stderr or "", "returncode": None, "timeout": True}
     except Exception as e:
-        return {
-            'stdout': '',
-            'stderr': str(e),
-            'returncode': None,
-            'timeout': False
-        }
+        return {"stdout": "", "stderr": str(e), "returncode": None, "timeout": False}
 
-def retry(max_attempts=3, backoff=1, exceptions=(Exception,), logger=None):
+
+def retry(
+    max_attempts: int = 3,
+    backoff: float = 1,
+    exceptions: tuple[type[Exception], ...] = (Exception,),
+    logger: logging.Logger | None = None,
+) -> Callable[[Callable], Callable]:
     """Retry decorator for functions that may fail.
     Args:
         max_attempts (int): Maximum number of attempts (default 3)
@@ -50,6 +39,7 @@ def retry(max_attempts=3, backoff=1, exceptions=(Exception,), logger=None):
     Returns:
         Decorated function with retry logic
     """
+
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
@@ -67,5 +57,7 @@ def retry(max_attempts=3, backoff=1, exceptions=(Exception,), logger=None):
                     if attempt >= max_attempts:
                         raise
                     time.sleep(backoff)
+
         return wrapper
+
     return decorator

@@ -1,7 +1,10 @@
 import os
+
 import pytest
+
 from photo_backup.lock_utils import acquire_lock, release_lock
 from photo_backup.state_utils import get_state_directories
+
 
 class TestProcessLock:
     """Test cases for acquire_lock and release_lock functions."""
@@ -9,7 +12,10 @@ class TestProcessLock:
     @pytest.mark.unit
     def test_acquire_and_release_lock(self, tmp_path, monkeypatch):
         # Patch expanduser to use tmp_path for home
-        monkeypatch.setattr("photo_backup.state_utils.os.path.expanduser", lambda p: str(tmp_path / "Library/Application Support/photo-backup") if p.startswith("~") else p)
+        monkeypatch.setattr(
+            "photo_backup.state_utils.os.path.expanduser",
+            lambda p: str(tmp_path / "Library/Application Support/photo-backup") if p.startswith("~") else p,
+        )
         lock_name = "test.lock"
         # Acquire lock
         success, error = acquire_lock(lock_name=lock_name, test_mode=False)
@@ -30,7 +36,10 @@ class TestProcessLock:
 
     @pytest.mark.unit
     def test_release_lock_wrong_pid(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("photo_backup.state_utils.os.path.expanduser", lambda p: str(tmp_path / "Library/Application Support/photo-backup") if p.startswith("~") else p)
+        monkeypatch.setattr(
+            "photo_backup.state_utils.os.path.expanduser",
+            lambda p: str(tmp_path / "Library/Application Support/photo-backup") if p.startswith("~") else p,
+        )
         lock_name = "test2.lock"
         dirs = get_state_directories(test_mode=False)
         temp_dir = dirs["temp"]
@@ -45,7 +54,10 @@ class TestProcessLock:
 
     @pytest.mark.unit
     def test_acquire_lock_stale_pid(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("photo_backup.state_utils.os.path.expanduser", lambda p: str(tmp_path / "Library/Application Support/photo-backup") if p.startswith("~") else p)
+        monkeypatch.setattr(
+            "photo_backup.state_utils.os.path.expanduser",
+            lambda p: str(tmp_path / "Library/Application Support/photo-backup") if p.startswith("~") else p,
+        )
         lock_name = "test3.lock"
         dirs = get_state_directories(test_mode=False)
         temp_dir = dirs["temp"]
