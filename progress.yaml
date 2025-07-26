@@ -28,7 +28,7 @@ phases:
   phase_3_configuration:
     name: "Configuration System"
     tasks_total: 12
-    tasks_completed: 7
+    tasks_completed: 8
     status: "in_progress"
     
   phase_4_logging:
@@ -245,6 +245,12 @@ tasks:
     completed_date: "2025-01-27"
     notes: "Environment variable override functionality already implemented in env_override.py module. Comprehensive implementation includes PHOTO_BACKUP_* variable support with type conversion, nested configuration support using dot notation, and PHOTO_BACKUP_TEST_MODE=1 for test mode enablement. Features include automatic type conversion (bool, int, float, str), validation of environment variable names, and detailed override information reporting. All 26 unit tests pass, and functional test confirms end-to-end functionality works correctly. Environment variables take highest priority over file configuration and defaults. Implementation supports all major configuration sections: backup, storage, monitoring, logging, state, security, performance, and notifications."
 
+  task_028:
+    name: "Create Config CLI Command"
+    status: "completed"
+    completed_date: "2025-01-27"
+    notes: "Implemented photo-backup config command that displays current configuration settings with proper formatting and sensitive data masking. Features include mode detection (production/test), config file location display, environment variable override listing, and comprehensive configuration section display. Added sensitive information masking for credentials, proper test mode detection from CLI flags or environment variables, and structured output with all configuration sections. Created 12 comprehensive functional tests covering basic display, test mode via CLI and environment variables, environment override detection, sensitive data masking, config file location, section completeness, help integration, and production vs test differences. All tests pass and CLI integration works correctly. Command shows merged configuration from all sources with clear mode indicators and environment override information. REFACTORED: Moved config command and utilities to photo_backup/cli/config_commands.py module for better organization. Reduced main.py from 164 to 82 lines (50% reduction). All functionality preserved and tested."
+
 # Current state summary
 current_state:
   working_directory: "/Users/you/git/backup-to-s3"
@@ -290,6 +296,9 @@ current_state:
     - "tests/unit/test_photo_fixtures.py"
     - "tests/unit/test_config.py"
     - "tests/functional/test_env_override.py"
+    - "tests/functional/test_config_cli.py"
+    - "photo_backup/cli/__init__.py"
+    - "photo_backup/cli/config_commands.py"
     
   foundation_complete:
     - "CLI entry point with click framework"
@@ -321,13 +330,13 @@ current_state:
 next_steps:
   immediate:
     - "Continue Phase 3: Configuration System"
-    - "Start with Task 28: Create Config CLI Command"
-    - "Add photo-backup config command to display current configuration"
+    - "Start with Task 29: Add Config Validation Command"
+    - "Add photo-backup validate command to test configuration validity"
     
   upcoming:
-    - "Config validation commands"
     - "User config directory creation"
     - "Dry run mode implementation"
+    - "Complete Phase 3 configuration system"
 
 # Phase 1 Achievements
 phase_1_achievements:

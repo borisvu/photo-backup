@@ -10,6 +10,7 @@ import logging
 import click
 
 from .__version__ import __version__
+from .cli.config_commands import config
 from .config.config import Config
 from .logger import setup_logger
 
@@ -37,8 +38,8 @@ def main(ctx, test_mode, version):
 
     # If no subcommand provided, show system status
     if ctx.invoked_subcommand is None:
-        config = Config(test_mode=test_mode)
-        config.load_config()  # Load config but don't store result
+        config_obj = Config(test_mode=test_mode)
+        config_obj.load_config()  # Load config but don't store result
         logger = _get_logger(test_mode)
 
         mode_text = "TEST MODE" if test_mode else "PRODUCTION MODE"
@@ -50,26 +51,32 @@ def main(ctx, test_mode, version):
             logger.debug("Initializing test mode configuration")
             click.echo("Running in TEST MODE - using Minio instead of Wasabi")
             click.echo("Test mode configuration:")
-            click.echo(f"  - Endpoint: {config.get('storage.endpoint')}")
-            click.echo(f"  - Credentials: {config.get('storage.access_key')}/{config.get('storage.secret_key')}")
-            click.echo(f"  - Source: {config.get('backup.source_path')}")
-            click.echo(f"  - Destination: {config.get('backup.destination')}")
-            click.echo(f"  - State directory: {config.get('state.directory')}")
-            logger.debug(f"Test mode endpoint: {config.get('storage.endpoint')}")
-            logger.debug(f"Test mode source: {config.get('backup.source_path')}")
+            click.echo(f"  - Endpoint: {config_obj.get('storage.endpoint')}")
+            click.echo(
+                f"  - Credentials: {config_obj.get('storage.access_key')}/{config_obj.get('storage.secret_key')}"
+            )
+            click.echo(f"  - Source: {config_obj.get('backup.source_path')}")
+            click.echo(f"  - Destination: {config_obj.get('backup.destination')}")
+            click.echo(f"  - State directory: {config_obj.get('state.directory')}")
+            logger.debug(f"Test mode endpoint: {config_obj.get('storage.endpoint')}")
+            logger.debug(f"Test mode source: {config_obj.get('backup.source_path')}")
         else:
             logger.info("Initializing production mode configuration")
             click.echo("Running in PRODUCTION MODE")
             click.echo("Configuration:")
-            click.echo(f"  - Source: {config.get('backup.source_path')}")
-            click.echo(f"  - Destination: {config.get('backup.destination')}")
-            click.echo(f"  - Endpoint: {config.get('storage.endpoint')}")
-            click.echo(f"  - State directory: {config.get('state.directory')}")
-            logger.info(f"Production mode endpoint: {config.get('storage.endpoint')}")
-            logger.info(f"Production mode source: {config.get('backup.source_path')}")
+            click.echo(f"  - Source: {config_obj.get('backup.source_path')}")
+            click.echo(f"  - Destination: {config_obj.get('backup.destination')}")
+            click.echo(f"  - Endpoint: {config_obj.get('storage.endpoint')}")
+            click.echo(f"  - State directory: {config_obj.get('state.directory')}")
+            logger.info(f"Production mode endpoint: {config_obj.get('storage.endpoint')}")
+            logger.info(f"Production mode source: {config_obj.get('backup.source_path')}")
 
         logger.info("CLI initialization completed successfully")
         click.echo("CLI interface ready. Use 'photo-backup --help' to see available commands.")
+
+
+# Register CLI commands
+main.add_command(config)
 
 
 if __name__ == "__main__":
