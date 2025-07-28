@@ -764,7 +764,7 @@ This document contains small, testable tasks for building the Photo Backup MVP. 
 - Verify Minio has all files
   **Test**: Complete service works with Minio
 
-## Phase 9: Installation System (Tasks 83-92)
+## Phase 8: Installation System (Tasks 83-92)
 
 ### Task 83: Create Install Script
 
@@ -866,7 +866,7 @@ This document contains small, testable tasks for building the Photo Backup MVP. 
 - Verify operation
   **Test**: Complete test install works
 
-## Phase 10: Verification System (Tasks 93-103)
+## Phase 9: Verification System (Tasks 93-103)
 
 ### Task 93: Create Verify Module
 
