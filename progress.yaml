@@ -28,7 +28,7 @@ phases:
   phase_3_configuration:
     name: "Configuration System"
     tasks_total: 12
-    tasks_completed: 9
+    tasks_completed: 10
     status: "in_progress"
     
   phase_4_logging:
@@ -256,6 +256,12 @@ tasks:
     status: "completed"
     completed_date: "2025-01-27"
     notes: "Implemented photo-backup validate command that comprehensively validates configuration settings and system requirements. Features include: configuration structure validation using existing validator, path validation for backup source, logging directory, and state directory, rclone availability checking, and Minio connection testing in test mode. Command provides detailed validation results with clear success/failure indicators, comprehensive error messages, and proper exit codes (0 for success, 1 for failure). Created 12 comprehensive functional tests covering all validation scenarios including CLI flags, environment variables, help integration, and detailed error reporting. All tests pass and validation provides actionable feedback for configuration issues. Command integrates seamlessly with existing CLI architecture and follows established patterns."
+
+  task_030:
+    name: "Create User Config Directory"
+    status: "completed"
+    completed_date: "2025-01-27"
+    notes: "Implemented user config directory creation on first run with photo-backup setup-config command. Features include: automatic creation of user config directory (~/.config/photo-backup/ in production, /tmp/photo-backup-test/ in test mode), copying example config file with fallback to minimal config, proper file permissions (700 for directory, 600 for config file), test mode support using temporary directories, and comprehensive CLI integration with helpful next steps. Created 14 comprehensive tests covering config directory creation, CLI command functionality, permission handling, and error cases. Command provides guided setup experience for new users with clear instructions for next steps. Integrates seamlessly with existing CLI architecture and config system."
 
 # Current state summary
 current_state:

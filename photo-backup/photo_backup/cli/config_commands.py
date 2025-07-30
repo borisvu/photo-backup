@@ -249,3 +249,49 @@ def validate(ctx):
     else:
         click.echo("\n⚠️  Please fix the issues above before proceeding.")
         sys.exit(1)
+
+
+@click.command()
+@click.pass_context
+def setup_config(ctx):
+    """Create user config directory and copy example configuration."""
+    # Get test mode from CLI flag, or check environment variable
+    test_mode = ctx.obj.get("test_mode", False)
+    
+    # If not set via CLI, check if Config would detect it from environment
+    if not test_mode:
+        test_mode = EnvOverride.is_test_mode_enabled()
+
+    config_obj = Config(test_mode=test_mode)
+    
+    # Create user config directory
+    success, message = config_obj.loader.create_user_config_directory()
+    
+    # Header
+    click.echo("Photo Backup Configuration Setup")
+    click.echo("=" * 35)
+    
+    mode_text = "TEST MODE" if test_mode else "PRODUCTION MODE"
+    click.echo(f"\nMode: {mode_text}")
+    
+    if success:
+        click.echo(f"✅ {message}")
+        
+        # Show next steps
+        click.echo("\n📝 Next Steps:")
+        if test_mode:
+            click.echo("1. Configuration created for testing")
+            click.echo("2. Run 'photo-backup validate --test-mode' to verify setup")
+        else:
+            click.echo("1. Edit the configuration file with your settings:")
+            if "config.yaml" in message:
+                config_path = message.split("to ")[-1] if "to " in message else "~/.config/photo-backup/config.yaml"
+                click.echo(f"   {config_path}")
+            click.echo("2. Update storage credentials and backup paths")
+            click.echo("3. Run 'photo-backup validate' to verify your configuration")
+            click.echo("4. Run 'photo-backup config' to view current settings")
+        
+        sys.exit(0)
+    else:
+        click.echo(f"❌ {message}")
+        sys.exit(1)
