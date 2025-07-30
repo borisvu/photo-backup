@@ -4,12 +4,15 @@ Configuration-related CLI commands.
 This module contains commands for viewing and validating configuration settings.
 """
 
+import sys
 from typing import Any
 
 import click
 
 from ..config.config import Config
 from ..config.env_override import EnvOverride
+from ..fs_utils import validate_path
+from ..process_utils import run_command
 
 
 def _format_config_value(key: str, value: Any) -> str:
@@ -37,6 +40,34 @@ def _display_config_section(section_name: str, section_data: dict) -> None:
         # Format key name nicely
         display_key = key.replace("_", " ").title()
         click.echo(f"  {display_key}: {formatted_value}")
+
+
+def _check_rclone_availability() -> tuple[bool, str]:
+    """Check if rclone command is available in PATH."""
+    result = run_command(["rclone", "version"], timeout=10.0)
+
+    if result["returncode"] == 0:
+        return True, "rclone is available"
+    else:
+        return False, f"rclone not found or not working: {result['stderr']}"
+
+
+def _test_minio_connection(endpoint: str, _access_key: str, _secret_key: str) -> tuple[bool, str]:
+    """Test basic connectivity to Minio endpoint."""
+    try:
+        # Use curl to test basic connectivity (simpler than full S3 client)
+        # Test if we can reach the endpoint
+        result = run_command(
+            ["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", f"http://{endpoint}"], timeout=10.0
+        )
+
+        if result["returncode"] == 0 and result["stdout"].strip() in ["200", "403", "401"]:
+            return True, f"Minio endpoint {endpoint} is reachable"
+        else:
+            return False, f"Cannot reach Minio endpoint {endpoint}: {result['stderr']}"
+
+    except Exception as e:
+        return False, f"Error testing Minio connection: {e!s}"
 
 
 @click.command()
@@ -83,3 +114,138 @@ def config(ctx):
     for section_name in section_order:
         if section_name in config_data:
             _display_config_section(section_name, config_data[section_name])
+
+
+@click.command()
+@click.pass_context
+def validate(ctx):
+    """Validate configuration settings and system requirements."""
+    # Get test mode from CLI flag, or check environment variable
+    test_mode = ctx.obj.get("test_mode", False)
+
+    # If not set via CLI, check if Config would detect it from environment
+    if not test_mode:
+        test_mode = EnvOverride.is_test_mode_enabled()
+
+    config_obj = Config(test_mode=test_mode)
+    config_data = config_obj.load_config()
+
+    # Header
+    click.echo("Configuration Validation for Photo Backup System")
+    click.echo("=" * 50)
+
+    mode_text = "TEST MODE" if test_mode else "PRODUCTION MODE"
+    click.echo(f"\nMode: {mode_text}")
+
+    # Track validation results
+    all_valid = True
+    validation_results = []
+
+    # 1. Validate configuration structure and values
+    click.echo("\n1. Configuration Validation:")
+    is_config_valid, config_errors = config_obj.validator.validate_config(config_data)
+
+    if is_config_valid:
+        click.echo("   ✅ Configuration structure and values are valid")
+        validation_results.append(("Configuration", True, "Valid"))
+    else:
+        click.echo("   ❌ Configuration validation failed:")
+        for error in config_errors:
+            click.echo(f"      - {error}")
+        validation_results.append(("Configuration", False, f"{len(config_errors)} errors"))
+        all_valid = False
+
+    # 2. Validate paths
+    click.echo("\n2. Path Validation:")
+
+    # Backup source path
+    backup_source = config_data.get("backup", {}).get("source_path")
+    if backup_source:
+        is_valid, error = validate_path(backup_source)
+        if is_valid:
+            click.echo(f"   ✅ Backup source path: {backup_source}")
+            validation_results.append(("Backup Source Path", True, "Valid"))
+        else:
+            click.echo(f"   ❌ Backup source path: {backup_source}")
+            click.echo(f"      Error: {error}")
+            validation_results.append(("Backup Source Path", False, error))
+            all_valid = False
+
+    # Logging directory
+    log_dir = config_data.get("logging", {}).get("directory")
+    if log_dir:
+        is_valid, error = validate_path(log_dir)
+        if is_valid:
+            click.echo(f"   ✅ Logging directory: {log_dir}")
+            validation_results.append(("Logging Directory", True, "Valid"))
+        else:
+            click.echo(f"   ❌ Logging directory: {log_dir}")
+            click.echo(f"      Error: {error}")
+            validation_results.append(("Logging Directory", False, error))
+            all_valid = False
+
+    # State directory
+    state_dir = config_data.get("state", {}).get("directory")
+    if state_dir:
+        is_valid, error = validate_path(state_dir)
+        if is_valid:
+            click.echo(f"   ✅ State directory: {state_dir}")
+            validation_results.append(("State Directory", True, "Valid"))
+        else:
+            click.echo(f"   ❌ State directory: {state_dir}")
+            click.echo(f"      Error: {error}")
+            validation_results.append(("State Directory", False, error))
+            all_valid = False
+
+    # 3. Check rclone availability
+    click.echo("\n3. Rclone Availability:")
+    rclone_available, rclone_message = _check_rclone_availability()
+    if rclone_available:
+        click.echo("   ✅ Rclone is available")
+        validation_results.append(("Rclone", True, "Available"))
+    else:
+        click.echo(f"   ⚠️  Rclone: {rclone_message}")
+        validation_results.append(("Rclone", False, rclone_message))
+        # Don't fail validation for missing rclone, just warn
+
+    # 4. Test Minio connection (test mode only)
+    if test_mode:
+        click.echo("\n4. Minio Connection Test:")
+        endpoint = config_data.get("storage", {}).get("endpoint")
+        access_key = config_data.get("storage", {}).get("access_key")
+        secret_key = config_data.get("storage", {}).get("secret_key")
+
+        if endpoint and access_key and secret_key:
+            minio_ok, minio_message = _test_minio_connection(endpoint, access_key, secret_key)
+            if minio_ok:
+                click.echo(f"   ✅ {minio_message}")
+                validation_results.append(("Minio Connection", True, "Connected"))
+            else:
+                click.echo(f"   ❌ {minio_message}")
+                validation_results.append(("Minio Connection", False, minio_message))
+                all_valid = False
+        else:
+            click.echo("   ❌ Missing Minio configuration (endpoint, access_key, or secret_key)")
+            validation_results.append(("Minio Connection", False, "Missing configuration"))
+            all_valid = False
+
+    # Summary
+    click.echo("\n" + "=" * 50)
+    click.echo("VALIDATION SUMMARY:")
+
+    passed = sum(1 for _, valid, _ in validation_results if valid)
+    total = len(validation_results)
+
+    for check_name, is_valid, message in validation_results:
+        status = "✅ PASS" if is_valid else "❌ FAIL"
+        click.echo(f"  {status} {check_name}: {message}")
+
+    click.echo(f"\nOverall Status: {'✅ VALID' if all_valid else '❌ INVALID'}")
+    click.echo(f"Passed: {passed}/{total} checks")
+
+    if all_valid:
+        click.echo("\n🎉 Configuration is valid and ready for use!")
+        sys.exit(0)
+    else:
+        click.echo("\n⚠️  Please fix the issues above before proceeding.")
+        sys.exit(1)

@@ -10,7 +10,7 @@ import logging
 import click
 
 from .__version__ import __version__
-from .cli.config_commands import config
+from .cli.config_commands import config, validate
 from .config.config import Config
 from .logger import setup_logger
 
@@ -77,6 +77,7 @@ def main(ctx, test_mode, version):
 
 # Register CLI commands
 main.add_command(config)
+main.add_command(validate)
 
 
 if __name__ == "__main__":
