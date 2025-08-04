@@ -200,7 +200,7 @@ class TestConfigFileLoading:
             result = config.loader.load_config_from_file()
 
             assert result is None
-            mock_log.assert_called_with("No configuration file found, using default configuration")
+            mock_log.assert_called_with("No configuration file found, using defaults")
 
     @pytest.mark.unit
     def test_load_config_from_file_invalid_yaml(self):
@@ -217,7 +217,7 @@ class TestConfigFileLoading:
             result = config.loader.load_config_from_file()
 
             assert result is None
-            mock_log.assert_called_with("Error loading config file /test/config.yaml: Invalid YAML")
+            mock_log.assert_called_with("Failed to load config from /test/config.yaml: Invalid YAML")
 
     @pytest.mark.unit
     def test_load_config_from_file_with_test_mode_override(self):

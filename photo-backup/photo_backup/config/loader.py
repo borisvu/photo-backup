@@ -54,7 +54,7 @@ class ConfigLoader:
 
     def create_user_config_directory(self) -> tuple[bool, str]:
         """Create user config directory and copy example config if needed.
-        
+
         Returns:
             tuple: (success: bool, message: str)
         """
@@ -67,13 +67,13 @@ class ConfigLoader:
                 # In production mode, use user config directory
                 config_dir = Path.home() / ".config" / "photo-backup"
                 config_file = config_dir / "config.yaml"
-            
+
             # Create config directory if it doesn't exist
             if not config_dir.exists():
                 config_dir.mkdir(parents=True, exist_ok=True)
                 # Set directory permissions to 700 (user read/write/execute only)
                 config_dir.chmod(0o700)
-            
+
             # Copy example config if config file doesn't exist
             if not config_file.exists():
                 # Find example config file
@@ -81,13 +81,13 @@ class ConfigLoader:
                     Path.cwd() / "config.yaml.example",  # Current directory
                     Path(__file__).parent.parent.parent / "config.yaml.example",  # Package directory
                 ]
-                
+
                 example_config_path = None
                 for path in example_config_paths:
                     if path.exists():
                         example_config_path = path
                         break
-                
+
                 if example_config_path:
                     # Copy example config to user config location
                     shutil.copy2(example_config_path, config_file)
@@ -97,27 +97,24 @@ class ConfigLoader:
                 else:
                     # Create a minimal config file if example doesn't exist
                     minimal_config = {
-                        "backup": {
-                            "source_path": "~/Photos",
-                            "destination": "wasabi:your-bucket-name"
-                        },
+                        "backup": {"source_path": "~/Photos", "destination": "wasabi:your-bucket-name"},
                         "storage": {
                             "endpoint": "s3.wasabisys.com",
                             "access_key": "your-access-key",
-                            "secret_key": "your-secret-key"
-                        }
+                            "secret_key": "your-secret-key",
+                        },
                     }
-                    
-                    with open(config_file, 'w') as f:
+
+                    with open(config_file, "w") as f:
                         yaml.dump(minimal_config, f, default_flow_style=False, indent=2)
-                    
+
                     config_file.chmod(0o600)
                     return True, f"Created config directory and minimal config file at {config_file}"
             else:
                 return True, f"Config directory already exists at {config_dir}"
-                
+
         except Exception as e:
-            return False, f"Failed to create user config directory: {str(e)}"
+            return False, f"Failed to create user config directory: {e!s}"
 
     def _load_config_from_file(self, config_path: Path) -> dict[str, Any] | None:
         """Load configuration from a specific file.

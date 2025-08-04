@@ -257,26 +257,26 @@ def setup_config(ctx):
     """Create user config directory and copy example configuration."""
     # Get test mode from CLI flag, or check environment variable
     test_mode = ctx.obj.get("test_mode", False)
-    
+
     # If not set via CLI, check if Config would detect it from environment
     if not test_mode:
         test_mode = EnvOverride.is_test_mode_enabled()
 
     config_obj = Config(test_mode=test_mode)
-    
+
     # Create user config directory
     success, message = config_obj.loader.create_user_config_directory()
-    
+
     # Header
     click.echo("Photo Backup Configuration Setup")
     click.echo("=" * 35)
-    
+
     mode_text = "TEST MODE" if test_mode else "PRODUCTION MODE"
     click.echo(f"\nMode: {mode_text}")
-    
+
     if success:
         click.echo(f"✅ {message}")
-        
+
         # Show next steps
         click.echo("\n📝 Next Steps:")
         if test_mode:
@@ -290,7 +290,7 @@ def setup_config(ctx):
             click.echo("2. Update storage credentials and backup paths")
             click.echo("3. Run 'photo-backup validate' to verify your configuration")
             click.echo("4. Run 'photo-backup config' to view current settings")
-        
+
         sys.exit(0)
     else:
         click.echo(f"❌ {message}")

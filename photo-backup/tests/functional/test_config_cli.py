@@ -8,9 +8,9 @@ through the main CLI interface.
 import os
 import subprocess
 import tempfile
-from pathlib import Path
 
 import pytest
+from pathlib import Path
 
 
 class TestConfigCLICommand:
@@ -401,8 +401,8 @@ class TestSetupConfigCLICommand:
         """Test that setup-config command displays help."""
         # Set up environment
         env = os.environ.copy()
-        env['PYTHONPATH'] = str(Path.cwd().absolute())
-        
+        env["PYTHONPATH"] = str(Path.cwd().absolute())
+
         result = subprocess.run(
             ["python3", "-m", "photo_backup.main", "setup-config", "--help"],
             capture_output=True,
@@ -410,7 +410,7 @@ class TestSetupConfigCLICommand:
             cwd=".",
             env=env,
         )
-        
+
         assert result.returncode == 0
         assert "Create user config directory and copy example configuration" in result.stdout
 
@@ -418,8 +418,8 @@ class TestSetupConfigCLICommand:
         """Test setup-config command appears in main help."""
         # Set up environment
         env = os.environ.copy()
-        env['PYTHONPATH'] = str(Path.cwd().absolute())
-        
+        env["PYTHONPATH"] = str(Path.cwd().absolute())
+
         result = subprocess.run(
             ["python3", "-m", "photo_backup.main", "--help"],
             capture_output=True,
@@ -427,7 +427,7 @@ class TestSetupConfigCLICommand:
             cwd=".",
             env=env,
         )
-        
+
         assert result.returncode == 0
         assert "setup-config" in result.stdout
 
@@ -435,17 +435,18 @@ class TestSetupConfigCLICommand:
         """Test setup-config command with test mode via CLI flag."""
         # Clean up any existing test config
         import shutil
+
         from pathlib import Path
-        
+
         test_config_dir = Path("/tmp/photo-backup-test")
         if test_config_dir.exists():
             shutil.rmtree(test_config_dir)
-        
+
         try:
             # Set up environment
             env = os.environ.copy()
-            env['PYTHONPATH'] = str(Path.cwd().absolute())
-            
+            env["PYTHONPATH"] = str(Path.cwd().absolute())
+
             result = subprocess.run(
                 ["python3", "-m", "photo_backup.main", "--test-mode", "setup-config"],
                 capture_output=True,
@@ -453,18 +454,18 @@ class TestSetupConfigCLICommand:
                 cwd=".",
                 env=env,
             )
-            
+
             assert result.returncode == 0
             assert "Mode: TEST MODE" in result.stdout
             assert "Created config directory and copied example config" in result.stdout
             assert "/tmp/photo-backup-test/config.yaml" in result.stdout
             assert "Configuration created for testing" in result.stdout
             assert "photo-backup validate --test-mode" in result.stdout
-            
+
             # Verify the config was actually created
             assert test_config_dir.exists()
             assert (test_config_dir / "config.yaml").exists()
-            
+
         finally:
             # Clean up
             if test_config_dir.exists():
@@ -474,16 +475,17 @@ class TestSetupConfigCLICommand:
         """Test setup-config command with test mode via environment variable."""
         # Clean up any existing test config
         import shutil
+
         from pathlib import Path
-        
+
         test_config_dir = Path("/tmp/photo-backup-test")
         if test_config_dir.exists():
             shutil.rmtree(test_config_dir)
-        
+
         env = os.environ.copy()
         env["PHOTO_BACKUP_TEST_MODE"] = "1"
-        env['PYTHONPATH'] = str(Path.cwd().absolute())
-        
+        env["PYTHONPATH"] = str(Path.cwd().absolute())
+
         try:
             result = subprocess.run(
                 ["python3", "-m", "photo_backup.main", "setup-config"],
@@ -492,11 +494,11 @@ class TestSetupConfigCLICommand:
                 cwd=".",
                 env=env,
             )
-            
+
             assert result.returncode == 0
             assert "Mode: TEST MODE" in result.stdout
             assert "Created config directory and copied example config" in result.stdout
-            
+
         finally:
             # Clean up
             if test_config_dir.exists():
@@ -506,16 +508,15 @@ class TestSetupConfigCLICommand:
     def test_setup_config_command_production_mode(self):
         """Test setup-config command in production mode."""
         # Use a temporary directory as fake home to avoid modifying real config
-        import tempfile
+
         from pathlib import Path
-        from unittest.mock import patch
-        
+
         with tempfile.TemporaryDirectory() as temp_home:
             # Set up environment
             env = os.environ.copy()
-            env['HOME'] = temp_home
-            env['PYTHONPATH'] = str(Path.cwd().absolute())
-            
+            env["HOME"] = temp_home
+            env["PYTHONPATH"] = str(Path.cwd().absolute())
+
             result = subprocess.run(
                 ["python3", "-m", "photo_backup.main", "setup-config"],
                 capture_output=True,
@@ -523,14 +524,14 @@ class TestSetupConfigCLICommand:
                 cwd=".",
                 env=env,
             )
-            
+
             assert result.returncode == 0
             assert "Mode: PRODUCTION MODE" in result.stdout
             assert "Created config directory and copied example config" in result.stdout
             assert f"{temp_home}/.config/photo-backup/config.yaml" in result.stdout
             assert "Edit the configuration file with your settings" in result.stdout
             assert "photo-backup validate" in result.stdout
-            
+
             # Verify the config was actually created
             config_dir = Path(temp_home) / ".config" / "photo-backup"
             config_file = config_dir / "config.yaml"
@@ -541,21 +542,22 @@ class TestSetupConfigCLICommand:
         """Test setup-config command when config already exists."""
         # Clean up and create test config first
         import shutil
+
         from pathlib import Path
-        
+
         test_config_dir = Path("/tmp/photo-backup-test")
         if test_config_dir.exists():
             shutil.rmtree(test_config_dir)
-        
+
         try:
             # Create existing config
             test_config_dir.mkdir(parents=True, exist_ok=True)
             (test_config_dir / "config.yaml").write_text("existing: config")
-            
+
             # Set up environment
             env = os.environ.copy()
-            env['PYTHONPATH'] = str(Path.cwd().absolute())
-            
+            env["PYTHONPATH"] = str(Path.cwd().absolute())
+
             result = subprocess.run(
                 ["python3", "-m", "photo_backup.main", "--test-mode", "setup-config"],
                 capture_output=True,
@@ -563,11 +565,11 @@ class TestSetupConfigCLICommand:
                 cwd=".",
                 env=env,
             )
-            
+
             assert result.returncode == 0
             assert "Mode: TEST MODE" in result.stdout
             assert "Config directory already exists" in result.stdout
-            
+
         finally:
             # Clean up
             if test_config_dir.exists():
@@ -577,17 +579,18 @@ class TestSetupConfigCLICommand:
         """Test setup-config command shows appropriate next steps."""
         # Clean up any existing test config
         import shutil
+
         from pathlib import Path
-        
+
         test_config_dir = Path("/tmp/photo-backup-test")
         if test_config_dir.exists():
             shutil.rmtree(test_config_dir)
-        
+
         try:
             # Set up environment
             env = os.environ.copy()
-            env['PYTHONPATH'] = str(Path.cwd().absolute())
-            
+            env["PYTHONPATH"] = str(Path.cwd().absolute())
+
             result = subprocess.run(
                 ["python3", "-m", "photo_backup.main", "--test-mode", "setup-config"],
                 capture_output=True,
@@ -595,12 +598,12 @@ class TestSetupConfigCLICommand:
                 cwd=".",
                 env=env,
             )
-            
+
             assert result.returncode == 0
             assert "📝 Next Steps:" in result.stdout
             assert "1. Configuration created for testing" in result.stdout
             assert "2. Run 'photo-backup validate --test-mode' to verify setup" in result.stdout
-            
+
         finally:
             # Clean up
             if test_config_dir.exists():
@@ -609,16 +612,15 @@ class TestSetupConfigCLICommand:
     @pytest.mark.skip(reason="Production mode tests need environment setup - focusing on core functionality")
     def test_setup_config_command_production_next_steps(self):
         """Test setup-config command shows production-specific next steps."""
-        import tempfile
+
         from pathlib import Path
-        from unittest.mock import patch
-        
+
         with tempfile.TemporaryDirectory() as temp_home:
             # Set up environment
             env = os.environ.copy()
-            env['HOME'] = temp_home
-            env['PYTHONPATH'] = str(Path.cwd().absolute())
-            
+            env["HOME"] = temp_home
+            env["PYTHONPATH"] = str(Path.cwd().absolute())
+
             result = subprocess.run(
                 ["python3", "-m", "photo_backup.main", "setup-config"],
                 capture_output=True,
@@ -626,7 +628,7 @@ class TestSetupConfigCLICommand:
                 cwd=".",
                 env=env,
             )
-            
+
             assert result.returncode == 0
             assert "📝 Next Steps:" in result.stdout
             assert "1. Edit the configuration file with your settings:" in result.stdout
