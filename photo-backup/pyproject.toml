@@ -1,6 +1,12 @@
 
 
 [tool.ruff]
+# Standard Python formatting
+line-length = 120
+
+# Assume Python 3.13
+target-version = "py313"
+
 # Exclude a variety of commonly ignored directories.
 exclude = [
     ".bzr",
@@ -29,11 +35,18 @@ exclude = [
     "*.egg-info",
 ]
 
-# Standard Python formatting
-line-length = 120
+[tool.ruff.lint]
+# Enable pycodestyle (`E`), Pyflakes (`F`), and isort (`I`) codes
+select = ["E", "F", "I", "B", "C4", "UP", "N", "W", "ARG", "SIM", "TCH", "Q", "RUF"]
+ignore = [
+    "E501",  # line too long, handled by ruff format
+    "B008",  # do not perform function calls in argument defaults
+    "C901",  # too complex
+]
 
-# Assume Python 3.13
-target-version = "py313"
+# Allow fix for all enabled rules (when `--fix`) is provided.
+fixable = ["ALL"]
+unfixable = []
 
 [tool.ruff.lint]
 # Enable pycodestyle (`E`), Pyflakes (`F`), and isort (`I`) codes
@@ -64,6 +77,10 @@ skip-magic-trailing-comma = false
 
 # Automatically detect the appropriate line ending
 line-ending = "auto"
+
+[tool.ruff.lint.isort]
+known-first-party = ["photo_backup"]
+known-third-party = ["pytest", "docker", "click", "pyyaml", "pathlib"]
 
 [tool.mypy]
 python_version = "3.13"
