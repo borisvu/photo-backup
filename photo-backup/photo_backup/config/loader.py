@@ -68,11 +68,13 @@ class ConfigLoader:
                 config_dir = Path.home() / ".config" / "photo-backup"
                 config_file = config_dir / "config.yaml"
 
-            # Create config directory if it doesn't exist
+            # Track whether we created the directory
+            directory_created = False
             if not config_dir.exists():
                 config_dir.mkdir(parents=True, exist_ok=True)
                 # Set directory permissions to 700 (user read/write/execute only)
                 config_dir.chmod(0o700)
+                directory_created = True
 
             # Copy example config if config file doesn't exist
             if not config_file.exists():
@@ -93,7 +95,10 @@ class ConfigLoader:
                     shutil.copy2(example_config_path, config_file)
                     # Set file permissions to 600 (user read/write only)
                     config_file.chmod(0o600)
-                    return True, f"Created config directory and copied example config to {config_file}"
+                    if directory_created:
+                        return True, f"Created config directory and copied example config to {config_file}"
+                    else:
+                        return True, f"Config directory already existed, copied example config to {config_file}"
                 else:
                     # Create a minimal config file if example doesn't exist
                     minimal_config = {
@@ -105,13 +110,16 @@ class ConfigLoader:
                         },
                     }
 
-                    with open(config_file, "w") as f:
+                    with open(config_file, "w", encoding="utf-8") as f:
                         yaml.dump(minimal_config, f, default_flow_style=False, indent=2)
 
                     config_file.chmod(0o600)
-                    return True, f"Created config directory and minimal config file at {config_file}"
+                    if directory_created:
+                        return True, f"Created config directory and minimal config file at {config_file}"
+                    else:
+                        return True, f"Config directory already existed, created minimal config file at {config_file}"
             else:
-                return True, f"Config directory already exists at {config_dir}"
+                return True, f"Configuration file already exists at {config_file}"
 
         except Exception as e:
             return False, f"Failed to create user config directory: {e!s}"

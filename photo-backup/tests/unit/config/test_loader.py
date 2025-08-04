@@ -260,7 +260,7 @@ class TestCreateUserConfigDirectory:
             success, message = loader.create_user_config_directory()
 
             assert success is True
-            assert "Config directory already exists" in message
+            assert "Configuration file already exists" in message
 
         finally:
             # Clean up

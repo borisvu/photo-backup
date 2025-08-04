@@ -568,7 +568,7 @@ class TestSetupConfigCLICommand:
 
             assert result.returncode == 0
             assert "Mode: TEST MODE" in result.stdout
-            assert "Config directory already exists" in result.stdout
+            assert "Configuration file already exists" in result.stdout
 
         finally:
             # Clean up
