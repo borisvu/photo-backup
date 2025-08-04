@@ -9,7 +9,6 @@ import shutil
 import tempfile
 from unittest.mock import patch
 
-import pytest
 import yaml
 from pathlib import Path
 
@@ -295,7 +294,6 @@ class TestCreateUserConfigDirectory:
             if test_config_dir.exists():
                 shutil.rmtree(test_config_dir)
 
-    @pytest.mark.skip(reason="Complex mocking - focusing on core functionality")
     def test_create_user_config_directory_permission_error(self):
         """Test creating user config directory with permission error."""
         loader = ConfigLoader(test_mode=False)
