@@ -22,6 +22,13 @@ class ConfigLoader:
         """
         search_paths = []
 
+        # Check for environment variable override first (highest priority)
+        import os
+
+        env_config_file = os.environ.get("PHOTO_BACKUP_CONFIG_FILE")
+        if env_config_file:
+            search_paths.append(Path(env_config_file))
+
         # Add test mode specific config location first if in test mode
         if self.test_mode:
             test_config_path = Path("/tmp/photo-backup-test/config.yaml")

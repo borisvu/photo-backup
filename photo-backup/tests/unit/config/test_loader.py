@@ -193,6 +193,74 @@ class TestConfigLoader:
         finally:
             config_path.unlink()
 
+    def test_get_search_paths_with_env_override(self):
+        """Test that environment variable override is included in search paths."""
+        import os
+
+        # Set environment variable
+        os.environ["PHOTO_BACKUP_CONFIG_FILE"] = "/custom/config.yaml"
+
+        try:
+            loader = ConfigLoader(test_mode=False)
+            search_paths = loader.get_search_paths()
+
+            # Environment variable should be first in search paths
+            assert search_paths[0] == Path("/custom/config.yaml")
+
+            # Should still include standard paths
+            assert Path.cwd() / "config.yaml" in search_paths
+            assert Path.home() / ".config" / "photo-backup" / "config.yaml" in search_paths
+            assert Path("/etc/photo-backup/config.yaml") in search_paths
+
+        finally:
+            # Clean up
+            del os.environ["PHOTO_BACKUP_CONFIG_FILE"]
+
+    def test_get_search_paths_without_env_override(self):
+        """Test that search paths work correctly without environment variable."""
+        import os
+
+        # Ensure environment variable is not set
+        if "PHOTO_BACKUP_CONFIG_FILE" in os.environ:
+            del os.environ["PHOTO_BACKUP_CONFIG_FILE"]
+
+        loader = ConfigLoader(test_mode=False)
+        search_paths = loader.get_search_paths()
+
+        # Should not include environment variable path
+        assert Path("/custom/config.yaml") not in search_paths
+
+        # Should include standard paths
+        assert Path.cwd() / "config.yaml" in search_paths
+        assert Path.home() / ".config" / "photo-backup" / "config.yaml" in search_paths
+        assert Path("/etc/photo-backup/config.yaml") in search_paths
+
+    def test_get_search_paths_test_mode_with_env_override(self):
+        """Test that environment variable override works with test mode."""
+        import os
+
+        # Set environment variable
+        os.environ["PHOTO_BACKUP_CONFIG_FILE"] = "/custom/test-config.yaml"
+
+        try:
+            loader = ConfigLoader(test_mode=True)
+            search_paths = loader.get_search_paths()
+
+            # Environment variable should be first
+            assert search_paths[0] == Path("/custom/test-config.yaml")
+
+            # Test mode path should be second
+            assert search_paths[1] == Path("/tmp/photo-backup-test/config.yaml")
+
+            # Should still include standard paths
+            assert Path.cwd() / "config.yaml" in search_paths
+            assert Path.home() / ".config" / "photo-backup" / "config.yaml" in search_paths
+            assert Path("/etc/photo-backup/config.yaml") in search_paths
+
+        finally:
+            # Clean up
+            del os.environ["PHOTO_BACKUP_CONFIG_FILE"]
+
 
 class TestCreateUserConfigDirectory:
     """Test cases for create_user_config_directory functionality."""
