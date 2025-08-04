@@ -9,7 +9,6 @@ import os
 import subprocess
 import tempfile
 
-import pytest
 from pathlib import Path
 
 
@@ -504,7 +503,6 @@ class TestSetupConfigCLICommand:
             if test_config_dir.exists():
                 shutil.rmtree(test_config_dir)
 
-    @pytest.mark.skip(reason="Production mode tests need environment setup - focusing on core functionality")
     def test_setup_config_command_production_mode(self):
         """Test setup-config command in production mode."""
         # Use a temporary directory as fake home to avoid modifying real config
@@ -609,7 +607,6 @@ class TestSetupConfigCLICommand:
             if test_config_dir.exists():
                 shutil.rmtree(test_config_dir)
 
-    @pytest.mark.skip(reason="Production mode tests need environment setup - focusing on core functionality")
     def test_setup_config_command_production_next_steps(self):
         """Test setup-config command shows production-specific next steps."""
 
