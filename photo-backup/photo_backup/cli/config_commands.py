@@ -74,14 +74,15 @@ def _test_minio_connection(endpoint: str, _access_key: str, _secret_key: str) ->
 @click.pass_context
 def config(ctx):
     """Display current configuration settings."""
-    # Get test mode from CLI flag, or check environment variable
+    # Get test mode and dry-run from CLI flags, or check environment variable
     test_mode = ctx.obj.get("test_mode", False)
+    dry_run = ctx.obj.get("dry_run", False)
 
     # If not set via CLI, check if Config would detect it from environment
     if not test_mode:
         test_mode = EnvOverride.is_test_mode_enabled()
 
-    config_obj = Config(test_mode=test_mode)
+    config_obj = Config(test_mode=test_mode, dry_run=dry_run)
     config_data = config_obj.load_config()
 
     # Header
@@ -90,7 +91,8 @@ def config(ctx):
 
     # Mode and file info
     mode_text = "TEST MODE" if test_mode else "PRODUCTION MODE"
-    click.echo(f"\nMode: {mode_text}")
+    dry_run_text = " (DRY RUN)" if config_obj.is_dry_run() else ""
+    click.echo(f"\nMode: {mode_text}{dry_run_text}")
 
     config_file_path = config_obj.get_config_file_path()
     if config_file_path:
@@ -120,14 +122,15 @@ def config(ctx):
 @click.pass_context
 def validate(ctx):
     """Validate configuration settings and system requirements."""
-    # Get test mode from CLI flag, or check environment variable
+    # Get test mode and dry-run from CLI flags, or check environment variable
     test_mode = ctx.obj.get("test_mode", False)
+    dry_run = ctx.obj.get("dry_run", False)
 
     # If not set via CLI, check if Config would detect it from environment
     if not test_mode:
         test_mode = EnvOverride.is_test_mode_enabled()
 
-    config_obj = Config(test_mode=test_mode)
+    config_obj = Config(test_mode=test_mode, dry_run=dry_run)
     config_data = config_obj.load_config()
 
     # Header
@@ -135,7 +138,8 @@ def validate(ctx):
     click.echo("=" * 50)
 
     mode_text = "TEST MODE" if test_mode else "PRODUCTION MODE"
-    click.echo(f"\nMode: {mode_text}")
+    dry_run_text = " (DRY RUN)" if config_obj.is_dry_run() else ""
+    click.echo(f"\nMode: {mode_text}{dry_run_text}")
 
     # Track validation results
     all_valid = True
@@ -255,14 +259,15 @@ def validate(ctx):
 @click.pass_context
 def setup_config(ctx):
     """Create user config directory and copy example configuration."""
-    # Get test mode from CLI flag, or check environment variable
+    # Get test mode and dry-run from CLI flags, or check environment variable
     test_mode = ctx.obj.get("test_mode", False)
+    dry_run = ctx.obj.get("dry_run", False)
 
     # If not set via CLI, check if Config would detect it from environment
     if not test_mode:
         test_mode = EnvOverride.is_test_mode_enabled()
 
-    config_obj = Config(test_mode=test_mode)
+    config_obj = Config(test_mode=test_mode, dry_run=dry_run)
 
     # Create user config directory
     success, message = config_obj.loader.create_user_config_directory()
@@ -272,7 +277,8 @@ def setup_config(ctx):
     click.echo("=" * 35)
 
     mode_text = "TEST MODE" if test_mode else "PRODUCTION MODE"
-    click.echo(f"\nMode: {mode_text}")
+    dry_run_text = " (DRY RUN)" if dry_run else ""
+    click.echo(f"\nMode: {mode_text}{dry_run_text}")
 
     if success:
         click.echo(f"✅ {message}")

@@ -23,9 +23,10 @@ def _get_logger(test_mode: bool) -> logging.Logger:
 
 @click.group(invoke_without_command=True)
 @click.option("--test-mode", is_flag=True, help="Run in test mode using Minio instead of Wasabi")
+@click.option("--dry-run", is_flag=True, help="Run in dry-run mode - show operations without executing them")
 @click.option("--version", is_flag=True, help="Show version and exit")
 @click.pass_context
-def main(ctx, test_mode, version):
+def main(ctx, test_mode, dry_run, version):
     """Photo Backup System - Automated photo backup to S3-compatible storage."""
 
     if version:
@@ -35,21 +36,23 @@ def main(ctx, test_mode, version):
     # Store context for subcommands
     ctx.ensure_object(dict)
     ctx.obj["test_mode"] = test_mode
+    ctx.obj["dry_run"] = dry_run
 
     # If no subcommand provided, show system status
     if ctx.invoked_subcommand is None:
-        config_obj = Config(test_mode=test_mode)
+        config_obj = Config(test_mode=test_mode, dry_run=dry_run)
         config_obj.load_config()  # Load config but don't store result
         logger = _get_logger(test_mode)
 
         mode_text = "TEST MODE" if test_mode else "PRODUCTION MODE"
-        logger.info(f"Photo Backup v{__version__} starting in {mode_text}")
+        dry_run_text = " (DRY RUN)" if dry_run else ""
+        logger.info(f"Photo Backup v{__version__} starting in {mode_text}{dry_run_text}")
 
         click.echo(f"Photo Backup v{__version__}")
 
         if test_mode:
             logger.debug("Initializing test mode configuration")
-            click.echo("Running in TEST MODE - using Minio instead of Wasabi")
+            click.echo(f"Running in TEST MODE{dry_run_text} - using Minio instead of Wasabi")
             click.echo("Test mode configuration:")
             click.echo(f"  - Endpoint: {config_obj.get('storage.endpoint')}")
             click.echo(
@@ -58,16 +61,20 @@ def main(ctx, test_mode, version):
             click.echo(f"  - Source: {config_obj.get('backup.source_path')}")
             click.echo(f"  - Destination: {config_obj.get('backup.destination')}")
             click.echo(f"  - State directory: {config_obj.get('state.directory')}")
+            if dry_run:
+                click.echo("  - DRY RUN MODE: Operations will be shown but not executed")
             logger.debug(f"Test mode endpoint: {config_obj.get('storage.endpoint')}")
             logger.debug(f"Test mode source: {config_obj.get('backup.source_path')}")
         else:
             logger.info("Initializing production mode configuration")
-            click.echo("Running in PRODUCTION MODE")
+            click.echo(f"Running in PRODUCTION MODE{dry_run_text}")
             click.echo("Configuration:")
             click.echo(f"  - Source: {config_obj.get('backup.source_path')}")
             click.echo(f"  - Destination: {config_obj.get('backup.destination')}")
             click.echo(f"  - Endpoint: {config_obj.get('storage.endpoint')}")
             click.echo(f"  - State directory: {config_obj.get('state.directory')}")
+            if dry_run:
+                click.echo("  - DRY RUN MODE: Operations will be shown but not executed")
             logger.info(f"Production mode endpoint: {config_obj.get('storage.endpoint')}")
             logger.info(f"Production mode source: {config_obj.get('backup.source_path')}")
 

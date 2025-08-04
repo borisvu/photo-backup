@@ -7,12 +7,14 @@ class ConfigUtils:
     @staticmethod
     def merge_dicts(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
         """Recursively merge dictionaries."""
-        result = base.copy()
+        import copy
+
+        result = copy.deepcopy(base)
         for key, value in override.items():
             if key in result and isinstance(result[key], dict) and isinstance(value, dict):
                 result[key] = ConfigUtils.merge_dicts(result[key], value)
             else:
-                result[key] = value
+                result[key] = copy.deepcopy(value)
         return result
 
     @staticmethod

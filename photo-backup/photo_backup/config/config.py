@@ -19,18 +19,20 @@ from .validator import ConfigValidator
 class Config:
     """Configuration manager for photo backup system."""
 
-    def __init__(self, test_mode=None):
+    def __init__(self, test_mode=None, dry_run=None):
         """Initialize configuration.
 
         Args:
             test_mode: If True, use test configuration with Minio.
                       If None, check environment variable PHOTO_BACKUP_TEST_MODE
+            dry_run: If True, enable dry-run mode. If None, use config value
         """
         # Check environment variable for test mode if not explicitly set
         if test_mode is None:
             test_mode = EnvOverride.is_test_mode_enabled()
 
         self.test_mode = test_mode
+        self.dry_run = dry_run
         self._config = None
         self.loader = ConfigLoader(test_mode=test_mode)
         self.validator = ConfigValidator(test_mode=test_mode)
@@ -66,6 +68,10 @@ class Config:
             # Apply environment variable overrides (highest priority)
             self._config = EnvOverride.apply_env_overrides(self._config)
 
+            # Apply dry-run override if explicitly set (highest priority)
+            if self.dry_run is not None:
+                self._config["backup"]["dry_run"] = self.dry_run
+
         return self._config
 
     def _get_default_config(self) -> dict[str, Any]:
@@ -74,7 +80,9 @@ class Config:
         Returns:
             Default configuration dictionary with comprehensive settings
         """
-        return DEFAULT_CONFIG.copy()
+        import copy
+
+        return copy.deepcopy(DEFAULT_CONFIG)
 
     def get_config_file_path(self) -> Path | None:
         """Get the path of the loaded config file.
@@ -93,6 +101,20 @@ class Config:
             bool: True if in test mode
         """
         return self.test_mode
+
+    def is_dry_run(self) -> bool:
+        """Check if running in dry-run mode.
+
+        Returns:
+            bool: True if in dry-run mode
+        """
+        if self._config is None:
+            self.load_config()
+        return self._config.get("backup", {}).get("dry_run", False)
+
+    def _reset_config_cache(self) -> None:
+        """Reset the configuration cache (mainly for testing)."""
+        self._config = None
 
     #
     def get(self, key: str, default: Any = None) -> Any:

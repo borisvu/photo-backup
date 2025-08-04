@@ -15,6 +15,7 @@ DEFAULT_CONFIG = {
         "encryption": False,
         "verify_after_backup": True,
         "max_concurrent_backups": 1,
+        "dry_run": False,
     },
     "storage": {
         "endpoint": "s3.wasabisys.com",
@@ -90,6 +91,7 @@ DEFAULT_CONFIG_DOCS = {
         "encryption": "Enable encryption for backup files (requires encryption_key)",
         "verify_after_backup": "Verify backup integrity after completion",
         "max_concurrent_backups": "Maximum number of concurrent backup operations",
+        "dry_run": "Run in dry-run mode - show operations without executing them",
     },
     "storage": {
         "endpoint": "S3-compatible storage endpoint URL",
@@ -165,6 +167,7 @@ TEST_MODE_DEFAULTS = {
         "encryption": False,
         "verify_after_backup": False,  # Skip verification for speed
         "max_concurrent_backups": 1,
+        "dry_run": False,  # Can be overridden by CLI flag
     },
     "storage": {
         "endpoint": "localhost:9000",

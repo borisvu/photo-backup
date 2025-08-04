@@ -119,6 +119,38 @@ class TestConfig:
         assert test_config.is_test_mode() is True
 
     @pytest.mark.unit
+    def test_config_dry_run_mode(self):
+        """Test config in dry-run mode."""
+        config = Config(test_mode=False, dry_run=True)
+        config._reset_config_cache()  # Ensure clean state
+        config.load_config()
+
+        assert config.is_dry_run() is True
+        assert config.get("backup.dry_run") is True
+
+    @pytest.mark.unit
+    def test_config_dry_run_mode_default(self):
+        """Test that dry-run mode defaults to False."""
+        config = Config(test_mode=False, dry_run=None)
+        config._reset_config_cache()  # Ensure clean state
+        config.load_config()
+
+        assert config.is_dry_run() is False
+        assert config.get("backup.dry_run") is False
+
+    @pytest.mark.unit
+    def test_config_dry_run_with_test_mode(self):
+        """Test dry-run mode works with test mode."""
+        config = Config(test_mode=True, dry_run=True)
+        config._reset_config_cache()  # Ensure clean state
+        config.load_config()
+
+        assert config.is_test_mode() is True
+        assert config.is_dry_run() is True
+        assert config.get("backup.dry_run") is True
+        assert config.get("storage.endpoint") == "localhost:9000"  # Test mode endpoint
+
+    @pytest.mark.unit
     def test_config_ssl_settings(self):
         """Test SSL settings differ between modes."""
         prod_config = Config(test_mode=False)

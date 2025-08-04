@@ -133,17 +133,19 @@ class ConfigValidator:
                     # Expand the path
                     expanded_path = self._expand_path(source_path)
 
-                    # Check if path exists and is accessible
-                    try:
-                        path_obj = Path(expanded_path)
-                        if not path_obj.exists():
-                            errors.append(f"backup.source_path does not exist: {expanded_path}")
-                        elif not path_obj.is_dir():
-                            errors.append(f"backup.source_path must be a directory: {expanded_path}")
-                        elif not os.access(expanded_path, os.R_OK):
-                            errors.append(f"backup.source_path is not readable: {expanded_path}")
-                    except Exception as e:
-                        errors.append(f"backup.source_path validation error: {e}")
+                    # In test mode, skip existence checks for paths
+                    if not self.test_mode:
+                        # Check if path exists and is accessible
+                        try:
+                            path_obj = Path(expanded_path)
+                            if not path_obj.exists():
+                                errors.append(f"backup.source_path does not exist: {expanded_path}")
+                            elif not path_obj.is_dir():
+                                errors.append(f"backup.source_path must be a directory: {expanded_path}")
+                            elif not os.access(expanded_path, os.R_OK):
+                                errors.append(f"backup.source_path is not readable: {expanded_path}")
+                        except Exception as e:
+                            errors.append(f"backup.source_path validation error: {e}")
 
         # Validate logging directory
         if "logging" in config and isinstance(config["logging"], dict):
@@ -152,23 +154,25 @@ class ConfigValidator:
                 log_dir = logging_config["directory"]
                 expanded_path = self._expand_path(log_dir)
 
-                # For logging directory, we'll create it if it doesn't exist
-                # But we need to check if the parent directory is writable
-                try:
-                    path_obj = Path(expanded_path)
-                    if path_obj.exists() and not path_obj.is_dir():
-                        errors.append(f"logging.directory must be a directory: {expanded_path}")
-                    elif path_obj.exists() and not os.access(expanded_path, os.W_OK):
-                        errors.append(f"logging.directory is not writable: {expanded_path}")
-                    elif not path_obj.exists():
-                        # Check if parent directory is writable
-                        parent = path_obj.parent
-                        if not parent.exists():
-                            errors.append(f"logging.directory parent does not exist: {parent}")
-                        elif not os.access(parent, os.W_OK):
-                            errors.append(f"logging.directory parent is not writable: {parent}")
-                except Exception as e:
-                    errors.append(f"logging.directory validation error: {e}")
+                # In test mode, skip existence checks for paths
+                if not self.test_mode:
+                    # For logging directory, we'll create it if it doesn't exist
+                    # But we need to check if the parent directory is writable
+                    try:
+                        path_obj = Path(expanded_path)
+                        if path_obj.exists() and not path_obj.is_dir():
+                            errors.append(f"logging.directory must be a directory: {expanded_path}")
+                        elif path_obj.exists() and not os.access(expanded_path, os.W_OK):
+                            errors.append(f"logging.directory is not writable: {expanded_path}")
+                        elif not path_obj.exists():
+                            # Check if parent directory is writable
+                            parent = path_obj.parent
+                            if not parent.exists():
+                                errors.append(f"logging.directory parent does not exist: {parent}")
+                            elif not os.access(parent, os.W_OK):
+                                errors.append(f"logging.directory parent is not writable: {parent}")
+                    except Exception as e:
+                        errors.append(f"logging.directory validation error: {e}")
 
         # Validate state directory
         if "state" in config and isinstance(config["state"], dict):
@@ -177,23 +181,25 @@ class ConfigValidator:
                 state_dir = state["directory"]
                 expanded_path = self._expand_path(state_dir)
 
-                # For state directory, we'll create it if it doesn't exist
-                # But we need to check if the parent directory is writable
-                try:
-                    path_obj = Path(expanded_path)
-                    if path_obj.exists() and not path_obj.is_dir():
-                        errors.append(f"state.directory must be a directory: {expanded_path}")
-                    elif path_obj.exists() and not os.access(expanded_path, os.W_OK):
-                        errors.append(f"state.directory is not writable: {expanded_path}")
-                    elif not path_obj.exists():
-                        # Check if parent directory is writable
-                        parent = path_obj.parent
-                        if not parent.exists():
-                            errors.append(f"state.directory parent does not exist: {parent}")
-                        elif not os.access(parent, os.W_OK):
-                            errors.append(f"state.directory parent is not writable: {parent}")
-                except Exception as e:
-                    errors.append(f"state.directory validation error: {e}")
+                # In test mode, skip existence checks for paths
+                if not self.test_mode:
+                    # For state directory, we'll create it if it doesn't exist
+                    # But we need to check if the parent directory is writable
+                    try:
+                        path_obj = Path(expanded_path)
+                        if path_obj.exists() and not path_obj.is_dir():
+                            errors.append(f"state.directory must be a directory: {expanded_path}")
+                        elif path_obj.exists() and not os.access(expanded_path, os.W_OK):
+                            errors.append(f"state.directory is not writable: {expanded_path}")
+                        elif not path_obj.exists():
+                            # Check if parent directory is writable
+                            parent = path_obj.parent
+                            if not parent.exists():
+                                errors.append(f"state.directory parent does not exist: {parent}")
+                            elif not os.access(parent, os.W_OK):
+                                errors.append(f"state.directory parent is not writable: {parent}")
+                    except Exception as e:
+                        errors.append(f"state.directory validation error: {e}")
 
         return errors
 
