@@ -12,6 +12,7 @@ import click
 from ..config.config import Config
 from ..config.env_override import EnvOverride
 from ..fs_utils import validate_path
+from ..logger import generate_job_id, setup_logger_from_config
 from ..process_utils import run_command
 
 
@@ -85,6 +86,12 @@ def config(ctx):
     config_obj = Config(test_mode=test_mode, dry_run=dry_run)
     config_data = config_obj.load_config()
 
+    # Set up logger with job context
+    job_id = generate_job_id("config")
+    logger = setup_logger_from_config(config_obj, job_id, "photo_backup.config")
+    logger.info("Configuration display command started")
+    logger.debug(f"Test mode: {test_mode}, Dry run: {dry_run}")
+
     # Header
     click.echo("Configuration for Photo Backup System")
     click.echo("=" * 40)
@@ -116,6 +123,10 @@ def config(ctx):
     for section_name in section_order:
         if section_name in config_data:
             _display_config_section(section_name, config_data[section_name])
+            logger.debug(f"Displayed {section_name} configuration section")
+
+    logger.info("Configuration display completed successfully")
+    click.echo("\nConfiguration display completed.")
 
 
 @click.command()
@@ -132,6 +143,12 @@ def validate(ctx):
 
     config_obj = Config(test_mode=test_mode, dry_run=dry_run)
     config_data = config_obj.load_config()
+
+    # Set up logger with job context
+    job_id = generate_job_id("validate")
+    logger = setup_logger_from_config(config_obj, job_id, "photo_backup.validate")
+    logger.info("Configuration validation command started")
+    logger.debug(f"Test mode: {test_mode}, Dry run: {dry_run}")
 
     # Header
     click.echo("Configuration Validation for Photo Backup System")

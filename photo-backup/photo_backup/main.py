@@ -12,13 +12,12 @@ import click
 from .__version__ import __version__
 from .cli.config_commands import config, setup_config, validate
 from .config.config import Config
-from .logger import setup_logger
+from .logger import generate_job_id, setup_logger_from_config
 
 
-def _get_logger(test_mode: bool) -> logging.Logger:
-    """Get configured logger based on mode."""
-    log_level = logging.DEBUG if test_mode else logging.INFO
-    return setup_logger("photo_backup", log_level)
+def _get_logger(config_obj: Config, job_id: str | None = None) -> logging.Logger:
+    """Get configured logger using config settings."""
+    return setup_logger_from_config(config_obj, job_id, "photo_backup")
 
 
 @click.group(invoke_without_command=True)
@@ -42,7 +41,10 @@ def main(ctx, test_mode, dry_run, version):
     if ctx.invoked_subcommand is None:
         config_obj = Config(test_mode=test_mode, dry_run=dry_run)
         config_obj.load_config()  # Load config but don't store result
-        logger = _get_logger(test_mode)
+
+        # Generate job ID for this CLI session
+        job_id = generate_job_id("cli")
+        logger = _get_logger(config_obj, job_id)
 
         mode_text = "TEST MODE" if test_mode else "PRODUCTION MODE"
         dry_run_text = " (DRY RUN)" if dry_run else ""
@@ -61,10 +63,13 @@ def main(ctx, test_mode, dry_run, version):
             click.echo(f"  - Source: {config_obj.get('backup.source_path')}")
             click.echo(f"  - Destination: {config_obj.get('backup.destination')}")
             click.echo(f"  - State directory: {config_obj.get('state.directory')}")
+            click.echo(f"  - Log level: {config_obj.get('logging.level')}")
+            click.echo(f"  - Log format: {config_obj.get('logging.format')}")
             if dry_run:
                 click.echo("  - DRY RUN MODE: Operations will be shown but not executed")
             logger.debug(f"Test mode endpoint: {config_obj.get('storage.endpoint')}")
             logger.debug(f"Test mode source: {config_obj.get('backup.source_path')}")
+            logger.debug(f"Test mode log level: {config_obj.get('logging.level')}")
         else:
             logger.info("Initializing production mode configuration")
             click.echo(f"Running in PRODUCTION MODE{dry_run_text}")
@@ -73,10 +78,13 @@ def main(ctx, test_mode, dry_run, version):
             click.echo(f"  - Destination: {config_obj.get('backup.destination')}")
             click.echo(f"  - Endpoint: {config_obj.get('storage.endpoint')}")
             click.echo(f"  - State directory: {config_obj.get('state.directory')}")
+            click.echo(f"  - Log level: {config_obj.get('logging.level')}")
+            click.echo(f"  - Log format: {config_obj.get('logging.format')}")
             if dry_run:
                 click.echo("  - DRY RUN MODE: Operations will be shown but not executed")
             logger.info(f"Production mode endpoint: {config_obj.get('storage.endpoint')}")
             logger.info(f"Production mode source: {config_obj.get('backup.source_path')}")
+            logger.info(f"Production mode log level: {config_obj.get('logging.level')}")
 
         logger.info("CLI initialization completed successfully")
         click.echo("CLI interface ready. Use 'photo-backup --help' to see available commands.")
