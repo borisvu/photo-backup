@@ -35,7 +35,7 @@ phases:
   phase_4_logging:
     name: "Logging System"
     tasks_total: 10
-    tasks_completed: 1
+    tasks_completed: 2
     status: "in_progress"
     
   phase_5_credentials:
@@ -282,6 +282,12 @@ tasks:
     completed_date: "2025-01-27"
     notes: "Implemented comprehensive enhanced logging system with config-based setup, multiple formatters (simple, detailed, JSON), job context support, and file/console output. Enhanced photo_backup/logger.py with setup_logger_from_config function, JSONFormatter class, JobContextFilter class, and generate_job_id function. Updated photo_backup/main.py and photo_backup/cli/config_commands.py to use enhanced logger with job context. Created comprehensive unit tests (tests/unit/test_enhanced_logger.py) with 28 tests covering all logger functionality. Created functional tests (tests/functional/test_logger_cli_integration.py) with 17 tests for CLI integration. Fixed logger filter accumulation issue by adding logger.filters.clear() to prevent test interference. All 379 tests pass (2 skipped), providing complete logging system with config-driven setup, job context, multiple formats, and comprehensive testing."
 
+  task_034:
+    name: "Add File Logging"
+    status: "completed"
+    completed_date: "2025-01-27"
+    notes: "File logging functionality already implemented in Task 33. RotatingFileHandler with configurable size and count limits, proper directory creation with mkdir(parents=True, exist_ok=True), test mode support with temporary directories, comprehensive error handling and fallback mechanisms, and full test coverage including functional tests. File logging is enabled by default with directory ~/Library/Logs/photo-backup in production and /tmp/photo-backup-test/logs in test mode. All requirements for Task 34 were met in the enhanced logger implementation from Task 33."
+
 # Current state summary
 current_state:
   working_directory: "/Users/you/git/backup-to-s3"
@@ -378,11 +384,12 @@ current_state:
 next_steps:
   immediate:
     - "Continue Phase 4: Logging System"
-    - "Start with Task 34: Implement Log Rotation"
-    - "Add log file rotation and management"
+    - "Start with Task 35: Create Error Log"
+    - "Add separate error-only log file"
     
   upcoming:
-    - "Log level management"
+    - "Structured logging (JSON format)"
+    - "Log cleanup and rotation management"
     - "Complete Phase 4 logging system"
 
 # Phase 1 Achievements
