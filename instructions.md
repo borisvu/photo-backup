@@ -101,6 +101,7 @@ The system has a built-in test mode that:
 3. Make tests runnable from command line
 4. Ensure tests clean up after themselves
 5. Ensure that all other tests pass.
+6. Do not leave disabled or empty tests at the end of task. If the test is obsolete, explain why and delete it after confirmation.
 
 ### Completing a Task
 
