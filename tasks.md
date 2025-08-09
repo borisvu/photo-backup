@@ -406,13 +406,18 @@ This document contains small, testable tasks for building the Photo Backup MVP. 
 
 ### Task 41: Create Log Viewer Command
 
-**Goal**: View recent logs
+**Goal**: Comprehensive log viewing and filtering
 
-- Add `photo-backup logs` command
-- Show last N lines
-- Filter by level
-- In test mode, show test logs
-  **Test**: Shows recent log entries from test operations
+- Add `photo-backup logs` command with multiple options:
+  - `--tail N` - Show last N lines (default: 50)
+  - `--level LEVEL` - Filter by log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+  - `--errors` - Show only error/critical logs (shortcut for `--level ERROR`)
+  - `--follow` - Follow log file in real-time (like `tail -f`)
+  - `--json` - Output in JSON format (if logs are in JSON format)
+- Leverage existing Unix tools (grep, awk, tail) under the hood
+- Support both production and test mode log paths
+- Provide examples and documentation for manual log filtering
+  **Test**: Comprehensive log viewing and filtering works for all scenarios
 
 ### Task 42: Logging Functional Test
 
