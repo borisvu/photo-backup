@@ -35,7 +35,7 @@ phases:
   phase_4_logging:
     name: "Logging System"
     tasks_total: 10
-    tasks_completed: 2
+    tasks_completed: 3
     status: "in_progress"
     
   phase_5_credentials:
@@ -288,6 +288,18 @@ tasks:
     completed_date: "2025-01-27"
     notes: "File logging functionality already implemented in Task 33. RotatingFileHandler with configurable size and count limits, proper directory creation with mkdir(parents=True, exist_ok=True), test mode support with temporary directories, comprehensive error handling and fallback mechanisms, and full test coverage including functional tests. File logging is enabled by default with directory ~/Library/Logs/photo-backup in production and /tmp/photo-backup-test/logs in test mode. All requirements for Task 34 were met in the enhanced logger implementation from Task 33."
 
+  task_035:
+    name: "Create Error Log"
+    status: "skipped"
+    completed_date: "2025-01-27"
+    notes: "SKIPPED - Redundant with Unix tools. Error log filtering can be achieved using existing tools: grep -i 'error\\|critical' photo-backup.log, tail -f photo-backup.log | grep -i 'error\\|critical', awk '/ERROR|CRITICAL/' photo-backup.log. Task 41 (Log Viewer Command) will be enhanced to provide built-in filtering capabilities. This approach is more Unix-like, maintainable, and avoids storage overhead of separate error log files."
+
+  task_036:
+    name: "Add Structured Logging"
+    status: "completed"
+    completed_date: "2025-01-27"
+    notes: "JSON logging functionality already implemented in Task 33. JSONFormatter class provides structured JSON output with metadata fields including timestamp, level, logger name, message, job_id, operation, file_path, and exception info. Configurable via logging.format setting (json, detailed, simple). Comprehensive unit tests cover JSON formatting, job context, extra fields, and exception handling. Functional tests verify JSON output integration with CLI. All requirements for Task 36 were met in the enhanced logger implementation from Task 33."
+
 # Current state summary
 current_state:
   working_directory: "/Users/you/git/backup-to-s3"
@@ -384,12 +396,10 @@ current_state:
 next_steps:
   immediate:
     - "Continue Phase 4: Logging System"
-    - "Start with Task 35: Create Error Log"
-    - "Add separate error-only log file"
+    - "Start with Task 37: Create Log Cleanup"
+    - "Add log cleanup and rotation management"
     
   upcoming:
-    - "Structured logging (JSON format)"
-    - "Log cleanup and rotation management"
     - "Complete Phase 4 logging system"
 
 # Phase 1 Achievements
