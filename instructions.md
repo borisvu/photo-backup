@@ -47,7 +47,7 @@ This is a personal photo backup system that:
 - For testing: create functional tests that execute via main.py
 - Use Minio (S3-compatible) to simulate Wasabi for backup tests
 - Test code should live alongside implementation (not separate test files)
-- Use pytest for testing.
+- Use pytest for testing (prefer `pytest` command over `python -m pytest`)
 - Every feature should be testable in test mode without real credentials or external services
 
 ### Test Mode
