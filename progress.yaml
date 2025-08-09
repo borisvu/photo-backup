@@ -35,7 +35,7 @@ phases:
   phase_4_logging:
     name: "Logging System"
     tasks_total: 10
-    tasks_completed: 3
+    tasks_completed: 4
     status: "in_progress"
     
   phase_5_credentials:
@@ -298,7 +298,12 @@ tasks:
     name: "Add Structured Logging"
     status: "completed"
     completed_date: "2025-01-27"
-    notes: "JSON logging functionality already implemented in Task 33. JSONFormatter class provides structured JSON output with metadata fields including timestamp, level, logger name, message, job_id, operation, file_path, and exception info. Configurable via logging.format setting (json, detailed, simple). Comprehensive unit tests cover JSON formatting, job context, extra fields, and exception handling. Functional tests verify JSON output integration with CLI. All requirements for Task 36 were met in the enhanced logger implementation from Task 33."
+    notes: "COMPLETED - JSON logging functionality already implemented in Task 33. JSONFormatter class provides structured JSON output with metadata (timestamp, level, logger, message, job_id, operation, file_path, exception). Configurable via logging.format setting (json, detailed, simple). Comprehensive unit and functional tests cover all JSON functionality. All requirements met in enhanced logger implementation."
+  task_037:
+    name: "Create Log Cleanup"
+    status: "completed"
+    completed_date: "2025-01-27"
+    notes: "Implemented comprehensive log cleanup functionality with age-based and count-based cleanup modes. Added cleanup_old_logs function with configurable settings (auto_cleanup, cleanup_days, cleanup_count, cleanup_mode). Integrated cleanup into setup_logger_from_config for automatic cleanup on startup. Added aggressive cleanup settings for test mode (1 day retention, 3 files max). Comprehensive unit tests cover all cleanup scenarios including age-based, count-based, disabled cleanup, and integration testing. Updated configuration defaults and documentation with new cleanup settings."
 
 # Current state summary
 current_state:
@@ -396,11 +401,12 @@ current_state:
 next_steps:
   immediate:
     - "Continue Phase 4: Logging System"
-    - "Start with Task 37: Create Log Cleanup"
-    - "Add log cleanup and rotation management"
+    - "Start with Task 38: Add Log Rotation Management"
+    - "Enhance log rotation with manual controls"
     
   upcoming:
     - "Complete Phase 4 logging system"
+    - "Move to Phase 5: Performance Optimization"
 
 # Phase 1 Achievements
 phase_1_achievements:
