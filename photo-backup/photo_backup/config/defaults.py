@@ -45,6 +45,10 @@ DEFAULT_CONFIG = {
         "console_output": True,
         "file_output": True,
         "include_timestamps": True,
+        "auto_cleanup": True,
+        "cleanup_days": 30,
+        "cleanup_count": 10,
+        "cleanup_mode": "age",
     },
     "state": {
         "directory": "~/Library/Application Support/photo-backup",
@@ -121,6 +125,10 @@ DEFAULT_CONFIG_DOCS = {
         "console_output": "Output logs to console/terminal",
         "file_output": "Output logs to files",
         "include_timestamps": "Include timestamps in log messages",
+        "auto_cleanup": "Automatically clean up old log files on startup",
+        "cleanup_days": "Number of days to keep log files before cleanup (1-365)",
+        "cleanup_count": "Maximum number of log files to keep (count-based cleanup)",
+        "cleanup_mode": "Cleanup mode: 'age' (based on days) or 'count' (based on number of files)",
     },
     "state": {
         "directory": "Directory for storing backup state and metadata",
@@ -197,6 +205,10 @@ TEST_MODE_DEFAULTS = {
         "console_output": True,
         "file_output": True,
         "include_timestamps": True,
+        "auto_cleanup": True,
+        "cleanup_days": 1,  # Aggressive cleanup for testing
+        "cleanup_count": 3,  # Keep fewer files for testing
+        "cleanup_mode": "age",
     },
     "state": {
         "directory": "/tmp/photo-backup-test/state",

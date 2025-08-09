@@ -102,6 +102,19 @@ logging:
   # Log directory
   # Production: ~/Library/Logs/photo-backup/
   directory: "~/Library/Logs/photo-backup"
+  
+  # Log cleanup settings
+  # Automatically clean up old log files on startup
+  auto_cleanup: true
+  
+  # Number of days to keep log files before cleanup (1-365)
+  cleanup_days: 30
+  
+  # Maximum number of log files to keep (count-based cleanup)
+  cleanup_count: 10
+  
+  # Cleanup mode: 'age' (based on days) or 'count' (based on number of files)
+  cleanup_mode: "age"
 
 # =============================================================================
 # STATE MANAGEMENT

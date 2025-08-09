@@ -9,7 +9,10 @@ import json
 import logging
 import sys
 import uuid
+from datetime import datetime, timedelta
 from typing import Any
+
+from pathlib import Path
 
 
 def create_formatter(
@@ -142,6 +145,7 @@ def setup_logger_from_config(config_obj: Any, job_id: str | None = None, name: s
     console_output = config_obj.get("logging.console_output", True)
     file_output = config_obj.get("logging.file_output", False)
     include_timestamps = config_obj.get("logging.include_timestamps", True)
+    log_directory = config_obj.get("logging.directory")
 
     # Parse log level
     log_level = _parse_log_level(log_level_str)
@@ -166,35 +170,31 @@ def setup_logger_from_config(config_obj: Any, job_id: str | None = None, name: s
         logger.addHandler(console_handler)
 
     # Add file handler if enabled
-    if file_output:
-        log_directory = config_obj.get("logging.directory")
-        if log_directory:
-            try:
-                from pathlib import Path
+    if file_output and log_directory:
+        try:
+            from logging.handlers import RotatingFileHandler
 
-                log_dir = Path(log_directory).expanduser()
-                log_dir.mkdir(parents=True, exist_ok=True)
+            log_dir = Path(log_directory).expanduser()
+            log_dir.mkdir(parents=True, exist_ok=True)
 
-                from logging.handlers import RotatingFileHandler
+            max_size_mb = config_obj.get("logging.max_size_mb", 100)
+            backup_count = config_obj.get("logging.backup_count", 5)
 
-                max_size_mb = config_obj.get("logging.max_size_mb", 100)
-                backup_count = config_obj.get("logging.backup_count", 5)
+            file_handler = RotatingFileHandler(
+                log_dir / "photo-backup.log", maxBytes=max_size_mb * 1024 * 1024, backupCount=backup_count
+            )
+            file_handler.setLevel(log_level)
+            file_handler.setFormatter(formatter)
+            logger.addHandler(file_handler)
 
-                file_handler = RotatingFileHandler(
-                    log_dir / "photo-backup.log", maxBytes=max_size_mb * 1024 * 1024, backupCount=backup_count
-                )
-                file_handler.setLevel(log_level)
-                file_handler.setFormatter(formatter)
-                logger.addHandler(file_handler)
-
-            except Exception as e:
-                # Fallback to console if file logging fails
-                if not console_output:
-                    console_handler = logging.StreamHandler(sys.stdout)
-                    console_handler.setLevel(log_level)
-                    console_handler.setFormatter(formatter)
-                    logger.addHandler(console_handler)
-                logger.warning(f"Failed to set up file logging: {e}")
+        except Exception as e:
+            # Fallback to console if file logging fails
+            if not console_output:
+                console_handler = logging.StreamHandler(sys.stdout)
+                console_handler.setLevel(log_level)
+                console_handler.setFormatter(formatter)
+                logger.addHandler(console_handler)
+            logger.warning(f"Failed to set up file logging: {e}")
 
     # Add job context filter if job_id provided
     if job_id:
@@ -203,6 +203,14 @@ def setup_logger_from_config(config_obj: Any, job_id: str | None = None, name: s
 
     # Prevent propagation to root logger to avoid duplicate messages
     logger.propagate = False
+
+    # Run log cleanup if enabled and we have a log directory
+    if config_obj.get("logging.auto_cleanup", True) and log_directory:
+        try:
+            cleanup_old_logs(log_directory, config_obj, logger)
+        except Exception as e:
+            # Don't let cleanup failures prevent logger setup
+            logger.warning(f"Log cleanup failed: {e}")
 
     return logger
 
@@ -284,6 +292,102 @@ def set_log_level(level: int, logger_name: str = "photo_backup") -> None:
     # Update all handlers
     for handler in logger.handlers:
         handler.setLevel(level)
+
+
+def cleanup_old_logs(log_directory: str, config_obj: Any = None, logger: logging.Logger | None = None) -> int:
+    """Clean up old log files based on configuration.
+
+    Args:
+        log_directory: Directory containing log files
+        config_obj: Configuration object with cleanup settings (optional)
+        logger: Logger instance for logging cleanup operations (optional)
+
+    Returns:
+        Number of files deleted
+    """
+    if not log_directory:
+        return 0
+
+    try:
+        log_dir_path = Path(log_directory).expanduser()
+        if not log_dir_path.exists():
+            if logger:
+                logger.debug(f"Log directory does not exist: {log_directory}")
+            return 0
+
+        # Get cleanup settings from config or use defaults
+        if config_obj:
+            auto_cleanup = config_obj.get("logging.auto_cleanup", True)
+            cleanup_days = config_obj.get("logging.cleanup_days", 30)
+            cleanup_count = config_obj.get("logging.cleanup_count", 10)
+            cleanup_mode = config_obj.get("logging.cleanup_mode", "age")
+        else:
+            auto_cleanup = True
+            cleanup_days = 30
+            cleanup_count = 10
+            cleanup_mode = "age"
+
+        if not auto_cleanup:
+            if logger:
+                logger.debug("Log cleanup is disabled")
+            return 0
+
+        deleted_count = 0
+        log_files = []
+
+        # Collect all log files
+        for log_file in log_dir_path.glob("*.log*"):
+            if log_file.is_file():
+                try:
+                    # Get file modification time
+                    mtime = log_file.stat().st_mtime
+                    log_files.append((log_file, mtime))
+                except OSError as e:
+                    if logger:
+                        logger.warning(f"Could not access log file {log_file}: {e}")
+
+        # Sort files by modification time (oldest first)
+        log_files.sort(key=lambda x: x[1])
+
+        if cleanup_mode == "age":
+            # Age-based cleanup
+            cutoff_time = datetime.now() - timedelta(days=cleanup_days)
+            cutoff_timestamp = cutoff_time.timestamp()
+
+            for log_file, mtime in log_files:
+                if mtime < cutoff_timestamp:
+                    try:
+                        log_file.unlink()
+                        deleted_count += 1
+                        if logger:
+                            logger.debug(f"Deleted old log file: {log_file.name}")
+                    except OSError as e:
+                        if logger:
+                            logger.warning(f"Failed to delete log file {log_file}: {e}")
+
+        elif cleanup_mode == "count":
+            # Count-based cleanup - keep only the N most recent files
+            if len(log_files) > cleanup_count:
+                files_to_delete = log_files[:-cleanup_count]  # Keep the most recent files
+                for log_file, _ in files_to_delete:
+                    try:
+                        log_file.unlink()
+                        deleted_count += 1
+                        if logger:
+                            logger.debug(f"Deleted log file (count-based cleanup): {log_file.name}")
+                    except OSError as e:
+                        if logger:
+                            logger.warning(f"Failed to delete log file {log_file}: {e}")
+
+        if logger and deleted_count > 0:
+            logger.info(f"Cleaned up {deleted_count} old log files from {log_directory}")
+
+        return deleted_count
+
+    except Exception as e:
+        if logger:
+            logger.error(f"Error during log cleanup: {e}")
+        return 0
 
 
 # Quick test functionality
