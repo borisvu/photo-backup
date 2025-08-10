@@ -35,7 +35,7 @@ phases:
   phase_4_logging:
     name: "Logging System"
     tasks_total: 10
-    tasks_completed: 4
+    tasks_completed: 5
     status: "in_progress"
     
   phase_5_credentials:
@@ -304,6 +304,11 @@ tasks:
     status: "completed"
     completed_date: "2025-01-27"
     notes: "Implemented comprehensive log cleanup functionality with age-based and count-based cleanup modes. Added cleanup_old_logs function with configurable settings (auto_cleanup, cleanup_days, cleanup_count, cleanup_mode). Integrated cleanup into setup_logger_from_config for automatic cleanup on startup. Added aggressive cleanup settings for test mode (1 day retention, 3 files max). Comprehensive unit tests cover all cleanup scenarios including age-based, count-based, disabled cleanup, and integration testing. Updated configuration defaults and documentation with new cleanup settings."
+  task_038:
+    name: "Add Operation Context"
+    status: "completed"
+    completed_date: "2025-01-27"
+    notes: "Implemented comprehensive operation context tracking with OperationContext class. Added context manager for operations with automatic start/end logging, duration tracking, and exception handling. Enhanced logging formatters to include operation information (operation type, operation ID, duration). Added helper functions: generate_operation_id() and format_duration(). Created DetailedFormatter class for graceful handling of missing operation fields. Comprehensive unit tests (9 new tests) cover all operation context scenarios including basic functionality, logging integration, exception handling, progress logging, duration tracking, and JSON formatting. Operation context provides foundation for tracking all backup operations with proper logging and monitoring."
 
 # Current state summary
 current_state:
@@ -401,12 +406,12 @@ current_state:
 next_steps:
   immediate:
     - "Continue Phase 4: Logging System"
-    - "Start with Task 38: Add Log Rotation Management"
-    - "Enhance log rotation with manual controls"
+    - "Start with Task 39: Create Progress Logger"
+    - "Add progress logging with percentages and ETA"
     
   upcoming:
     - "Complete Phase 4 logging system"
-    - "Move to Phase 5: Performance Optimization"
+    - "Move to Phase 5: Credential Management"
 
 # Phase 1 Achievements
 phase_1_achievements:

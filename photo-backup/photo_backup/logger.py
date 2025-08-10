@@ -36,20 +36,7 @@ def create_formatter(
         else:
             return logging.Formatter("%(levelname)s - %(message)s")
     else:  # detailed (default)
-        if include_timestamps:
-            if job_id:
-                return logging.Formatter(
-                    "%(asctime)s - %(name)s - %(levelname)s - [%(job_id)s] - %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
-                )
-            else:
-                return logging.Formatter(
-                    "%(asctime)s - %(name)s - %(levelname)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
-                )
-        else:
-            if job_id:
-                return logging.Formatter("%(name)s - %(levelname)s - [%(job_id)s] - %(message)s")
-            else:
-                return logging.Formatter("%(name)s - %(levelname)s - %(message)s")
+        return DetailedFormatter(include_timestamps=include_timestamps, job_id=job_id)
 
 
 class JSONFormatter(logging.Formatter):
@@ -78,6 +65,15 @@ class JSONFormatter(logging.Formatter):
         if hasattr(record, "operation"):
             log_entry["operation"] = record.operation
 
+        if hasattr(record, "operation_id"):
+            log_entry["operation_id"] = record.operation_id
+
+        if hasattr(record, "description"):
+            log_entry["description"] = record.description
+
+        if hasattr(record, "duration_seconds"):
+            log_entry["duration_seconds"] = record.duration_seconds
+
         if hasattr(record, "file_path"):
             log_entry["file_path"] = record.file_path
 
@@ -86,6 +82,40 @@ class JSONFormatter(logging.Formatter):
             log_entry["exception"] = self.formatException(record.exc_info)
 
         return json.dumps(log_entry)
+
+
+class DetailedFormatter(logging.Formatter):
+    """Detailed formatter that handles missing operation fields gracefully."""
+
+    def __init__(self, include_timestamps: bool = True, job_id: str | None = None):
+        super().__init__()
+        self.include_timestamps = include_timestamps
+        self.job_id = job_id
+
+    def format(self, record: logging.LogRecord) -> str:
+        """Format log record with operation context."""
+        # Build format string based on available fields
+        parts = []
+
+        if self.include_timestamps:
+            parts.append("%(asctime)s")
+
+        parts.extend(["%(name)s", "%(levelname)s"])
+
+        # Only include job_id if it's provided or exists in record
+        if self.job_id or (hasattr(record, "job_id") and record.job_id):
+            parts.append("[%(job_id)s]")
+
+        # Only include operation if it exists in record
+        if hasattr(record, "operation") and record.operation:
+            parts.append("[%(operation)s]")
+
+        parts.append("%(message)s")
+
+        format_string = " - ".join(parts)
+        formatter = logging.Formatter(format_string, datefmt="%Y-%m-%d %H:%M:%S")
+
+        return formatter.format(record)
 
 
 class JobContextFilter(logging.Filter):
@@ -99,6 +129,104 @@ class JobContextFilter(logging.Filter):
         """Add job_id to log record."""
         record.job_id = self.job_id
         return True
+
+
+class OperationContext:
+    """Context manager for tracking operations with logging."""
+
+    def __init__(self, operation_type: str, description: str = "", logger: logging.Logger | None = None):
+        """Initialize operation context.
+
+        Args:
+            operation_type: Type of operation (e.g., 'backup', 'restore', 'verify')
+            description: Human-readable description of the operation
+            logger: Logger instance to use for operation logging
+        """
+        self.operation_type = operation_type
+        self.description = description
+        self.operation_id = generate_operation_id(operation_type)
+        self.start_time = datetime.now()
+        self.end_time = None
+        self.logger = logger or get_logger()
+        self._active = False
+
+    def __enter__(self):
+        """Enter operation context."""
+        self._active = True
+        self.logger.info(
+            f"Starting {self.operation_type} operation",
+            extra={
+                "operation": self.operation_type,
+                "operation_id": self.operation_id,
+                "description": self.description,
+            },
+        )
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Exit operation context."""
+        self._active = False
+        self.end_time = datetime.now()
+        duration = self.end_time - self.start_time
+
+        if exc_type is None:
+            # Operation completed successfully
+            self.logger.info(
+                f"Completed {self.operation_type} operation in {format_duration(duration.total_seconds())}",
+                extra={
+                    "operation": self.operation_type,
+                    "operation_id": self.operation_id,
+                    "duration_seconds": duration.total_seconds(),
+                },
+            )
+        else:
+            # Operation failed
+            self.logger.error(
+                f"Failed {self.operation_type} operation after {format_duration(duration.total_seconds())}: {exc_val}",
+                extra={
+                    "operation": self.operation_type,
+                    "operation_id": self.operation_id,
+                    "duration_seconds": duration.total_seconds(),
+                    "exception": str(exc_val),
+                },
+                exc_info=(exc_type, exc_val, exc_tb),
+            )
+
+    @property
+    def duration(self) -> timedelta | None:
+        """Get operation duration."""
+        if self.end_time:
+            return self.end_time - self.start_time
+        elif self._active:
+            return datetime.now() - self.start_time
+        return None
+
+    def log_progress(self, message: str, **kwargs):
+        """Log progress message with operation context."""
+        extra = {
+            "operation": self.operation_type,
+            "operation_id": self.operation_id,
+        }
+        extra.update(kwargs)
+        self.logger.info(message, extra=extra)
+
+    def log_warning(self, message: str, **kwargs):
+        """Log warning message with operation context."""
+        extra = {
+            "operation": self.operation_type,
+            "operation_id": self.operation_id,
+        }
+        extra.update(kwargs)
+        self.logger.warning(message, extra=extra)
+
+    def log_error(self, message: str, **kwargs):
+        """Log error message with operation context."""
+        extra = {
+            "operation": self.operation_type,
+            "operation_id": self.operation_id,
+        }
+        extra.update(kwargs)
+        self.logger.error(message, extra=extra)
 
 
 def _parse_log_level(level_str: str) -> int:
@@ -226,6 +354,41 @@ def generate_job_id(prefix: str = "job") -> str:
     """
     timestamp = uuid.uuid4().hex[:8]
     return f"{prefix}-{timestamp}"
+
+
+def generate_operation_id(operation_type: str) -> str:
+    """Generate a unique operation ID.
+
+    Args:
+        operation_type: Type of operation (e.g., 'backup', 'restore', 'verify')
+
+    Returns:
+        Unique operation ID string
+    """
+    timestamp = datetime.now().strftime("%Y%m%d%H%M%S%f")[:-3]  # Remove microseconds, keep milliseconds
+    return f"{operation_type}-{timestamp}"
+
+
+def format_duration(seconds: float) -> str:
+    """Format duration in seconds to a human-readable string.
+
+    Args:
+        seconds: Duration in seconds
+
+    Returns:
+        Formatted duration string
+    """
+    if seconds < 60:
+        return f"{seconds:.2f}s"
+    elif seconds < 3600:
+        minutes = seconds / 60
+        return f"{minutes:.2f}m"
+    elif seconds < 86400:
+        hours = seconds / 3600
+        return f"{hours:.2f}h"
+    else:
+        days = seconds / 86400
+        return f"{days:.2f}d"
 
 
 def setup_logger(name: str = "photo_backup", level: int = logging.INFO) -> logging.Logger:
