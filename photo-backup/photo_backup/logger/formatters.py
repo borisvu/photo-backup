@@ -67,6 +67,10 @@ class JSONFormatter(logging.Formatter):
         if hasattr(record, "completed"):
             log_entry["completed"] = record.completed
 
+        # Add summary if present
+        if hasattr(record, "summary"):
+            log_entry["summary"] = record.summary
+
         # Add exception info if present
         if record.exc_info:
             log_entry["exception"] = self.formatException(record.exc_info)

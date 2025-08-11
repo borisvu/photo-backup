@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from .utils import generate_operation_id, format_duration
+from .summary import SummaryStatistics
 
 
 class JobContextFilter(logging.Filter):
@@ -43,6 +44,7 @@ class OperationContext:
         self.end_time = None
         self.logger = logger or logging.getLogger("photo_backup")
         self._active = False
+        self.summary = SummaryStatistics(operation_type)
 
     def __enter__(self):
         """Enter operation context."""
@@ -63,6 +65,15 @@ class OperationContext:
         self.end_time = datetime.now()
         duration = self.end_time - self.start_time
 
+        # End summary statistics
+        self.summary.end()
+        if exc_type is not None:
+            self.summary.add_error(str(exc_val))
+
+        # Log summary
+        summary_text = self.summary.format_summary()
+        self.logger.info(f"Operation summary:\n{summary_text}")
+
         if exc_type is None:
             # Operation completed successfully
             self.logger.info(
@@ -71,6 +82,7 @@ class OperationContext:
                     "operation": self.operation_type,
                     "operation_id": self.operation_id,
                     "duration_seconds": duration.total_seconds(),
+                    "summary": self.summary.to_dict(),
                 },
             )
         else:
@@ -82,6 +94,7 @@ class OperationContext:
                     "operation_id": self.operation_id,
                     "duration_seconds": duration.total_seconds(),
                     "exception": str(exc_val),
+                    "summary": self.summary.to_dict(),
                 },
                 exc_info=(exc_type, exc_val, exc_tb),
             )
@@ -120,4 +133,30 @@ class OperationContext:
             "operation_id": self.operation_id,
         }
         extra.update(kwargs)
-        self.logger.error(message, extra=extra) 
+        self.logger.error(message, extra=extra)
+
+    def add_file_processed(self, size_bytes: int = 0, success: bool = True, skipped: bool = False) -> None:
+        """Add a processed file to the summary statistics.
+
+        Args:
+            size_bytes: Size of the file in bytes
+            success: Whether the file was processed successfully
+            skipped: Whether the file was skipped
+        """
+        self.summary.add_file_processed(size_bytes, success, skipped)
+
+    def add_error(self, error_message: str) -> None:
+        """Add an error to the summary statistics.
+
+        Args:
+            error_message: Description of the error
+        """
+        self.summary.add_error(error_message)
+
+    def get_summary(self) -> SummaryStatistics:
+        """Get the summary statistics object.
+
+        Returns:
+            Summary statistics object
+        """
+        return self.summary 
