@@ -6,13 +6,13 @@ Tests config-based logger setup and integration scenarios.
 
 import logging
 import tempfile
-from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
+from pathlib import Path
 
-from photo_backup.logger.core import setup_logger_from_config
 from photo_backup.logger.context import JobContextFilter
+from photo_backup.logger.core import setup_logger_from_config
 from photo_backup.logger.formatters import JSONFormatter
 
 

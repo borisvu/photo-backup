@@ -5,6 +5,7 @@ Tests log level parsing and job ID generation.
 """
 
 import logging
+
 import pytest
 
 from photo_backup.logger.utils import _parse_log_level, generate_job_id

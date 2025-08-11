@@ -8,9 +8,8 @@ import json
 import logging
 import tempfile
 import time
-from pathlib import Path
 
-import pytest
+from pathlib import Path
 
 from photo_backup.logger.context import JobContextFilter, OperationContext
 from photo_backup.logger.formatters import create_formatter

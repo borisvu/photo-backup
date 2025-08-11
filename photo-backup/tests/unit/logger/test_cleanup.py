@@ -7,10 +7,9 @@ Tests log file cleanup operations.
 import os
 import tempfile
 from datetime import datetime, timedelta
-from pathlib import Path
 from unittest.mock import Mock
 
-import pytest
+from pathlib import Path
 
 from photo_backup.logger.cleanup import cleanup_old_logs
 

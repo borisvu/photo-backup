@@ -6,7 +6,6 @@ Tests formatter creation and JSON formatter functionality.
 
 import json
 import logging
-import pytest
 
 from photo_backup.logger.formatters import JSONFormatter, create_formatter
 
