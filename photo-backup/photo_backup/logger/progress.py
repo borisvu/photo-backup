@@ -39,10 +39,10 @@ class ProgressLogger:
         self.logger = logger or logging.getLogger("photo_backup")
         self.operation_context = operation_context
         
-        self.current_item = 0
-        self.start_time = datetime.now()
-        self.last_update_time = None  # Set to None so first update is always logged
-        self.completed = False
+        self.current_item: int = 0
+        self.start_time: datetime = datetime.now()
+        self.last_update_time: Optional[datetime] = None  # Set to None so first update is always logged
+        self.completed: bool = False
 
     def update(self, current_item: int, message: str = "") -> None:
         """Update progress.
@@ -75,7 +75,7 @@ class ProgressLogger:
             progress_msg += f" - {message}"
         
         # Prepare extra fields for logging
-        extra = {
+        extra: dict[str, float | int | str] = {
             "progress_percentage": percentage,
             "current_item": self.current_item,
             "total_items": self.total_items,
@@ -109,7 +109,7 @@ class ProgressLogger:
             completion_msg += f" - {message}"
         
         # Prepare extra fields for logging
-        extra = {
+        extra: dict[str, float | int | str | bool] = {
             "progress_percentage": 100.0,
             "current_item": self.total_items,
             "total_items": self.total_items,
