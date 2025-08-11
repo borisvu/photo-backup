@@ -7,13 +7,12 @@ JSON, detailed, and simple text formats.
 
 import json
 import logging
-from typing import Optional
 
 
 class JSONFormatter(logging.Formatter):
     """JSON formatter for structured logging."""
 
-    def __init__(self, job_id: Optional[str] = None):
+    def __init__(self, job_id: str | None = None):
         super().__init__()
         self.job_id = job_id
 
@@ -81,7 +80,7 @@ class JSONFormatter(logging.Formatter):
 class DetailedFormatter(logging.Formatter):
     """Detailed formatter that handles missing operation fields gracefully."""
 
-    def __init__(self, include_timestamps: bool = True, job_id: Optional[str] = None):
+    def __init__(self, include_timestamps: bool = True, job_id: str | None = None):
         super().__init__()
         self.include_timestamps = include_timestamps
         self.job_id = job_id
@@ -90,36 +89,36 @@ class DetailedFormatter(logging.Formatter):
         """Format log record with operation context."""
         # Build format string based on available fields
         parts = []
-        
+
         if self.include_timestamps:
             parts.append("%(asctime)s")
-        
+
         parts.extend(["%(name)s", "%(levelname)s"])
-        
+
         # Only include job_id if it's provided or exists in record
         if self.job_id or hasattr(record, "job_id"):
             parts.append("[%(job_id)s]")
-        
+
         if hasattr(record, "operation"):
             parts.append("[%(operation)s]")
-        
+
         if hasattr(record, "operation_id"):
             parts.append("[%(operation_id)s]")
-        
+
         parts.append("-")
         parts.append("%(message)s")
-        
+
         # Create format string
         format_string = " ".join(parts)
-        
+
         # Create a temporary formatter with the dynamic format
         temp_formatter = logging.Formatter(format_string, datefmt="%Y-%m-%d %H:%M:%S")
-        
+
         return temp_formatter.format(record)
 
 
 def create_formatter(
-    format_type: str = "detailed", include_timestamps: bool = True, job_id: Optional[str] = None
+    format_type: str = "detailed", include_timestamps: bool = True, job_id: str | None = None
 ) -> logging.Formatter:
     """Create formatter based on configuration.
 
@@ -139,4 +138,4 @@ def create_formatter(
         else:
             return logging.Formatter("%(levelname)s - %(message)s")
     else:  # detailed (default)
-        return DetailedFormatter(include_timestamps=include_timestamps, job_id=job_id) 
+        return DetailedFormatter(include_timestamps=include_timestamps, job_id=job_id)

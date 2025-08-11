@@ -5,9 +5,7 @@ This module provides summary tracking and formatting for operations,
 including files processed, bytes transferred, and timing information.
 """
 
-import time
 from datetime import datetime, timedelta
-from typing import Optional
 
 from .utils import format_duration
 
@@ -22,22 +20,22 @@ class SummaryStatistics:
             operation_type: Type of operation (e.g., 'backup', 'scan', 'sync')
         """
         self.operation_type = operation_type
-        self.start_time: Optional[datetime] = None
-        self.end_time: Optional[datetime] = None
-        
+        self.start_time: datetime | None = None
+        self.end_time: datetime | None = None
+
         # File statistics
         self.files_processed = 0
         self.files_successful = 0
         self.files_failed = 0
         self.files_skipped = 0
-        
+
         # Size statistics
         self.bytes_processed = 0
         self.bytes_transferred = 0
-        
+
         # Error tracking
         self.errors: list[str] = []
-        
+
         # Start timing
         self.start()
 
@@ -59,7 +57,7 @@ class SummaryStatistics:
         """
         self.files_processed += 1
         self.bytes_processed += size_bytes
-        
+
         if skipped:
             self.files_skipped += 1
         elif success:
@@ -77,7 +75,7 @@ class SummaryStatistics:
         self.errors.append(error_message)
 
     @property
-    def duration(self) -> Optional[timedelta]:
+    def duration(self) -> timedelta | None:
         """Get the operation duration."""
         if self.start_time and self.end_time:
             return self.end_time - self.start_time
@@ -115,26 +113,26 @@ class SummaryStatistics:
             Formatted summary string
         """
         duration_str = format_duration(self.duration_seconds) if self.duration else "unknown"
-        
+
         # Format file sizes
         processed_mb = self.bytes_processed / 1024 / 1024
         transferred_mb = self.bytes_transferred / 1024 / 1024
-        
+
         summary_lines = [
             f"=== {self.operation_type.title()} Summary ===",
             f"Duration: {duration_str}",
             f"Files: {self.files_processed} processed, {self.files_successful} successful, {self.files_failed} failed, {self.files_skipped} skipped",
             f"Data: {processed_mb:.1f} MB processed, {transferred_mb:.1f} MB transferred",
             f"Rate: {self.transfer_rate_mbps:.1f} MB/s",
-            f"Success Rate: {self.success_rate:.1f}%"
+            f"Success Rate: {self.success_rate:.1f}%",
         ]
-        
+
         if include_errors and self.errors:
             summary_lines.append("")
             summary_lines.append("Errors:")
             for error in self.errors:
                 summary_lines.append(f"  - {error}")
-        
+
         return "\n".join(summary_lines)
 
     def to_dict(self) -> dict:
@@ -155,5 +153,5 @@ class SummaryStatistics:
             "bytes_transferred": self.bytes_transferred,
             "transfer_rate_mbps": self.transfer_rate_mbps,
             "success_rate": self.success_rate,
-            "errors": self.errors.copy() if self.errors else []
+            "errors": self.errors.copy() if self.errors else [],
         }

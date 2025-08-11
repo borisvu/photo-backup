@@ -7,10 +7,9 @@ operations and adding context to log records.
 
 import logging
 from datetime import datetime, timedelta
-from typing import Optional
 
-from .utils import generate_operation_id, format_duration
 from .summary import SummaryStatistics
+from .utils import format_duration, generate_operation_id
 
 
 class JobContextFilter(logging.Filter):
@@ -29,7 +28,7 @@ class JobContextFilter(logging.Filter):
 class OperationContext:
     """Context manager for tracking operations with logging."""
 
-    def __init__(self, operation_type: str, description: str = "", logger: Optional[logging.Logger] = None):
+    def __init__(self, operation_type: str, description: str = "", logger: logging.Logger | None = None):
         """Initialize operation context.
 
         Args:
@@ -100,7 +99,7 @@ class OperationContext:
             )
 
     @property
-    def duration(self) -> Optional[timedelta]:
+    def duration(self) -> timedelta | None:
         """Get operation duration."""
         if self.end_time:
             return self.end_time - self.start_time
@@ -159,4 +158,4 @@ class OperationContext:
         Returns:
             Summary statistics object
         """
-        return self.summary 
+        return self.summary
