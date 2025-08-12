@@ -82,15 +82,23 @@ class TestCredentialManager:
         # The second call should not be affected
         assert credentials2["access_key"] == "minioadmin"
 
-    def test_validate_test_credentials_success(self):
+    @patch("subprocess.run")
+    def test_validate_test_credentials_success(self, mock_run):
         """Test validation of valid test credentials."""
         config = Config(test_mode=True)
         manager = CredentialManager(config)
         
-        is_valid, message = manager.validate_credentials()
-        
-        assert is_valid is True
-        assert "Test credentials are valid" in message
+        # Mock rclone availability check
+        with patch.object(manager, '_check_rclone_available', return_value=True):
+            # Mock successful rclone test
+            mock_result = Mock()
+            mock_result.returncode = 0
+            mock_run.return_value = mock_result
+            
+            is_valid, message = manager.validate_credentials()
+            
+            assert is_valid is True
+            assert "validated successfully" in message
 
     def test_validate_test_credentials_failure(self):
         """Test validation of invalid test credentials."""
@@ -759,3 +767,236 @@ class Test1PasswordSessionCaching:
         assert secret_key is None
         assert manager._session_token is None  # Session should be cleared
         assert manager._session_expiry is None
+
+
+class TestCredentialValidation:
+    """Test credential validation functionality."""
+
+    def test_check_rclone_available_success(self):
+        """Test rclone availability check when rclone is available."""
+        config = Config(test_mode=False)
+        manager = CredentialManager(config)
+        
+        with patch("subprocess.run") as mock_run:
+            mock_result = Mock()
+            mock_result.returncode = 0
+            mock_run.return_value = mock_result
+            
+            is_available = manager._check_rclone_available()
+            
+            assert is_available is True
+            mock_run.assert_called_once_with(
+                ["rclone", "version"],
+                capture_output=True,
+                text=True,
+                timeout=10.0
+            )
+
+    def test_check_rclone_available_not_found(self):
+        """Test rclone availability check when rclone is not found."""
+        config = Config(test_mode=False)
+        manager = CredentialManager(config)
+        
+        with patch("subprocess.run") as mock_run:
+            mock_run.side_effect = FileNotFoundError()
+            
+            is_available = manager._check_rclone_available()
+            
+            assert is_available is False
+
+    def test_check_rclone_available_timeout(self):
+        """Test rclone availability check when command times out."""
+        config = Config(test_mode=False)
+        manager = CredentialManager(config)
+        
+        with patch("subprocess.run") as mock_run:
+            from subprocess import TimeoutExpired
+            mock_run.side_effect = TimeoutExpired(["rclone", "version"], 10.0)
+            
+            is_available = manager._check_rclone_available()
+            
+            assert is_available is False
+
+    def test_build_rclone_config(self):
+        """Test rclone configuration building."""
+        config = Config(test_mode=False)
+        manager = CredentialManager(config)
+        
+        credentials = {
+            "access_key": "test_access_key",
+            "secret_key": "test_secret_key",
+            "endpoint": "test.endpoint.com",
+            "region": "us-west-2",
+            "use_ssl": True,
+            "bucket": "test-bucket"
+        }
+        
+        rclone_config = manager._build_rclone_config(credentials)
+        
+        assert "[test-test-bucket]" in rclone_config
+        assert "type = s3" in rclone_config
+        assert "provider = Other" in rclone_config
+        assert "access_key_id = test_access_key" in rclone_config
+        assert "secret_access_key = test_secret_key" in rclone_config
+        assert "endpoint = test.endpoint.com" in rclone_config
+        assert "region = us-west-2" in rclone_config
+        assert "use_ssl = true" in rclone_config
+
+    def test_build_rclone_config_no_ssl(self):
+        """Test rclone configuration building with SSL disabled."""
+        config = Config(test_mode=False)
+        manager = CredentialManager(config)
+        
+        credentials = {
+            "access_key": "test_access_key",
+            "secret_key": "test_secret_key",
+            "endpoint": "localhost:9000",
+            "region": "us-east-1",
+            "use_ssl": False,
+            "bucket": "test-bucket"
+        }
+        
+        rclone_config = manager._build_rclone_config(credentials)
+        
+        assert "use_ssl = false" in rclone_config
+
+    @patch("subprocess.run")
+    def test_test_credentials_with_rclone_success(self, mock_run):
+        """Test successful credential validation with rclone."""
+        config = Config(test_mode=False)
+        manager = CredentialManager(config)
+        
+        # Mock credentials to avoid 1Password calls
+        test_credentials = {
+            "access_key": "test_access_key",
+            "secret_key": "test_secret_key",
+            "endpoint": "test.endpoint.com",
+            "region": "us-west-2",
+            "use_ssl": True,
+            "bucket": "test-bucket",
+            "timeout_seconds": 30,
+            "retry_attempts": 3
+        }
+        
+        with patch.object(manager, 'get_credentials', return_value=test_credentials):
+            # Mock rclone availability check
+            with patch.object(manager, '_check_rclone_available', return_value=True):
+                # Mock successful rclone ls command
+                mock_result = Mock()
+                mock_result.returncode = 0
+                mock_result.stdout = "test-file.txt"
+                mock_run.return_value = mock_result
+                
+                is_valid, message = manager.test_credentials_with_rclone()
+                
+                assert is_valid is True
+                assert "validated successfully" in message
+                
+                # Verify rclone command was called correctly
+                mock_run.assert_called_once()
+                call_args = mock_run.call_args
+                assert call_args[0][0] == ["rclone", "ls", "test-test-bucket", "--config", "-"]
+
+    @patch("subprocess.run")
+    def test_test_credentials_with_rclone_access_denied(self, mock_run):
+        """Test credential validation with access denied error."""
+        config = Config(test_mode=False)
+        manager = CredentialManager(config)
+        
+        # Mock rclone availability check
+        with patch.object(manager, '_check_rclone_available', return_value=True):
+            # Mock access denied error
+            mock_result = Mock()
+            mock_result.returncode = 1
+            mock_result.stderr = "Access Denied"
+            mock_run.return_value = mock_result
+            
+            is_valid, message = manager.test_credentials_with_rclone()
+            
+            assert is_valid is False
+            assert "Access denied" in message
+
+    @patch("subprocess.run")
+    def test_test_credentials_with_rclone_bucket_not_found(self, mock_run):
+        """Test credential validation with bucket not found error."""
+        config = Config(test_mode=False)
+        manager = CredentialManager(config)
+        
+        # Mock rclone availability check
+        with patch.object(manager, '_check_rclone_available', return_value=True):
+            # Mock bucket not found error
+            mock_result = Mock()
+            mock_result.returncode = 1
+            mock_result.stderr = "No such bucket"
+            mock_run.return_value = mock_result
+            
+            is_valid, message = manager.test_credentials_with_rclone()
+            
+            assert is_valid is False
+            assert "not found" in message
+
+    @patch("subprocess.run")
+    def test_test_credentials_with_rclone_connection_error(self, mock_run):
+        """Test credential validation with connection error."""
+        config = Config(test_mode=False)
+        manager = CredentialManager(config)
+        
+        # Mock rclone availability check
+        with patch.object(manager, '_check_rclone_available', return_value=True):
+            # Mock connection error
+            mock_result = Mock()
+            mock_result.returncode = 1
+            mock_result.stderr = "connection refused"
+            mock_run.return_value = mock_result
+            
+            is_valid, message = manager.test_credentials_with_rclone()
+            
+            assert is_valid is False
+            assert "Cannot connect" in message
+
+    @patch("subprocess.run")
+    def test_test_credentials_with_rclone_timeout(self, mock_run):
+        """Test credential validation with timeout."""
+        config = Config(test_mode=False)
+        manager = CredentialManager(config)
+        
+        # Mock rclone availability check
+        with patch.object(manager, '_check_rclone_available', return_value=True):
+            # Mock timeout
+            from subprocess import TimeoutExpired
+            mock_run.side_effect = TimeoutExpired(["rclone", "ls"], 30.0)
+            
+            is_valid, message = manager.test_credentials_with_rclone()
+            
+            assert is_valid is False
+            assert "timed out" in message
+
+    def test_test_credentials_with_rclone_not_available(self):
+        """Test credential validation when rclone is not available."""
+        config = Config(test_mode=False)
+        manager = CredentialManager(config)
+        
+        # Mock rclone availability check
+        with patch.object(manager, '_check_rclone_available', return_value=False):
+            is_valid, message = manager.test_credentials_with_rclone()
+            
+            assert is_valid is False
+            assert "rclone is not available" in message
+
+    @patch("subprocess.run")
+    def test_validate_test_credentials_with_rclone(self, mock_run):
+        """Test that test credential validation uses rclone testing."""
+        config = Config(test_mode=True)
+        manager = CredentialManager(config)
+        
+        # Mock rclone availability check
+        with patch.object(manager, '_check_rclone_available', return_value=True):
+            # Mock successful rclone test
+            mock_result = Mock()
+            mock_result.returncode = 0
+            mock_run.return_value = mock_result
+            
+            is_valid, message = manager.validate_credentials()
+            
+            assert is_valid is True
+            assert "validated successfully" in message

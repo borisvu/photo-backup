@@ -37,7 +37,7 @@ phases:
   phase_5_credentials:
     name: "Credential Management"
     tasks_total: 10
-    tasks_completed: 5
+    tasks_completed: 6
     status: "in_progress"
     
   phase_6_backup_core:
@@ -312,6 +312,11 @@ tasks:
     status: "completed"
     notes: "Implemented comprehensive 1Password session caching functionality. Features include: _get_session_token() method that manages session lifecycle, _is_session_valid() method with 5-minute expiry buffer, _authenticate_session() method that handles op signin and token extraction, _clear_session() method for cleanup, session token integration with credential retrieval via OP_SESSION_1password environment variable, automatic session clearing on authentication errors, test mode skipping for session management, 30-minute session expiry with proactive renewal, and robust error handling for timeouts and authentication failures. Comprehensive test coverage with 13 unit tests covering session lifecycle, validation, authentication, error handling, and integration with credential retrieval. All 492 tests pass."
 
+  task_048:
+    name: "Create Credential Validation"
+    status: "completed"
+    notes: "Implemented comprehensive credential validation functionality using rclone. Features include: test_credentials_with_rclone() method that validates credentials by attempting S3-compatible storage connection, _check_rclone_available() method to verify rclone installation, _build_rclone_config() method to generate temporary rclone configuration, integration with existing validate_credentials() method to use rclone testing for test mode validation, comprehensive error handling for access denied, bucket not found, connection errors, timeouts, and rclone unavailability, detailed error messages with actionable feedback, 30-second timeout for rclone operations, and robust subprocess management. Updated _validate_test_credentials() to use actual rclone testing instead of just credential presence checks. Comprehensive test coverage with 12 unit tests covering rclone availability, configuration building, credential testing scenarios, error conditions, and integration with existing validation flow. All 504 tests pass."
+
 # Current state summary
 current_state:
   working_directory: "/Users/you/git/backup-to-s3"
@@ -408,11 +413,11 @@ current_state:
 next_steps:
   immediate:
     - "Continue Phase 5: Credential Management"
-    - "Start with Task 48: Create Credential Validation"
-    - "Verify credentials work"
+    - "Start with Task 49: Add Error Handling"
+    - "Handle credential failures"
     
   upcoming:
-    - "Complete Phase 5: Credential Management (Tasks 48-52)"
+    - "Complete Phase 5: Credential Management (Tasks 49-52)"
     - "Move to Phase 6: Backup Engine Core (Tasks 53-62)"
     - "Return to Task 42: Logging Functional Test after backup implementation"
 

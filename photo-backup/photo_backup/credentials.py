@@ -241,6 +241,86 @@ class CredentialManager:
         else:
             return self._validate_production_credentials(credentials)
 
+    def test_credentials_with_rclone(self) -> tuple[bool, str]:
+        """Test credentials by attempting to connect to S3-compatible storage.
+
+        Returns:
+            Tuple of (is_valid, error_message)
+        """
+        credentials = self.get_credentials()
+        
+        # Check if rclone is available
+        if not self._check_rclone_available():
+            return False, "rclone is not available - cannot test credentials"
+        
+        try:
+            # Create a temporary rclone config for testing
+            config_content = self._build_rclone_config(credentials)
+            
+            # Test the connection with a simple ls command
+            result = subprocess.run(
+                ["rclone", "ls", f"test-{credentials['bucket']}", "--config", "-"],
+                input=config_content,
+                capture_output=True,
+                text=True,
+                timeout=30.0
+            )
+            
+            if result.returncode == 0:
+                return True, "Credentials validated successfully with rclone"
+            else:
+                error_msg = result.stderr.strip()
+                if "Access Denied" in error_msg or "403" in error_msg:
+                    return False, "Access denied - check credentials and permissions"
+                elif "No such bucket" in error_msg or "404" in error_msg:
+                    return False, f"Bucket '{credentials['bucket']}' not found"
+                elif "connection" in error_msg.lower():
+                    return False, f"Cannot connect to {credentials['endpoint']} - check endpoint and network"
+                else:
+                    return False, f"rclone test failed: {error_msg}"
+                    
+        except subprocess.TimeoutExpired:
+            return False, "rclone test timed out - check network connectivity"
+        except Exception as e:
+            return False, f"Error testing credentials with rclone: {str(e)}"
+
+    def _check_rclone_available(self) -> bool:
+        """Check if rclone is available in the system.
+
+        Returns:
+            True if rclone is available, False otherwise
+        """
+        try:
+            result = subprocess.run(
+                ["rclone", "version"],
+                capture_output=True,
+                text=True,
+                timeout=10.0
+            )
+            return result.returncode == 0
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            return False
+
+    def _build_rclone_config(self, credentials: Dict[str, Any]) -> str:
+        """Build rclone configuration content for testing.
+
+        Args:
+            credentials: Credentials dictionary
+
+        Returns:
+            rclone configuration content as string
+        """
+        config = f"""[test-{credentials['bucket']}]
+type = s3
+provider = Other
+access_key_id = {credentials['access_key']}
+secret_access_key = {credentials['secret_key']}
+endpoint = {credentials['endpoint']}
+region = {credentials['region']}
+use_ssl = {str(credentials['use_ssl']).lower()}
+"""
+        return config
+
     def _validate_test_credentials(self, credentials: Dict[str, Any]) -> tuple[bool, str]:
         """Validate test mode credentials.
 
@@ -250,10 +330,10 @@ class CredentialManager:
         Returns:
             Tuple of (is_valid, error_message)
         """
-        # For test mode, just check that credentials are present
-        # Actual Minio connectivity will be tested in Task 48
+        # Check that credentials are present
         if credentials["access_key"] == "minioadmin" and credentials["secret_key"] == "minioadmin":
-            return True, "Test credentials are valid"
+            # Test Minio connectivity with rclone
+            return self.test_credentials_with_rclone()
         else:
             return False, "Invalid test credentials - expected minioadmin/minioadmin"
 
