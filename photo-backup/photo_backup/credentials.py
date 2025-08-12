@@ -10,6 +10,7 @@ import json
 import logging
 import os
 import subprocess
+import time
 from typing import Any, Dict, Optional
 
 from .config.config import Config
@@ -27,6 +28,8 @@ class CredentialManager:
         self.config = config
         self.logger = logging.getLogger("photo_backup.credentials")
         self._credentials: Optional[Dict[str, Any]] = None
+        self._session_token: Optional[str] = None
+        self._session_expiry: Optional[float] = None
 
     def get_credentials(self) -> Dict[str, Any]:
         """Get credentials for storage access.
@@ -121,6 +124,9 @@ class CredentialManager:
             self.logger.error(f"1Password CLI not available: {message}")
             return None, None
         
+        # Get session token (handles authentication if needed)
+        session_token = self._get_session_token()
+        
         try:
             # Get the item reference from config or use default
             config_data = self.config.load_config()
@@ -129,16 +135,31 @@ class CredentialManager:
             
             self.logger.debug(f"Retrieving credentials from 1Password item: {item_ref}")
             
+            # Build command with session token if available
+            cmd = ["op", "item", "get", item_ref, "--format=json"]
+            env = os.environ.copy()
+            
+            if session_token:
+                env["OP_SESSION_1password"] = session_token
+            
             # Retrieve the item from 1Password
             result = subprocess.run(
-                ["op", "item", "get", item_ref, "--format=json"],
+                cmd,
                 capture_output=True,
                 text=True,
-                timeout=30.0
+                timeout=30.0,
+                env=env
             )
             
             if result.returncode != 0:
-                self.logger.error(f"1Password command failed: {result.stderr.strip()}")
+                error_msg = result.stderr.strip()
+                self.logger.error(f"1Password command failed: {error_msg}")
+                
+                # Check if it's a session-related error and clear the session
+                if "session" in error_msg.lower() or "authentication" in error_msg.lower():
+                    self.logger.debug("Clearing invalid session token")
+                    self._clear_session()
+                
                 return None, None
             
             # Parse the JSON response
@@ -278,6 +299,98 @@ class CredentialManager:
             info["access_key_preview"] = "None"
             
         return info
+
+    def _get_session_token(self) -> Optional[str]:
+        """Get a valid 1Password session token.
+
+        Returns:
+            Session token or None if not available/expired
+        """
+        # Skip session management in test mode
+        if self.config.is_test_mode():
+            return None
+        
+        # Check if we have a valid cached session
+        if self._is_session_valid():
+            self.logger.debug("Using cached 1Password session token")
+            return self._session_token
+        
+        # Get a new session token
+        return self._authenticate_session()
+
+    def _is_session_valid(self) -> bool:
+        """Check if the current session token is valid.
+
+        Returns:
+            True if session is valid, False otherwise
+        """
+        if not self._session_token or not self._session_expiry:
+            return False
+        
+        # Check if session has expired (with 5-minute buffer)
+        if time.time() > (self._session_expiry - 300):
+            self.logger.debug("1Password session token expired")
+            return False
+        
+        return True
+
+    def _authenticate_session(self) -> Optional[str]:
+        """Authenticate with 1Password and get a session token.
+
+        Returns:
+            Session token or None if authentication failed
+        """
+        try:
+            self.logger.debug("Authenticating with 1Password")
+            
+            # Sign in to 1Password (this will prompt for authentication)
+            result = subprocess.run(
+                ["op", "signin"],
+                capture_output=True,
+                text=True,
+                timeout=60.0
+            )
+            
+            if result.returncode != 0:
+                self.logger.error(f"1Password signin failed: {result.stderr.strip()}")
+                return None
+            
+            # Extract session token from output
+            # 1Password CLI typically outputs the session token on success
+            lines = result.stdout.strip().split('\n')
+            session_token = None
+            
+            for line in lines:
+                if line.startswith('export OP_SESSION_'):
+                    # Extract token from export command
+                    parts = line.split('=')
+                    if len(parts) == 2:
+                        session_token = parts[1].strip().strip('"')
+                        break
+            
+            if not session_token:
+                self.logger.error("Could not extract session token from 1Password signin output")
+                return None
+            
+            # Cache the session token with expiry (1Password sessions typically last 30 minutes)
+            self._session_token = session_token
+            self._session_expiry = time.time() + 1800  # 30 minutes
+            
+            self.logger.debug("Successfully authenticated with 1Password")
+            return session_token
+            
+        except subprocess.TimeoutExpired:
+            self.logger.error("1Password signin timed out")
+            return None
+        except Exception as e:
+            self.logger.error(f"Error during 1Password authentication: {e}")
+            return None
+
+    def _clear_session(self) -> None:
+        """Clear the cached session token."""
+        self._session_token = None
+        self._session_expiry = None
+        self.logger.debug("Cleared 1Password session token")
 
 
 def check_op_cli() -> tuple[bool, str]:

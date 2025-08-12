@@ -3,6 +3,7 @@ Unit tests for credential management functionality.
 """
 
 import json
+import time
 import pytest
 from unittest.mock import Mock, patch
 
@@ -565,3 +566,196 @@ class Test1PasswordCredentialRetrieval:
         result = manager._extract_field_from_1password_item(item_data, "access_key")
         
         assert result is None
+
+
+class Test1PasswordSessionCaching:
+    """Test 1Password session caching functionality."""
+
+    def test_session_caching_initialization(self):
+        """Test session caching initialization."""
+        config = Config(test_mode=False)
+        manager = CredentialManager(config)
+        
+        assert manager._session_token is None
+        assert manager._session_expiry is None
+
+    def test_get_session_token_test_mode_returns_none(self):
+        """Test that session token is None in test mode."""
+        config = Config(test_mode=True)
+        manager = CredentialManager(config)
+        
+        session_token = manager._get_session_token()
+        
+        assert session_token is None
+
+    def test_is_session_valid_no_token(self):
+        """Test session validation with no token."""
+        config = Config(test_mode=False)
+        manager = CredentialManager(config)
+        
+        assert manager._is_session_valid() is False
+
+    def test_is_session_valid_expired_token(self):
+        """Test session validation with expired token."""
+        config = Config(test_mode=False)
+        manager = CredentialManager(config)
+        
+        manager._session_token = "test_token"
+        manager._session_expiry = time.time() - 600  # Expired 10 minutes ago
+        
+        assert manager._is_session_valid() is False
+
+    def test_is_session_valid_valid_token(self):
+        """Test session validation with valid token."""
+        config = Config(test_mode=False)
+        manager = CredentialManager(config)
+        
+        manager._session_token = "test_token"
+        manager._session_expiry = time.time() + 1800  # Valid for 30 minutes
+        
+        assert manager._is_session_valid() is True
+
+    def test_is_session_valid_near_expiry(self):
+        """Test session validation with token near expiry (within 5-minute buffer)."""
+        config = Config(test_mode=False)
+        manager = CredentialManager(config)
+        
+        manager._session_token = "test_token"
+        manager._session_expiry = time.time() + 200  # Expires in ~3 minutes (within buffer)
+        
+        assert manager._is_session_valid() is False
+
+    @patch("subprocess.run")
+    def test_authenticate_session_success(self, mock_run):
+        """Test successful session authentication."""
+        mock_result = Mock()
+        mock_result.returncode = 0
+        mock_result.stdout = 'export OP_SESSION_1password="test_session_token"'
+        mock_run.return_value = mock_result
+        
+        config = Config(test_mode=False)
+        manager = CredentialManager(config)
+        
+        session_token = manager._authenticate_session()
+        
+        assert session_token == "test_session_token"
+        assert manager._session_token == "test_session_token"
+        assert manager._session_expiry is not None
+        assert manager._session_expiry > time.time()
+
+    @patch("subprocess.run")
+    def test_authenticate_session_failure(self, mock_run):
+        """Test failed session authentication."""
+        mock_result = Mock()
+        mock_result.returncode = 1
+        mock_result.stderr = "Authentication failed"
+        mock_run.return_value = mock_result
+        
+        config = Config(test_mode=False)
+        manager = CredentialManager(config)
+        
+        session_token = manager._authenticate_session()
+        
+        assert session_token is None
+        assert manager._session_token is None
+        assert manager._session_expiry is None
+
+    @patch("subprocess.run")
+    def test_authenticate_session_timeout(self, mock_run):
+        """Test session authentication timeout."""
+        from subprocess import TimeoutExpired
+        mock_run.side_effect = TimeoutExpired(["op", "signin"], 60.0)
+        
+        config = Config(test_mode=False)
+        manager = CredentialManager(config)
+        
+        session_token = manager._authenticate_session()
+        
+        assert session_token is None
+
+    @patch("subprocess.run")
+    def test_authenticate_session_no_token_in_output(self, mock_run):
+        """Test session authentication with no token in output."""
+        mock_result = Mock()
+        mock_result.returncode = 0
+        mock_result.stdout = "Sign in successful"
+        mock_run.return_value = mock_result
+        
+        config = Config(test_mode=False)
+        manager = CredentialManager(config)
+        
+        session_token = manager._authenticate_session()
+        
+        assert session_token is None
+
+    def test_clear_session(self):
+        """Test clearing session token."""
+        config = Config(test_mode=False)
+        manager = CredentialManager(config)
+        
+        # Set up a session
+        manager._session_token = "test_token"
+        manager._session_expiry = time.time() + 1800
+        
+        # Clear the session
+        manager._clear_session()
+        
+        assert manager._session_token is None
+        assert manager._session_expiry is None
+
+    @patch("photo_backup.credentials.check_op_cli")
+    @patch("subprocess.run")
+    def test_retrieve_credentials_with_session_token(self, mock_run, mock_check_op):
+        """Test credential retrieval with session token."""
+        mock_check_op.return_value = (True, "1Password CLI available")
+        
+        # Mock session token
+        config = Config(test_mode=False)
+        manager = CredentialManager(config)
+        manager._session_token = "test_session_token"
+        manager._session_expiry = time.time() + 1800
+        
+        # Mock successful credential retrieval
+        mock_result = Mock()
+        mock_result.returncode = 0
+        mock_result.stdout = json.dumps({
+            "fields": [
+                {"id": "access_key", "value": "test_access_key"},
+                {"id": "secret_key", "value": "test_secret_key"}
+            ]
+        })
+        mock_run.return_value = mock_result
+        
+        access_key, secret_key = manager._retrieve_credentials_from_1password()
+        
+        assert access_key == "test_access_key"
+        assert secret_key == "test_secret_key"
+        
+        # Verify session token was used in environment
+        mock_run.assert_called_once()
+        call_args = mock_run.call_args
+        assert call_args[1]["env"]["OP_SESSION_1password"] == "test_session_token"
+
+    @patch("photo_backup.credentials.check_op_cli")
+    @patch("subprocess.run")
+    def test_retrieve_credentials_session_error_clears_session(self, mock_run, mock_check_op):
+        """Test that session errors clear the cached session."""
+        mock_check_op.return_value = (True, "1Password CLI available")
+        
+        config = Config(test_mode=False)
+        manager = CredentialManager(config)
+        manager._session_token = "test_session_token"
+        manager._session_expiry = time.time() + 1800
+        
+        # Mock session error
+        mock_result = Mock()
+        mock_result.returncode = 1
+        mock_result.stderr = "Session expired"
+        mock_run.return_value = mock_result
+        
+        access_key, secret_key = manager._retrieve_credentials_from_1password()
+        
+        assert access_key is None
+        assert secret_key is None
+        assert manager._session_token is None  # Session should be cleared
+        assert manager._session_expiry is None
