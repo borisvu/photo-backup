@@ -6,6 +6,7 @@ for S3-compatible storage services, with support for 1Password integration
 and test mode using Minio.
 """
 
+import json
 import logging
 import os
 import subprocess
@@ -91,10 +92,12 @@ class CredentialManager:
         config_data = self.config.load_config()
         storage_config = config_data.get("storage", {})
         
-        # For now, return None values - will be implemented in Task 46
+        # Get credentials from 1Password
+        access_key, secret_key = self._retrieve_credentials_from_1password()
+        
         credentials = {
-            "access_key": storage_config.get("access_key"),  # Will be retrieved from 1Password
-            "secret_key": storage_config.get("secret_key"),  # Will be retrieved from 1Password
+            "access_key": access_key,
+            "secret_key": secret_key,
             "endpoint": storage_config.get("endpoint", "s3.wasabisys.com"),
             "region": storage_config.get("region", "us-east-1"),
             "use_ssl": storage_config.get("use_ssl", True),
@@ -105,6 +108,97 @@ class CredentialManager:
         
         self.logger.debug(f"Production credentials loaded: endpoint={credentials['endpoint']}, bucket={credentials['bucket']}")
         return credentials
+
+    def _retrieve_credentials_from_1password(self) -> tuple[Optional[str], Optional[str]]:
+        """Retrieve credentials from 1Password.
+
+        Returns:
+            Tuple of (access_key, secret_key) or (None, None) if retrieval fails
+        """
+        # Check if 1Password CLI is available
+        is_available, message = check_op_cli()
+        if not is_available:
+            self.logger.error(f"1Password CLI not available: {message}")
+            return None, None
+        
+        try:
+            # Get the item reference from config or use default
+            config_data = self.config.load_config()
+            storage_config = config_data.get("storage", {})
+            item_ref = storage_config.get("1password_item", "Wasabi S3 Credentials")
+            
+            self.logger.debug(f"Retrieving credentials from 1Password item: {item_ref}")
+            
+            # Retrieve the item from 1Password
+            result = subprocess.run(
+                ["op", "item", "get", item_ref, "--format=json"],
+                capture_output=True,
+                text=True,
+                timeout=30.0
+            )
+            
+            if result.returncode != 0:
+                self.logger.error(f"1Password command failed: {result.stderr.strip()}")
+                return None, None
+            
+            # Parse the JSON response
+            item_data = json.loads(result.stdout)
+            
+            # Extract credentials from the item
+            access_key = self._extract_field_from_1password_item(item_data, "access_key")
+            secret_key = self._extract_field_from_1password_item(item_data, "secret_key")
+            
+            if access_key and secret_key:
+                self.logger.debug("Successfully retrieved credentials from 1Password")
+                return access_key, secret_key
+            else:
+                self.logger.error("Failed to extract credentials from 1Password item")
+                return None, None
+                
+        except subprocess.TimeoutExpired:
+            self.logger.error("1Password command timed out")
+            return None, None
+        except json.JSONDecodeError as e:
+            self.logger.error(f"Failed to parse 1Password JSON response: {e}")
+            return None, None
+        except Exception as e:
+            self.logger.error(f"Error retrieving credentials from 1Password: {e}")
+            return None, None
+
+    def _extract_field_from_1password_item(self, item_data: Dict[str, Any], field_name: str) -> Optional[str]:
+        """Extract a field value from a 1Password item.
+
+        Args:
+            item_data: The 1Password item data
+            field_name: The name of the field to extract
+
+        Returns:
+            The field value or None if not found
+        """
+        try:
+            # 1Password items have a 'fields' array with 'id' and 'value' properties
+            fields = item_data.get("fields", [])
+            
+            for field in fields:
+                if field.get("id") == field_name:
+                    return field.get("value")
+            
+            # If not found by ID, try to find by label (case-insensitive)
+            for field in fields:
+                label = field.get("label", "").lower()
+                # Try exact match first
+                if label == field_name.lower():
+                    return field.get("value")
+                # Try partial match (e.g., "Access Key" matches "access_key")
+                if field_name.lower() in label.replace(" ", "_") or field_name.lower() in label.replace(" ", ""):
+                    return field.get("value")
+            
+            self.logger.warning(f"Field '{field_name}' not found in 1Password item")
+            return None
+            
+        except Exception as e:
+            self.logger.error(f"Error extracting field '{field_name}' from 1Password item: {e}")
+            return None
 
     def validate_credentials(self) -> tuple[bool, str]:
         """Validate that credentials are available and complete.
@@ -151,10 +245,9 @@ class CredentialManager:
         Returns:
             Tuple of (is_valid, error_message)
         """
-        # For now, just check that credentials are present
-        # 1Password integration will be implemented in Task 46
+        # Check that credentials were successfully retrieved from 1Password
         if credentials["access_key"] is None or credentials["secret_key"] is None:
-            return False, "Production credentials not available - 1Password integration not yet implemented"
+            return False, "Production credentials not available - 1Password integration failed"
         
         return True, "Production credentials are valid"
 

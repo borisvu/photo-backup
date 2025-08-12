@@ -37,7 +37,7 @@ phases:
   phase_5_credentials:
     name: "Credential Management"
     tasks_total: 10
-    tasks_completed: 3
+    tasks_completed: 4
     status: "in_progress"
     
   phase_6_backup_core:
@@ -302,6 +302,11 @@ tasks:
     status: "completed"
     notes: "Implemented comprehensive 1Password CLI detection functionality. Features include: check_op_cli() function that verifies op command exists and checks version compatibility (supports v1.x and v2.x), check_op_cli_in_test_mode() function that skips detection in test mode, robust error handling for timeouts, file not found, command failures, and exceptions. Version detection supports both '2.x.x' and 'v2.x.x' formats. Comprehensive test coverage with 9 unit tests covering all scenarios including successful detection, version compatibility, error conditions, and test mode skipping. All 467 tests pass."
 
+  task_046:
+    name: "Implement Credential Retrieval"
+    status: "completed"
+    notes: "Implemented comprehensive 1Password credential retrieval functionality. Features include: _retrieve_credentials_from_1password() method that retrieves access_key and secret_key from 1Password items, _extract_field_from_1password_item() method that supports both field ID and label-based extraction with flexible matching (e.g., 'Access Key' matches 'access_key'), configurable item reference via storage.1password_item config setting, robust error handling for CLI failures, timeouts, JSON parsing errors, and missing fields. Supports both test mode (returns Minio credentials) and production mode (retrieves from 1Password). Comprehensive test coverage with 12 unit tests covering successful retrieval, field extraction by ID/label, error conditions, and edge cases. All 479 tests pass."
+
 # Current state summary
 current_state:
   working_directory: "/Users/you/git/backup-to-s3"
@@ -398,11 +403,11 @@ current_state:
 next_steps:
   immediate:
     - "Continue Phase 5: Credential Management"
-    - "Start with Task 46: Implement Credential Retrieval"
-    - "Get credentials from 1Password"
+    - "Start with Task 47: Add Session Caching"
+    - "Cache 1Password session"
     
   upcoming:
-    - "Complete Phase 5: Credential Management (Tasks 46-52)"
+    - "Complete Phase 5: Credential Management (Tasks 47-52)"
     - "Move to Phase 6: Backup Engine Core (Tasks 53-62)"
     - "Return to Task 42: Logging Functional Test after backup implementation"
 

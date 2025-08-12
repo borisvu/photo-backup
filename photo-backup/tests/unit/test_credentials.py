@@ -2,6 +2,7 @@
 Unit tests for credential management functionality.
 """
 
+import json
 import pytest
 from unittest.mock import Mock, patch
 
@@ -113,8 +114,8 @@ class TestCredentialManager:
             assert is_valid is False
             assert "Invalid test credentials" in message
 
-    def test_validate_production_credentials_not_implemented(self):
-        """Test validation of production credentials (not yet implemented)."""
+    def test_validate_production_credentials_failed(self):
+        """Test validation of production credentials when 1Password integration fails."""
         config = Config(test_mode=False)
         manager = CredentialManager(config)
         
@@ -134,7 +135,7 @@ class TestCredentialManager:
             is_valid, message = manager.validate_credentials()
             
             assert is_valid is False
-            assert "1Password integration not yet implemented" in message
+            assert "1Password integration failed" in message
 
     def test_validate_credentials_missing_fields(self):
         """Test validation with missing credential fields."""
@@ -347,3 +348,220 @@ class Test1PasswordDetection:
         assert is_available is True
         assert "1Password CLI available" in message
         mock_check_op.assert_called_once()
+
+
+class Test1PasswordCredentialRetrieval:
+    """Test 1Password credential retrieval functionality."""
+
+    @patch("subprocess.run")
+    @patch("photo_backup.credentials.check_op_cli")
+    def test_retrieve_credentials_from_1password_success(self, mock_check_op, mock_run):
+        """Test successful credential retrieval from 1Password."""
+        mock_check_op.return_value = (True, "1Password CLI available")
+        
+        mock_result = Mock()
+        mock_result.returncode = 0
+        mock_result.stdout = json.dumps({
+            "fields": [
+                {"id": "access_key", "value": "test_access_key"},
+                {"id": "secret_key", "value": "test_secret_key"}
+            ]
+        })
+        mock_run.return_value = mock_result
+        
+        config = Config(test_mode=False)
+        manager = CredentialManager(config)
+        
+        access_key, secret_key = manager._retrieve_credentials_from_1password()
+        
+        assert access_key == "test_access_key"
+        assert secret_key == "test_secret_key"
+
+    @patch("subprocess.run")
+    @patch("photo_backup.credentials.check_op_cli")
+    def test_retrieve_credentials_from_1password_by_label(self, mock_check_op, mock_run):
+        """Test credential retrieval using field labels."""
+        mock_check_op.return_value = (True, "1Password CLI available")
+        
+        mock_result = Mock()
+        mock_result.returncode = 0
+        mock_result.stdout = json.dumps({
+            "fields": [
+                {"label": "Access Key", "value": "test_access_key"},
+                {"label": "Secret Key", "value": "test_secret_key"}
+            ]
+        })
+        mock_run.return_value = mock_result
+        
+        config = Config(test_mode=False)
+        manager = CredentialManager(config)
+        
+        access_key, secret_key = manager._retrieve_credentials_from_1password()
+        
+        assert access_key == "test_access_key"
+        assert secret_key == "test_secret_key"
+
+    @patch("photo_backup.credentials.check_op_cli")
+    def test_retrieve_credentials_from_1password_cli_not_available(self, mock_check_op):
+        """Test credential retrieval when 1Password CLI is not available."""
+        mock_check_op.return_value = (False, "1Password CLI not found")
+        
+        config = Config(test_mode=False)
+        manager = CredentialManager(config)
+        
+        access_key, secret_key = manager._retrieve_credentials_from_1password()
+        
+        assert access_key is None
+        assert secret_key is None
+
+    @patch("subprocess.run")
+    @patch("photo_backup.credentials.check_op_cli")
+    def test_retrieve_credentials_from_1password_command_failed(self, mock_check_op, mock_run):
+        """Test credential retrieval when 1Password command fails."""
+        mock_check_op.return_value = (True, "1Password CLI available")
+        
+        mock_result = Mock()
+        mock_result.returncode = 1
+        mock_result.stderr = "Item not found"
+        mock_run.return_value = mock_result
+        
+        config = Config(test_mode=False)
+        manager = CredentialManager(config)
+        
+        access_key, secret_key = manager._retrieve_credentials_from_1password()
+        
+        assert access_key is None
+        assert secret_key is None
+
+    @patch("subprocess.run")
+    @patch("photo_backup.credentials.check_op_cli")
+    def test_retrieve_credentials_from_1password_timeout(self, mock_check_op, mock_run):
+        """Test credential retrieval timeout."""
+        mock_check_op.return_value = (True, "1Password CLI available")
+        
+        from subprocess import TimeoutExpired
+        mock_run.side_effect = TimeoutExpired(["op", "item", "get"], 30.0)
+        
+        config = Config(test_mode=False)
+        manager = CredentialManager(config)
+        
+        access_key, secret_key = manager._retrieve_credentials_from_1password()
+        
+        assert access_key is None
+        assert secret_key is None
+
+    @patch("subprocess.run")
+    @patch("photo_backup.credentials.check_op_cli")
+    def test_retrieve_credentials_from_1password_invalid_json(self, mock_check_op, mock_run):
+        """Test credential retrieval with invalid JSON response."""
+        mock_check_op.return_value = (True, "1Password CLI available")
+        
+        mock_result = Mock()
+        mock_result.returncode = 0
+        mock_result.stdout = "invalid json"
+        mock_run.return_value = mock_result
+        
+        config = Config(test_mode=False)
+        manager = CredentialManager(config)
+        
+        access_key, secret_key = manager._retrieve_credentials_from_1password()
+        
+        assert access_key is None
+        assert secret_key is None
+
+    @patch("subprocess.run")
+    @patch("photo_backup.credentials.check_op_cli")
+    def test_retrieve_credentials_from_1password_missing_fields(self, mock_check_op, mock_run):
+        """Test credential retrieval when required fields are missing."""
+        mock_check_op.return_value = (True, "1Password CLI available")
+        
+        mock_result = Mock()
+        mock_result.returncode = 0
+        mock_result.stdout = json.dumps({
+            "fields": [
+                {"id": "username", "value": "test_user"}
+            ]
+        })
+        mock_run.return_value = mock_result
+        
+        config = Config(test_mode=False)
+        manager = CredentialManager(config)
+        
+        access_key, secret_key = manager._retrieve_credentials_from_1password()
+        
+        assert access_key is None
+        assert secret_key is None
+
+    def test_extract_field_from_1password_item_by_id(self):
+        """Test extracting field by ID from 1Password item."""
+        config = Config(test_mode=False)
+        manager = CredentialManager(config)
+        
+        item_data = {
+            "fields": [
+                {"id": "access_key", "value": "test_access_key"},
+                {"id": "secret_key", "value": "test_secret_key"}
+            ]
+        }
+        
+        access_key = manager._extract_field_from_1password_item(item_data, "access_key")
+        secret_key = manager._extract_field_from_1password_item(item_data, "secret_key")
+        
+        assert access_key == "test_access_key"
+        assert secret_key == "test_secret_key"
+
+    def test_extract_field_from_1password_item_by_label(self):
+        """Test extracting field by label from 1Password item."""
+        config = Config(test_mode=False)
+        manager = CredentialManager(config)
+        
+        item_data = {
+            "fields": [
+                {"label": "Access Key", "value": "test_access_key"},
+                {"label": "Secret Key", "value": "test_secret_key"}
+            ]
+        }
+        
+        access_key = manager._extract_field_from_1password_item(item_data, "access_key")
+        secret_key = manager._extract_field_from_1password_item(item_data, "secret_key")
+        
+        assert access_key == "test_access_key"
+        assert secret_key == "test_secret_key"
+
+    def test_extract_field_from_1password_item_not_found(self):
+        """Test extracting field that doesn't exist."""
+        config = Config(test_mode=False)
+        manager = CredentialManager(config)
+        
+        item_data = {
+            "fields": [
+                {"id": "username", "value": "test_user"}
+            ]
+        }
+        
+        result = manager._extract_field_from_1password_item(item_data, "access_key")
+        
+        assert result is None
+
+    def test_extract_field_from_1password_item_empty_fields(self):
+        """Test extracting field from item with no fields."""
+        config = Config(test_mode=False)
+        manager = CredentialManager(config)
+        
+        item_data = {"fields": []}
+        
+        result = manager._extract_field_from_1password_item(item_data, "access_key")
+        
+        assert result is None
+
+    def test_extract_field_from_1password_item_exception(self):
+        """Test extracting field with exception handling."""
+        config = Config(test_mode=False)
+        manager = CredentialManager(config)
+        
+        # Invalid item data that will cause an exception
+        item_data = None
+        
+        result = manager._extract_field_from_1password_item(item_data, "access_key")
+        
+        assert result is None
