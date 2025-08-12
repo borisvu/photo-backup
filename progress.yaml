@@ -31,7 +31,7 @@ phases:
   phase_4_logging:
     name: "Logging System"
     tasks_total: 10
-    tasks_completed: 7
+    tasks_completed: 8
     status: "in_progress"
     
   phase_5_credentials:
@@ -277,6 +277,11 @@ tasks:
     status: "completed"
     notes: "Implemented comprehensive summary statistics system with SummaryStatistics class for tracking operation metrics. Features include files processed (successful, failed, skipped), bytes processed and transferred, duration and transfer rate calculations, success rate percentage, and error tracking. Integrated with OperationContext for automatic summary creation and tracking. Added file processing methods (add_file_processed, add_error) and summary logging on operation completion. Enhanced JSON formatter to include summary data. Comprehensive test coverage with 16 unit tests and 5 integration tests. All 426 tests pass."
 
+  task_041:
+    name: "Create Log Viewer Command"
+    status: "completed"
+    notes: "Implemented comprehensive log viewer command (photo-backup logs) with multiple filtering and viewing options. Features include: --tail N for showing last N lines (default: 50), --level LEVEL for filtering by log level (DEBUG, INFO, WARNING, ERROR, CRITICAL), --errors shortcut for error/critical logs, --follow for real-time log following (like tail -f), and --json option for JSON output formatting. Leverages existing Unix tools under the hood: tail for log viewing and following, grep for text log filtering, jq for JSON log filtering (with grep fallback). Supports both production and test mode log paths automatically. Comprehensive test coverage with 14 unit tests for log viewer functionality and 5 functional tests for CLI integration. All 445 tests pass. Command provides comprehensive log viewing and filtering capabilities following Unix philosophy."
+
 # Current state summary
 current_state:
   working_directory: "/Users/you/git/backup-to-s3"
@@ -373,8 +378,8 @@ current_state:
 next_steps:
   immediate:
     - "Continue Phase 4: Logging System"
-    - "Start with Task 41: Create Log Viewer Command"
-    - "Implement comprehensive log viewing and filtering capabilities"
+    - "Start with Task 42: Logging Functional Test"
+    - "Run comprehensive logging system test with test backup"
     
   upcoming:
     - "Complete Phase 4 logging system"

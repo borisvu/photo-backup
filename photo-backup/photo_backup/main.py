@@ -11,6 +11,7 @@ import click
 
 from .__version__ import __version__
 from .cli.config_commands import config, setup_config, validate
+from .cli.log_commands import logs
 from .config.config import Config
 from .logger import generate_job_id, setup_logger_from_config
 
@@ -94,6 +95,7 @@ def main(ctx, test_mode, dry_run, version):
 main.add_command(config)
 main.add_command(setup_config)
 main.add_command(validate)
+main.add_command(logs)
 
 
 if __name__ == "__main__":
