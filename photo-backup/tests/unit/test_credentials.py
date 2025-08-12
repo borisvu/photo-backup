@@ -5,7 +5,7 @@ Unit tests for credential management functionality.
 import pytest
 from unittest.mock import Mock, patch
 
-from photo_backup.credentials import CredentialManager
+from photo_backup.credentials import CredentialManager, check_op_cli, check_op_cli_in_test_mode
 from photo_backup.config.config import Config
 
 
@@ -236,3 +236,114 @@ class TestCredentialManager:
             assert credentials["bucket"] == "custom-bucket"
             assert credentials["timeout_seconds"] == 60
             assert credentials["retry_attempts"] == 5
+
+
+class Test1PasswordDetection:
+    """Test 1Password CLI detection functionality."""
+
+    @patch("subprocess.run")
+    def test_check_op_cli_available(self, mock_run):
+        """Test successful 1Password CLI detection."""
+        mock_result = Mock()
+        mock_result.returncode = 0
+        mock_result.stdout = "2.12.0"
+        mock_run.return_value = mock_result
+
+        is_available, message = check_op_cli()
+
+        assert is_available is True
+        assert "1Password CLI available" in message
+        assert "2.12.0" in message
+
+    @patch("subprocess.run")
+    def test_check_op_cli_v1_version(self, mock_run):
+        """Test 1Password CLI v1 version detection."""
+        mock_result = Mock()
+        mock_result.returncode = 0
+        mock_result.stdout = "1.12.0"
+        mock_run.return_value = mock_result
+
+        is_available, message = check_op_cli()
+
+        assert is_available is True
+        assert "1Password CLI available" in message
+
+    @patch("subprocess.run")
+    def test_check_op_cli_unsupported_version(self, mock_run):
+        """Test unsupported 1Password CLI version."""
+        mock_result = Mock()
+        mock_result.returncode = 0
+        mock_result.stdout = "0.12.0"
+        mock_run.return_value = mock_result
+
+        is_available, message = check_op_cli()
+
+        assert is_available is False
+        assert "not supported" in message
+
+    @patch("subprocess.run")
+    def test_check_op_cli_command_failed(self, mock_run):
+        """Test 1Password CLI command failure."""
+        mock_result = Mock()
+        mock_result.returncode = 1
+        mock_result.stderr = "Command not found"
+        mock_run.return_value = mock_result
+
+        is_available, message = check_op_cli()
+
+        assert is_available is False
+        assert "command failed" in message
+
+    @patch("subprocess.run")
+    def test_check_op_cli_timeout(self, mock_run):
+        """Test 1Password CLI command timeout."""
+        from subprocess import TimeoutExpired
+        mock_run.side_effect = TimeoutExpired(["op", "--version"], 10.0)
+
+        is_available, message = check_op_cli()
+
+        assert is_available is False
+        assert "timed out" in message
+
+    @patch("subprocess.run")
+    def test_check_op_cli_not_found(self, mock_run):
+        """Test 1Password CLI not found."""
+        mock_run.side_effect = FileNotFoundError("No such file or directory")
+
+        is_available, message = check_op_cli()
+
+        assert is_available is False
+        assert "not found" in message
+
+    @patch("subprocess.run")
+    def test_check_op_cli_exception(self, mock_run):
+        """Test 1Password CLI check with exception."""
+        mock_run.side_effect = Exception("Unexpected error")
+
+        is_available, message = check_op_cli()
+
+        assert is_available is False
+        assert "Error checking" in message
+
+    @patch("os.environ.get")
+    def test_check_op_cli_in_test_mode_skipped(self, mock_env_get):
+        """Test 1Password CLI check skipped in test mode."""
+        mock_env_get.return_value = "1"
+
+        is_available, message = check_op_cli_in_test_mode()
+
+        assert is_available is True
+        assert "skipped in test mode" in message
+
+    @patch("os.environ.get")
+    @patch("photo_backup.credentials.check_op_cli")
+    def test_check_op_cli_in_test_mode_not_skipped(self, mock_check_op, mock_env_get):
+        """Test 1Password CLI check not skipped when not in test mode."""
+        mock_env_get.return_value = None
+        mock_check_op.return_value = (True, "1Password CLI available: 2.12.0")
+
+        is_available, message = check_op_cli_in_test_mode()
+
+        assert is_available is True
+        assert "1Password CLI available" in message
+        mock_check_op.assert_called_once()

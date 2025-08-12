@@ -37,7 +37,7 @@ phases:
   phase_5_credentials:
     name: "Credential Management"
     tasks_total: 10
-    tasks_completed: 1
+    tasks_completed: 3
     status: "in_progress"
     
   phase_6_backup_core:
@@ -292,6 +292,16 @@ tasks:
     status: "completed"
     notes: "Implemented comprehensive credential management system with CredentialManager class. Features include: test mode credentials (Minio: minioadmin/minioadmin, localhost:9000), production credentials (Wasabi via 1Password - placeholder for Task 46), credential validation with mode-specific logic, credential information retrieval with sensitive data masking, and credential caching. Supports custom configuration values and provides clear error messages. Comprehensive test coverage with 13 unit tests covering initialization, credential loading, validation, caching, and information retrieval in both test and production modes. All 458 tests pass."
 
+  task_044:
+    name: "Add Test Mode Credentials"
+    status: "completed"
+    notes: "COMPLETED - Hardcoded Minio credentials already implemented in Task 43. Test mode credentials are: access_key='minioadmin', secret_key='minioadmin', endpoint='localhost:9000'. These credentials are automatically used when running in test mode and are validated in the _validate_test_credentials method. Credentials are loaded from configuration with fallback to hardcoded defaults. All requirements for Task 44 were met in the CredentialManager implementation from Task 43."
+
+  task_045:
+    name: "Add 1Password Detection"
+    status: "completed"
+    notes: "Implemented comprehensive 1Password CLI detection functionality. Features include: check_op_cli() function that verifies op command exists and checks version compatibility (supports v1.x and v2.x), check_op_cli_in_test_mode() function that skips detection in test mode, robust error handling for timeouts, file not found, command failures, and exceptions. Version detection supports both '2.x.x' and 'v2.x.x' formats. Comprehensive test coverage with 9 unit tests covering all scenarios including successful detection, version compatibility, error conditions, and test mode skipping. All 467 tests pass."
+
 # Current state summary
 current_state:
   working_directory: "/Users/you/git/backup-to-s3"
@@ -388,11 +398,11 @@ current_state:
 next_steps:
   immediate:
     - "Continue Phase 5: Credential Management"
-    - "Start with Task 44: Add Test Mode Credentials"
-    - "Implement hardcoded Minio credentials for testing"
+    - "Start with Task 46: Implement Credential Retrieval"
+    - "Get credentials from 1Password"
     
   upcoming:
-    - "Complete Phase 5: Credential Management (Tasks 44-52)"
+    - "Complete Phase 5: Credential Management (Tasks 46-52)"
     - "Move to Phase 6: Backup Engine Core (Tasks 53-62)"
     - "Return to Task 42: Logging Functional Test after backup implementation"
 
