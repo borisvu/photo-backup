@@ -491,6 +491,20 @@ This document contains small, testable tasks for building the Photo Backup MVP. 
 - Return success/failure
   **Test**: Validates against Minio in test mode
 
+### Task 48.1: Investigate 1Password CLI Authentication Options
+
+**Goal**: Find ways to use 1Password CLI without Touch ID
+
+- Research 1Password CLI authentication methods
+- Investigate service account tokens
+- Look into API access tokens
+- Check for environment variable authentication
+- Explore session token persistence options
+- Document findings and recommendations
+- Test alternative authentication methods
+- Consider security implications
+  **Test**: Document authentication options and their trade-offs
+
 ### Task 49: Add Error Handling
 
 **Goal**: Handle credential failures

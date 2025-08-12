@@ -36,7 +36,7 @@ phases:
     
   phase_5_credentials:
     name: "Credential Management"
-    tasks_total: 10
+    tasks_total: 11
     tasks_completed: 6
     status: "in_progress"
     
@@ -317,6 +317,11 @@ tasks:
     status: "completed"
     notes: "Implemented comprehensive credential validation functionality using rclone. Features include: test_credentials_with_rclone() method that validates credentials by attempting S3-compatible storage connection, _check_rclone_available() method to verify rclone installation, _build_rclone_config() method to generate temporary rclone configuration, integration with existing validate_credentials() method to use rclone testing for test mode validation, comprehensive error handling for access denied, bucket not found, connection errors, timeouts, and rclone unavailability, detailed error messages with actionable feedback, 30-second timeout for rclone operations, and robust subprocess management. Updated _validate_test_credentials() to use actual rclone testing instead of just credential presence checks. Comprehensive test coverage with 12 unit tests covering rclone availability, configuration building, credential testing scenarios, error conditions, and integration with existing validation flow. All 504 tests pass."
 
+  task_048_1:
+    name: "Investigate 1Password CLI Authentication Options"
+    status: "not_started"
+    notes: "Research task to find ways to use 1Password CLI without requiring Touch ID authentication. Will investigate service account tokens, API access tokens, environment variable authentication, session token persistence options, and alternative authentication methods. Goal is to document authentication options and their security implications for automated/headless usage scenarios."
+
 # Current state summary
 current_state:
   working_directory: "/Users/you/git/backup-to-s3"
@@ -413,11 +418,11 @@ current_state:
 next_steps:
   immediate:
     - "Continue Phase 5: Credential Management"
-    - "Start with Task 49: Add Error Handling"
-    - "Handle credential failures"
+    - "Start with Task 48.1: Investigate 1Password CLI Authentication Options"
+    - "Find ways to use 1Password without Touch ID"
     
   upcoming:
-    - "Complete Phase 5: Credential Management (Tasks 49-52)"
+    - "Complete Phase 5: Credential Management (Tasks 48.1, 49-52)"
     - "Move to Phase 6: Backup Engine Core (Tasks 53-62)"
     - "Return to Task 42: Logging Functional Test after backup implementation"
 
