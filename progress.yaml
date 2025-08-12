@@ -282,6 +282,11 @@ tasks:
     status: "completed"
     notes: "Implemented comprehensive log viewer command (photo-backup logs) with multiple filtering and viewing options. Features include: --tail N for showing last N lines (default: 50), --level LEVEL for filtering by log level (DEBUG, INFO, WARNING, ERROR, CRITICAL), --errors shortcut for error/critical logs, --follow for real-time log following (like tail -f), and --json option for JSON output formatting. Leverages existing Unix tools under the hood: tail for log viewing and following, grep for text log filtering, jq for JSON log filtering (with grep fallback). Supports both production and test mode log paths automatically. Comprehensive test coverage with 14 unit tests for log viewer functionality and 5 functional tests for CLI integration. All 445 tests pass. Command provides comprehensive log viewing and filtering capabilities following Unix philosophy."
 
+  task_042:
+    name: "Logging Functional Test"
+    status: "skipped"
+    notes: "SKIPPED - Task requires actual backup functionality which is not yet implemented. Logging system is complete and tested through individual components (core, formatters, context, progress, summary, cleanup, log viewer). Will return to this task after implementing backup engine (Phase 6) to test logging during real backup operations. This ensures proper integration testing when the backup functionality is available."
+
 # Current state summary
 current_state:
   working_directory: "/Users/you/git/backup-to-s3"
@@ -377,13 +382,14 @@ current_state:
 # Next steps
 next_steps:
   immediate:
-    - "Continue Phase 4: Logging System"
-    - "Start with Task 42: Logging Functional Test"
-    - "Run comprehensive logging system test with test backup"
+    - "Complete Phase 4: Logging System (Task 42 skipped)"
+    - "Start Phase 5: Credential Management"
+    - "Begin with Task 43: Create Credentials Module"
     
   upcoming:
-    - "Complete Phase 4 logging system"
-    - "Move to Phase 5: Credential Management"
+    - "Complete Phase 5: Credential Management (Tasks 43-52)"
+    - "Move to Phase 6: Backup Engine Core (Tasks 53-62)"
+    - "Return to Task 42: Logging Functional Test after backup implementation"
 
 # Phase 1 Achievements
 phase_1_achievements:

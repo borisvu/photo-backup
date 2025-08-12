@@ -632,6 +632,19 @@ This document contains small, testable tasks for building the Photo Backup MVP. 
 - Save state
   **Test**: Complete backup to Minio succeeds
 
+### Return to Task 42: Logging Functional Test
+
+**Goal**: Complete logging system integration testing
+
+- Return to Task 42 after implementing backup engine (Phase 6)
+- Run comprehensive logging test during actual backup operations
+- Verify all log levels work during real backup process
+- Test file rotation with backup-generated logs
+- Validate JSON format output during backup operations
+- Ensure operation context, progress logging, and summary statistics work end-to-end
+- **Prerequisites**: Complete Phase 6 (Backup Engine Core) - Tasks 53-62
+- **Test**: Complete logging system works during real backup operations
+
 ## Phase 7: Drive Monitoring (Tasks 63-72)
 
 ### Task 63: Create Monitor Module
