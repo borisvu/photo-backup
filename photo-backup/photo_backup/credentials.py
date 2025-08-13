@@ -131,13 +131,20 @@ class CredentialManager:
 
         try:
             # Try to get credentials
-            self.get_credentials()  # Just test if we can get credentials
-            status["has_credentials"] = True
-            status["credential_info"] = self.get_credential_info()
-
+            credentials = self.get_credentials()
+            
             # Test credentials if available
             is_valid, message = self.validate_credentials()
             status["validation"] = {"is_valid": is_valid, "message": message}
+            
+            # Only report has_credentials as True if validation passes
+            if is_valid:
+                status["has_credentials"] = True
+                status["credential_info"] = self.get_credential_info()
+            else:
+                status["has_credentials"] = False
+                status["error"] = message
+                status["suggestion"] = "Set valid credentials via environment variables or config file"
 
         except CredentialError as e:
             status["error"] = e.message
