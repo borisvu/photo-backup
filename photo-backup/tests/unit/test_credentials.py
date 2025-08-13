@@ -72,17 +72,20 @@ class TestCredentialManagerErrorHandling:
         assert "WASABI_ACCESS_KEY" in message
 
     def test_get_credential_status_success(self):
-        """Test credential status when credentials are available."""
+        """Test credential status when credentials are available and valid."""
         config = Config(test_mode=True)
         manager = CredentialManager(config)
 
-        status = manager.get_credential_status()
+        # Mock validate_credentials to return success to avoid rclone dependency
+        with patch.object(manager, "validate_credentials", return_value=(True, "Credentials valid")):
+            status = manager.get_credential_status()
 
         assert status["mode"] == "test"
         assert status["has_credentials"] is True
         assert status["error"] is None
         assert status["credential_info"] is not None
         assert "validation" in status
+        assert status["validation"]["is_valid"] is True
 
     def test_get_credential_status_with_error(self):
         """Test credential status when error occurs."""

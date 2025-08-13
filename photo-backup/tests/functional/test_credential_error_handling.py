@@ -20,8 +20,8 @@ class TestCredentialErrorHandlingFunctional:
         """Test error handling when Minio container is not running in test mode."""
         # Ensure Minio is not running
         try:
-            subprocess.run(["docker", "stop", "minio"], capture_output=True, check=False)
-            subprocess.run(["docker", "rm", "minio"], capture_output=True, check=False)
+            subprocess.run(["docker", "stop", "photo-backup-minio-test"], capture_output=True, check=False)
+            subprocess.run(["docker", "rm", "photo-backup-minio-test"], capture_output=True, check=False)
         except FileNotFoundError:
             pass  # Docker not available, skip
 
