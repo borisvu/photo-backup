@@ -3,12 +3,12 @@ Unit tests for credential management functionality.
 """
 
 import json
+import os
 import time
-import pytest
 from unittest.mock import Mock, patch
 
-from photo_backup.credentials import CredentialManager, check_op_cli, check_op_cli_in_test_mode
 from photo_backup.config.config import Config
+from photo_backup.credentials import CredentialManager, check_op_cli, check_op_cli_in_test_mode
 
 
 class TestCredentialManager:
@@ -18,7 +18,7 @@ class TestCredentialManager:
         """Test CredentialManager initialization."""
         config = Config(test_mode=True)
         manager = CredentialManager(config)
-        
+
         assert manager.config == config
         assert manager.logger.name == "photo_backup.credentials"
         assert manager._credentials is None
@@ -27,9 +27,9 @@ class TestCredentialManager:
         """Test getting test mode credentials."""
         config = Config(test_mode=True)
         manager = CredentialManager(config)
-        
+
         credentials = manager.get_credentials()
-        
+
         assert credentials["access_key"] == "minioadmin"
         assert credentials["secret_key"] == "minioadmin"
         assert credentials["endpoint"] == "localhost:9000"
@@ -39,15 +39,15 @@ class TestCredentialManager:
         assert credentials["timeout_seconds"] == 30
         assert credentials["retry_attempts"] == 1
 
-    def test_get_production_credentials(self):
-        """Test getting production credentials."""
+    def test_get_production_credentials_no_credentials(self):
+        """Test getting production credentials when none are available."""
         config = Config(test_mode=False)
         manager = CredentialManager(config)
-        
+
         credentials = manager.get_credentials()
-        
-        assert credentials["access_key"] is None  # Will be retrieved from 1Password
-        assert credentials["secret_key"] is None  # Will be retrieved from 1Password
+
+        assert credentials["access_key"] is None  # No credentials available
+        assert credentials["secret_key"] is None  # No credentials available
         assert credentials["endpoint"] == "s3.wasabisys.com"
         assert credentials["region"] == "us-east-1"
         assert credentials["use_ssl"] is True
@@ -59,11 +59,11 @@ class TestCredentialManager:
         """Test that credentials are cached after first load."""
         config = Config(test_mode=True)
         manager = CredentialManager(config)
-        
+
         # First call should load credentials
         credentials1 = manager.get_credentials()
         assert manager._credentials is not None
-        
+
         # Second call should return cached credentials
         credentials2 = manager.get_credentials()
         assert credentials1 == credentials2
@@ -72,13 +72,13 @@ class TestCredentialManager:
         """Test that get_credentials returns a copy, not the original."""
         config = Config(test_mode=True)
         manager = CredentialManager(config)
-        
+
         credentials1 = manager.get_credentials()
         credentials2 = manager.get_credentials()
-        
+
         # Modify the returned credentials
         credentials1["access_key"] = "modified"
-        
+
         # The second call should not be affected
         assert credentials2["access_key"] == "minioadmin"
 
@@ -87,16 +87,16 @@ class TestCredentialManager:
         """Test validation of valid test credentials."""
         config = Config(test_mode=True)
         manager = CredentialManager(config)
-        
+
         # Mock rclone availability check
-        with patch.object(manager, '_check_rclone_available', return_value=True):
+        with patch.object(manager, "_check_rclone_available", return_value=True):
             # Mock successful rclone test
             mock_result = Mock()
             mock_result.returncode = 0
             mock_run.return_value = mock_result
-            
+
             is_valid, message = manager.validate_credentials()
-            
+
             assert is_valid is True
             assert "validated successfully" in message
 
@@ -104,9 +104,9 @@ class TestCredentialManager:
         """Test validation of invalid test credentials."""
         config = Config(test_mode=True)
         manager = CredentialManager(config)
-        
+
         # Mock the credentials to be invalid
-        with patch.object(manager, '_get_test_credentials') as mock_get:
+        with patch.object(manager, "_get_test_credentials") as mock_get:
             mock_get.return_value = {
                 "access_key": "wrong",
                 "secret_key": "wrong",
@@ -117,9 +117,9 @@ class TestCredentialManager:
                 "timeout_seconds": 30,
                 "retry_attempts": 1,
             }
-            
+
             is_valid, message = manager.validate_credentials()
-            
+
             assert is_valid is False
             assert "Invalid test credentials" in message
 
@@ -127,9 +127,9 @@ class TestCredentialManager:
         """Test validation of production credentials when 1Password integration fails."""
         config = Config(test_mode=False)
         manager = CredentialManager(config)
-        
+
         # Mock the production credentials to have None values
-        with patch.object(manager, '_get_production_credentials') as mock_get:
+        with patch.object(manager, "_get_production_credentials") as mock_get:
             mock_get.return_value = {
                 "access_key": None,
                 "secret_key": None,
@@ -140,19 +140,19 @@ class TestCredentialManager:
                 "timeout_seconds": 300,
                 "retry_attempts": 3,
             }
-            
+
             is_valid, message = manager.validate_credentials()
-            
+
             assert is_valid is False
-            assert "1Password integration failed" in message
+            assert "Production credentials not available" in message
 
     def test_validate_credentials_missing_fields(self):
         """Test validation with missing credential fields."""
         config = Config(test_mode=True)
         manager = CredentialManager(config)
-        
+
         # Mock credentials with missing fields
-        with patch.object(manager, '_get_test_credentials') as mock_get:
+        with patch.object(manager, "_get_test_credentials") as mock_get:
             mock_get.return_value = {
                 "access_key": "minioadmin",
                 "secret_key": "minioadmin",
@@ -162,9 +162,9 @@ class TestCredentialManager:
                 "timeout_seconds": 30,
                 "retry_attempts": 1,
             }
-            
+
             is_valid, message = manager.validate_credentials()
-            
+
             assert is_valid is False
             assert "Missing required credential field" in message
 
@@ -172,9 +172,9 @@ class TestCredentialManager:
         """Test getting credential information in test mode."""
         config = Config(test_mode=True)
         manager = CredentialManager(config)
-        
+
         info = manager.get_credential_info()
-        
+
         assert info["mode"] == "test"
         assert info["endpoint"] == "localhost:9000"
         assert info["bucket"] == "test-bucket"
@@ -190,9 +190,9 @@ class TestCredentialManager:
         """Test getting credential information in production mode."""
         config = Config(test_mode=False)
         manager = CredentialManager(config)
-        
+
         info = manager.get_credential_info()
-        
+
         assert info["mode"] == "production"
         assert info["endpoint"] == "s3.wasabisys.com"
         assert info["bucket"] == "my-photo-backup-bucket"
@@ -208,9 +208,9 @@ class TestCredentialManager:
         """Test that credential info masks sensitive data."""
         config = Config(test_mode=True)
         manager = CredentialManager(config)
-        
+
         info = manager.get_credential_info()
-        
+
         # Should not contain full access key
         assert "minioadmin" not in str(info)
         # Should contain masked version
@@ -219,9 +219,9 @@ class TestCredentialManager:
     def test_credential_manager_with_custom_config(self):
         """Test CredentialManager with custom configuration values."""
         config = Config(test_mode=True)
-        
+
         # Mock config to return custom storage settings
-        with patch.object(config, 'load_config') as mock_load:
+        with patch.object(config, "load_config") as mock_load:
             mock_load.return_value = {
                 "storage": {
                     "access_key": "custom-key",
@@ -234,10 +234,10 @@ class TestCredentialManager:
                     "retry_attempts": 5,
                 }
             }
-            
+
             manager = CredentialManager(config)
             credentials = manager.get_credentials()
-            
+
             assert credentials["access_key"] == "custom-key"
             assert credentials["secret_key"] == "custom-secret"
             assert credentials["endpoint"] == "custom-endpoint:9000"
@@ -308,6 +308,7 @@ class Test1PasswordDetection:
     def test_check_op_cli_timeout(self, mock_run):
         """Test 1Password CLI command timeout."""
         from subprocess import TimeoutExpired
+
         mock_run.side_effect = TimeoutExpired(["op", "--version"], 10.0)
 
         is_available, message = check_op_cli()
@@ -367,22 +368,24 @@ class Test1PasswordCredentialRetrieval:
     def test_retrieve_credentials_from_1password_success(self, mock_check_op, mock_run):
         """Test successful credential retrieval from 1Password."""
         mock_check_op.return_value = (True, "1Password CLI available")
-        
+
         mock_result = Mock()
         mock_result.returncode = 0
-        mock_result.stdout = json.dumps({
-            "fields": [
-                {"id": "access_key", "value": "test_access_key"},
-                {"id": "secret_key", "value": "test_secret_key"}
-            ]
-        })
+        mock_result.stdout = json.dumps(
+            {
+                "fields": [
+                    {"id": "access_key", "value": "test_access_key"},
+                    {"id": "secret_key", "value": "test_secret_key"},
+                ]
+            }
+        )
         mock_run.return_value = mock_result
-        
+
         config = Config(test_mode=False)
         manager = CredentialManager(config)
-        
+
         access_key, secret_key = manager._retrieve_credentials_from_1password()
-        
+
         assert access_key == "test_access_key"
         assert secret_key == "test_secret_key"
 
@@ -391,22 +394,24 @@ class Test1PasswordCredentialRetrieval:
     def test_retrieve_credentials_from_1password_by_label(self, mock_check_op, mock_run):
         """Test credential retrieval using field labels."""
         mock_check_op.return_value = (True, "1Password CLI available")
-        
+
         mock_result = Mock()
         mock_result.returncode = 0
-        mock_result.stdout = json.dumps({
-            "fields": [
-                {"label": "Access Key", "value": "test_access_key"},
-                {"label": "Secret Key", "value": "test_secret_key"}
-            ]
-        })
+        mock_result.stdout = json.dumps(
+            {
+                "fields": [
+                    {"label": "Access Key", "value": "test_access_key"},
+                    {"label": "Secret Key", "value": "test_secret_key"},
+                ]
+            }
+        )
         mock_run.return_value = mock_result
-        
+
         config = Config(test_mode=False)
         manager = CredentialManager(config)
-        
+
         access_key, secret_key = manager._retrieve_credentials_from_1password()
-        
+
         assert access_key == "test_access_key"
         assert secret_key == "test_secret_key"
 
@@ -414,12 +419,12 @@ class Test1PasswordCredentialRetrieval:
     def test_retrieve_credentials_from_1password_cli_not_available(self, mock_check_op):
         """Test credential retrieval when 1Password CLI is not available."""
         mock_check_op.return_value = (False, "1Password CLI not found")
-        
+
         config = Config(test_mode=False)
         manager = CredentialManager(config)
-        
+
         access_key, secret_key = manager._retrieve_credentials_from_1password()
-        
+
         assert access_key is None
         assert secret_key is None
 
@@ -428,17 +433,17 @@ class Test1PasswordCredentialRetrieval:
     def test_retrieve_credentials_from_1password_command_failed(self, mock_check_op, mock_run):
         """Test credential retrieval when 1Password command fails."""
         mock_check_op.return_value = (True, "1Password CLI available")
-        
+
         mock_result = Mock()
         mock_result.returncode = 1
         mock_result.stderr = "Item not found"
         mock_run.return_value = mock_result
-        
+
         config = Config(test_mode=False)
         manager = CredentialManager(config)
-        
+
         access_key, secret_key = manager._retrieve_credentials_from_1password()
-        
+
         assert access_key is None
         assert secret_key is None
 
@@ -447,15 +452,16 @@ class Test1PasswordCredentialRetrieval:
     def test_retrieve_credentials_from_1password_timeout(self, mock_check_op, mock_run):
         """Test credential retrieval timeout."""
         mock_check_op.return_value = (True, "1Password CLI available")
-        
+
         from subprocess import TimeoutExpired
+
         mock_run.side_effect = TimeoutExpired(["op", "item", "get"], 30.0)
-        
+
         config = Config(test_mode=False)
         manager = CredentialManager(config)
-        
+
         access_key, secret_key = manager._retrieve_credentials_from_1password()
-        
+
         assert access_key is None
         assert secret_key is None
 
@@ -464,17 +470,17 @@ class Test1PasswordCredentialRetrieval:
     def test_retrieve_credentials_from_1password_invalid_json(self, mock_check_op, mock_run):
         """Test credential retrieval with invalid JSON response."""
         mock_check_op.return_value = (True, "1Password CLI available")
-        
+
         mock_result = Mock()
         mock_result.returncode = 0
         mock_result.stdout = "invalid json"
         mock_run.return_value = mock_result
-        
+
         config = Config(test_mode=False)
         manager = CredentialManager(config)
-        
+
         access_key, secret_key = manager._retrieve_credentials_from_1password()
-        
+
         assert access_key is None
         assert secret_key is None
 
@@ -483,21 +489,17 @@ class Test1PasswordCredentialRetrieval:
     def test_retrieve_credentials_from_1password_missing_fields(self, mock_check_op, mock_run):
         """Test credential retrieval when required fields are missing."""
         mock_check_op.return_value = (True, "1Password CLI available")
-        
+
         mock_result = Mock()
         mock_result.returncode = 0
-        mock_result.stdout = json.dumps({
-            "fields": [
-                {"id": "username", "value": "test_user"}
-            ]
-        })
+        mock_result.stdout = json.dumps({"fields": [{"id": "username", "value": "test_user"}]})
         mock_run.return_value = mock_result
-        
+
         config = Config(test_mode=False)
         manager = CredentialManager(config)
-        
+
         access_key, secret_key = manager._retrieve_credentials_from_1password()
-        
+
         assert access_key is None
         assert secret_key is None
 
@@ -505,17 +507,17 @@ class Test1PasswordCredentialRetrieval:
         """Test extracting field by ID from 1Password item."""
         config = Config(test_mode=False)
         manager = CredentialManager(config)
-        
+
         item_data = {
             "fields": [
                 {"id": "access_key", "value": "test_access_key"},
-                {"id": "secret_key", "value": "test_secret_key"}
+                {"id": "secret_key", "value": "test_secret_key"},
             ]
         }
-        
+
         access_key = manager._extract_field_from_1password_item(item_data, "access_key")
         secret_key = manager._extract_field_from_1password_item(item_data, "secret_key")
-        
+
         assert access_key == "test_access_key"
         assert secret_key == "test_secret_key"
 
@@ -523,17 +525,17 @@ class Test1PasswordCredentialRetrieval:
         """Test extracting field by label from 1Password item."""
         config = Config(test_mode=False)
         manager = CredentialManager(config)
-        
+
         item_data = {
             "fields": [
                 {"label": "Access Key", "value": "test_access_key"},
-                {"label": "Secret Key", "value": "test_secret_key"}
+                {"label": "Secret Key", "value": "test_secret_key"},
             ]
         }
-        
+
         access_key = manager._extract_field_from_1password_item(item_data, "access_key")
         secret_key = manager._extract_field_from_1password_item(item_data, "secret_key")
-        
+
         assert access_key == "test_access_key"
         assert secret_key == "test_secret_key"
 
@@ -541,38 +543,34 @@ class Test1PasswordCredentialRetrieval:
         """Test extracting field that doesn't exist."""
         config = Config(test_mode=False)
         manager = CredentialManager(config)
-        
-        item_data = {
-            "fields": [
-                {"id": "username", "value": "test_user"}
-            ]
-        }
-        
+
+        item_data = {"fields": [{"id": "username", "value": "test_user"}]}
+
         result = manager._extract_field_from_1password_item(item_data, "access_key")
-        
+
         assert result is None
 
     def test_extract_field_from_1password_item_empty_fields(self):
         """Test extracting field from item with no fields."""
         config = Config(test_mode=False)
         manager = CredentialManager(config)
-        
+
         item_data = {"fields": []}
-        
+
         result = manager._extract_field_from_1password_item(item_data, "access_key")
-        
+
         assert result is None
 
     def test_extract_field_from_1password_item_exception(self):
         """Test extracting field with exception handling."""
         config = Config(test_mode=False)
         manager = CredentialManager(config)
-        
+
         # Invalid item data that will cause an exception
         item_data = None
-        
+
         result = manager._extract_field_from_1password_item(item_data, "access_key")
-        
+
         assert result is None
 
 
@@ -583,7 +581,7 @@ class Test1PasswordSessionCaching:
         """Test session caching initialization."""
         config = Config(test_mode=False)
         manager = CredentialManager(config)
-        
+
         assert manager._session_token is None
         assert manager._session_expiry is None
 
@@ -591,46 +589,46 @@ class Test1PasswordSessionCaching:
         """Test that session token is None in test mode."""
         config = Config(test_mode=True)
         manager = CredentialManager(config)
-        
+
         session_token = manager._get_session_token()
-        
+
         assert session_token is None
 
     def test_is_session_valid_no_token(self):
         """Test session validation with no token."""
         config = Config(test_mode=False)
         manager = CredentialManager(config)
-        
+
         assert manager._is_session_valid() is False
 
     def test_is_session_valid_expired_token(self):
         """Test session validation with expired token."""
         config = Config(test_mode=False)
         manager = CredentialManager(config)
-        
+
         manager._session_token = "test_token"
         manager._session_expiry = time.time() - 600  # Expired 10 minutes ago
-        
+
         assert manager._is_session_valid() is False
 
     def test_is_session_valid_valid_token(self):
         """Test session validation with valid token."""
         config = Config(test_mode=False)
         manager = CredentialManager(config)
-        
+
         manager._session_token = "test_token"
         manager._session_expiry = time.time() + 1800  # Valid for 30 minutes
-        
+
         assert manager._is_session_valid() is True
 
     def test_is_session_valid_near_expiry(self):
         """Test session validation with token near expiry (within 5-minute buffer)."""
         config = Config(test_mode=False)
         manager = CredentialManager(config)
-        
+
         manager._session_token = "test_token"
         manager._session_expiry = time.time() + 200  # Expires in ~3 minutes (within buffer)
-        
+
         assert manager._is_session_valid() is False
 
     @patch("subprocess.run")
@@ -640,12 +638,12 @@ class Test1PasswordSessionCaching:
         mock_result.returncode = 0
         mock_result.stdout = 'export OP_SESSION_1password="test_session_token"'
         mock_run.return_value = mock_result
-        
+
         config = Config(test_mode=False)
         manager = CredentialManager(config)
-        
+
         session_token = manager._authenticate_session()
-        
+
         assert session_token == "test_session_token"
         assert manager._session_token == "test_session_token"
         assert manager._session_expiry is not None
@@ -658,12 +656,12 @@ class Test1PasswordSessionCaching:
         mock_result.returncode = 1
         mock_result.stderr = "Authentication failed"
         mock_run.return_value = mock_result
-        
+
         config = Config(test_mode=False)
         manager = CredentialManager(config)
-        
+
         session_token = manager._authenticate_session()
-        
+
         assert session_token is None
         assert manager._session_token is None
         assert manager._session_expiry is None
@@ -672,13 +670,14 @@ class Test1PasswordSessionCaching:
     def test_authenticate_session_timeout(self, mock_run):
         """Test session authentication timeout."""
         from subprocess import TimeoutExpired
+
         mock_run.side_effect = TimeoutExpired(["op", "signin"], 60.0)
-        
+
         config = Config(test_mode=False)
         manager = CredentialManager(config)
-        
+
         session_token = manager._authenticate_session()
-        
+
         assert session_token is None
 
     @patch("subprocess.run")
@@ -688,26 +687,26 @@ class Test1PasswordSessionCaching:
         mock_result.returncode = 0
         mock_result.stdout = "Sign in successful"
         mock_run.return_value = mock_result
-        
+
         config = Config(test_mode=False)
         manager = CredentialManager(config)
-        
+
         session_token = manager._authenticate_session()
-        
+
         assert session_token is None
 
     def test_clear_session(self):
         """Test clearing session token."""
         config = Config(test_mode=False)
         manager = CredentialManager(config)
-        
+
         # Set up a session
         manager._session_token = "test_token"
         manager._session_expiry = time.time() + 1800
-        
+
         # Clear the session
         manager._clear_session()
-        
+
         assert manager._session_token is None
         assert manager._session_expiry is None
 
@@ -716,29 +715,31 @@ class Test1PasswordSessionCaching:
     def test_retrieve_credentials_with_session_token(self, mock_run, mock_check_op):
         """Test credential retrieval with session token."""
         mock_check_op.return_value = (True, "1Password CLI available")
-        
+
         # Mock session token
         config = Config(test_mode=False)
         manager = CredentialManager(config)
         manager._session_token = "test_session_token"
         manager._session_expiry = time.time() + 1800
-        
+
         # Mock successful credential retrieval
         mock_result = Mock()
         mock_result.returncode = 0
-        mock_result.stdout = json.dumps({
-            "fields": [
-                {"id": "access_key", "value": "test_access_key"},
-                {"id": "secret_key", "value": "test_secret_key"}
-            ]
-        })
+        mock_result.stdout = json.dumps(
+            {
+                "fields": [
+                    {"id": "access_key", "value": "test_access_key"},
+                    {"id": "secret_key", "value": "test_secret_key"},
+                ]
+            }
+        )
         mock_run.return_value = mock_result
-        
+
         access_key, secret_key = manager._retrieve_credentials_from_1password()
-        
+
         assert access_key == "test_access_key"
         assert secret_key == "test_secret_key"
-        
+
         # Verify session token was used in environment
         mock_run.assert_called_once()
         call_args = mock_run.call_args
@@ -749,20 +750,20 @@ class Test1PasswordSessionCaching:
     def test_retrieve_credentials_session_error_clears_session(self, mock_run, mock_check_op):
         """Test that session errors clear the cached session."""
         mock_check_op.return_value = (True, "1Password CLI available")
-        
+
         config = Config(test_mode=False)
         manager = CredentialManager(config)
         manager._session_token = "test_session_token"
         manager._session_expiry = time.time() + 1800
-        
+
         # Mock session error
         mock_result = Mock()
         mock_result.returncode = 1
         mock_result.stderr = "Session expired"
         mock_run.return_value = mock_result
-        
+
         access_key, secret_key = manager._retrieve_credentials_from_1password()
-        
+
         assert access_key is None
         assert secret_key is None
         assert manager._session_token is None  # Session should be cleared
@@ -776,63 +777,59 @@ class TestCredentialValidation:
         """Test rclone availability check when rclone is available."""
         config = Config(test_mode=False)
         manager = CredentialManager(config)
-        
+
         with patch("subprocess.run") as mock_run:
             mock_result = Mock()
             mock_result.returncode = 0
             mock_run.return_value = mock_result
-            
+
             is_available = manager._check_rclone_available()
-            
+
             assert is_available is True
-            mock_run.assert_called_once_with(
-                ["rclone", "version"],
-                capture_output=True,
-                text=True,
-                timeout=10.0
-            )
+            mock_run.assert_called_once_with(["rclone", "version"], capture_output=True, text=True, timeout=10.0)
 
     def test_check_rclone_available_not_found(self):
         """Test rclone availability check when rclone is not found."""
         config = Config(test_mode=False)
         manager = CredentialManager(config)
-        
+
         with patch("subprocess.run") as mock_run:
             mock_run.side_effect = FileNotFoundError()
-            
+
             is_available = manager._check_rclone_available()
-            
+
             assert is_available is False
 
     def test_check_rclone_available_timeout(self):
         """Test rclone availability check when command times out."""
         config = Config(test_mode=False)
         manager = CredentialManager(config)
-        
+
         with patch("subprocess.run") as mock_run:
             from subprocess import TimeoutExpired
+
             mock_run.side_effect = TimeoutExpired(["rclone", "version"], 10.0)
-            
+
             is_available = manager._check_rclone_available()
-            
+
             assert is_available is False
 
     def test_build_rclone_config(self):
         """Test rclone configuration building."""
         config = Config(test_mode=False)
         manager = CredentialManager(config)
-        
+
         credentials = {
             "access_key": "test_access_key",
             "secret_key": "test_secret_key",
             "endpoint": "test.endpoint.com",
             "region": "us-west-2",
             "use_ssl": True,
-            "bucket": "test-bucket"
+            "bucket": "test-bucket",
         }
-        
+
         rclone_config = manager._build_rclone_config(credentials)
-        
+
         assert "[test-test-bucket]" in rclone_config
         assert "type = s3" in rclone_config
         assert "provider = Other" in rclone_config
@@ -846,18 +843,18 @@ class TestCredentialValidation:
         """Test rclone configuration building with SSL disabled."""
         config = Config(test_mode=False)
         manager = CredentialManager(config)
-        
+
         credentials = {
             "access_key": "test_access_key",
             "secret_key": "test_secret_key",
             "endpoint": "localhost:9000",
             "region": "us-east-1",
             "use_ssl": False,
-            "bucket": "test-bucket"
+            "bucket": "test-bucket",
         }
-        
+
         rclone_config = manager._build_rclone_config(credentials)
-        
+
         assert "use_ssl = false" in rclone_config
 
     @patch("subprocess.run")
@@ -865,7 +862,7 @@ class TestCredentialValidation:
         """Test successful credential validation with rclone."""
         config = Config(test_mode=False)
         manager = CredentialManager(config)
-        
+
         # Mock credentials to avoid 1Password calls
         test_credentials = {
             "access_key": "test_access_key",
@@ -875,44 +872,45 @@ class TestCredentialValidation:
             "use_ssl": True,
             "bucket": "test-bucket",
             "timeout_seconds": 30,
-            "retry_attempts": 3
+            "retry_attempts": 3,
         }
-        
-        with patch.object(manager, 'get_credentials', return_value=test_credentials):
-            # Mock rclone availability check
-            with patch.object(manager, '_check_rclone_available', return_value=True):
-                # Mock successful rclone ls command
-                mock_result = Mock()
-                mock_result.returncode = 0
-                mock_result.stdout = "test-file.txt"
-                mock_run.return_value = mock_result
-                
-                is_valid, message = manager.test_credentials_with_rclone()
-                
-                assert is_valid is True
-                assert "validated successfully" in message
-                
-                # Verify rclone command was called correctly
-                mock_run.assert_called_once()
-                call_args = mock_run.call_args
-                assert call_args[0][0] == ["rclone", "ls", "test-test-bucket", "--config", "-"]
+
+        with (
+            patch.object(manager, "get_credentials", return_value=test_credentials),
+            patch.object(manager, "_check_rclone_available", return_value=True),
+        ):
+            # Mock successful rclone ls command
+            mock_result = Mock()
+            mock_result.returncode = 0
+            mock_result.stdout = "test-file.txt"
+            mock_run.return_value = mock_result
+
+            is_valid, message = manager.test_credentials_with_rclone()
+
+            assert is_valid is True
+            assert "validated successfully" in message
+
+            # Verify rclone command was called correctly
+            mock_run.assert_called_once()
+            call_args = mock_run.call_args
+            assert call_args[0][0] == ["rclone", "ls", "test-test-bucket", "--config", "-"]
 
     @patch("subprocess.run")
     def test_test_credentials_with_rclone_access_denied(self, mock_run):
         """Test credential validation with access denied error."""
         config = Config(test_mode=False)
         manager = CredentialManager(config)
-        
+
         # Mock rclone availability check
-        with patch.object(manager, '_check_rclone_available', return_value=True):
+        with patch.object(manager, "_check_rclone_available", return_value=True):
             # Mock access denied error
             mock_result = Mock()
             mock_result.returncode = 1
             mock_result.stderr = "Access Denied"
             mock_run.return_value = mock_result
-            
+
             is_valid, message = manager.test_credentials_with_rclone()
-            
+
             assert is_valid is False
             assert "Access denied" in message
 
@@ -921,17 +919,17 @@ class TestCredentialValidation:
         """Test credential validation with bucket not found error."""
         config = Config(test_mode=False)
         manager = CredentialManager(config)
-        
+
         # Mock rclone availability check
-        with patch.object(manager, '_check_rclone_available', return_value=True):
+        with patch.object(manager, "_check_rclone_available", return_value=True):
             # Mock bucket not found error
             mock_result = Mock()
             mock_result.returncode = 1
             mock_result.stderr = "No such bucket"
             mock_run.return_value = mock_result
-            
+
             is_valid, message = manager.test_credentials_with_rclone()
-            
+
             assert is_valid is False
             assert "not found" in message
 
@@ -940,17 +938,17 @@ class TestCredentialValidation:
         """Test credential validation with connection error."""
         config = Config(test_mode=False)
         manager = CredentialManager(config)
-        
+
         # Mock rclone availability check
-        with patch.object(manager, '_check_rclone_available', return_value=True):
+        with patch.object(manager, "_check_rclone_available", return_value=True):
             # Mock connection error
             mock_result = Mock()
             mock_result.returncode = 1
             mock_result.stderr = "connection refused"
             mock_run.return_value = mock_result
-            
+
             is_valid, message = manager.test_credentials_with_rclone()
-            
+
             assert is_valid is False
             assert "Cannot connect" in message
 
@@ -959,15 +957,16 @@ class TestCredentialValidation:
         """Test credential validation with timeout."""
         config = Config(test_mode=False)
         manager = CredentialManager(config)
-        
+
         # Mock rclone availability check
-        with patch.object(manager, '_check_rclone_available', return_value=True):
+        with patch.object(manager, "_check_rclone_available", return_value=True):
             # Mock timeout
             from subprocess import TimeoutExpired
+
             mock_run.side_effect = TimeoutExpired(["rclone", "ls"], 30.0)
-            
+
             is_valid, message = manager.test_credentials_with_rclone()
-            
+
             assert is_valid is False
             assert "timed out" in message
 
@@ -975,11 +974,11 @@ class TestCredentialValidation:
         """Test credential validation when rclone is not available."""
         config = Config(test_mode=False)
         manager = CredentialManager(config)
-        
+
         # Mock rclone availability check
-        with patch.object(manager, '_check_rclone_available', return_value=False):
+        with patch.object(manager, "_check_rclone_available", return_value=False):
             is_valid, message = manager.test_credentials_with_rclone()
-            
+
             assert is_valid is False
             assert "rclone is not available" in message
 
@@ -988,15 +987,213 @@ class TestCredentialValidation:
         """Test that test credential validation uses rclone testing."""
         config = Config(test_mode=True)
         manager = CredentialManager(config)
-        
+
         # Mock rclone availability check
-        with patch.object(manager, '_check_rclone_available', return_value=True):
+        with patch.object(manager, "_check_rclone_available", return_value=True):
             # Mock successful rclone test
             mock_result = Mock()
             mock_result.returncode = 0
             mock_run.return_value = mock_result
-            
+
             is_valid, message = manager.validate_credentials()
-            
+
             assert is_valid is True
             assert "validated successfully" in message
+
+
+class TestDirectCredentials:
+    """Test direct credential functionality."""
+
+    @patch.dict(os.environ, {"WASABI_ACCESS_KEY": "test_access_key", "WASABI_SECRET_KEY": "test_secret_key"})
+    def test_get_direct_credentials_from_environment(self):
+        """Test getting credentials from environment variables."""
+        config = Config(test_mode=False)
+        manager = CredentialManager(config)
+
+        access_key, secret_key = manager._get_direct_credentials()
+
+        assert access_key == "test_access_key"
+        assert secret_key == "test_secret_key"
+
+    @patch.dict(os.environ, {"S3_ACCESS_KEY": "test_s3_access_key", "S3_SECRET_KEY": "test_s3_secret_key"})
+    def test_get_direct_credentials_from_s3_environment(self):
+        """Test getting credentials from S3_ environment variables."""
+        config = Config(test_mode=False)
+        manager = CredentialManager(config)
+
+        access_key, secret_key = manager._get_direct_credentials()
+
+        assert access_key == "test_s3_access_key"
+        assert secret_key == "test_s3_secret_key"
+
+    @patch.dict(os.environ, {}, clear=True)
+    def test_get_direct_credentials_from_config_file(self):
+        """Test getting credentials from config file."""
+        config = Config(test_mode=False)
+        manager = CredentialManager(config)
+
+        # Mock config to return credentials
+        with patch.object(config, "load_config") as mock_load_config:
+            mock_load_config.return_value = {
+                "storage": {"access_key": "config_access_key", "secret_key": "config_secret_key"}
+            }
+
+            access_key, secret_key = manager._get_direct_credentials()
+
+            assert access_key == "config_access_key"
+            assert secret_key == "config_secret_key"
+
+    @patch.dict(os.environ, {}, clear=True)
+    def test_get_direct_credentials_not_found(self):
+        """Test getting credentials when none are available."""
+        config = Config(test_mode=False)
+        manager = CredentialManager(config)
+
+        access_key, secret_key = manager._get_direct_credentials()
+
+        assert access_key is None
+        assert secret_key is None
+
+    @patch.dict(
+        os.environ,
+        {
+            "WASABI_ACCESS_KEY": "test_access_key"
+            # Missing WASABI_SECRET_KEY
+        },
+    )
+    def test_get_direct_credentials_partial_environment(self):
+        """Test getting credentials when only access key is available."""
+        config = Config(test_mode=False)
+        manager = CredentialManager(config)
+
+        access_key, secret_key = manager._get_direct_credentials()
+
+        assert access_key is None
+        assert secret_key is None
+
+    @patch.dict(os.environ, {"WASABI_ACCESS_KEY": "test_access_key", "WASABI_SECRET_KEY": "test_secret_key"})
+    def test_production_credentials_with_direct_credentials(self):
+        """Test production credentials using direct credentials."""
+        config = Config(test_mode=False)
+        manager = CredentialManager(config)
+
+        credentials = manager.get_credentials()
+
+        assert credentials["access_key"] == "test_access_key"
+        assert credentials["secret_key"] == "test_secret_key"
+        assert credentials["endpoint"] == "s3.wasabisys.com"
+        assert credentials["bucket"] == "my-photo-backup-bucket"
+
+    @patch.dict(os.environ, {}, clear=True)
+    def test_production_credentials_fallback_to_1password(self):
+        """Test production credentials falling back to 1Password when configured."""
+        config = Config(test_mode=False)
+        manager = CredentialManager(config)
+
+        # Mock config to enable 1Password
+        with patch.object(config, "load_config") as mock_load_config:
+            mock_load_config.return_value = {
+                "storage": {"use_1password": True, "1password_item": "Wasabi S3 Credentials"}
+            }
+
+            # Mock 1Password credential retrieval
+            with patch.object(manager, "_retrieve_credentials_from_1password") as mock_1p:
+                mock_1p.return_value = ("1p_access_key", "1p_secret_key")
+
+                credentials = manager.get_credentials()
+
+                assert credentials["access_key"] == "1p_access_key"
+                assert credentials["secret_key"] == "1p_secret_key"
+                mock_1p.assert_called_once()
+
+    @patch.dict(os.environ, {}, clear=True)
+    def test_production_credentials_no_credentials_available(self):
+        """Test production credentials when no credentials are available."""
+        config = Config(test_mode=False)
+        manager = CredentialManager(config)
+
+        # Mock config to not enable 1Password
+        with patch.object(config, "load_config") as mock_load_config:
+            mock_load_config.return_value = {"storage": {"use_1password": False}}
+
+            credentials = manager.get_credentials()
+
+            assert credentials["access_key"] is None
+            assert credentials["secret_key"] is None
+
+    def test_get_credential_source_test_mode(self):
+        """Test credential source detection in test mode."""
+        config = Config(test_mode=True)
+        manager = CredentialManager(config)
+
+        source = manager._get_credential_source()
+
+        assert source == "test_mode"
+
+    @patch.dict(os.environ, {"WASABI_ACCESS_KEY": "test_access_key", "WASABI_SECRET_KEY": "test_secret_key"})
+    def test_get_credential_source_environment(self):
+        """Test credential source detection from environment variables."""
+        config = Config(test_mode=False)
+        manager = CredentialManager(config)
+
+        source = manager._get_credential_source()
+
+        assert source == "environment_variables"
+
+    @patch.dict(os.environ, {}, clear=True)
+    def test_get_credential_source_config_file(self):
+        """Test credential source detection from config file."""
+        config = Config(test_mode=False)
+        manager = CredentialManager(config)
+
+        # Mock config to return credentials
+        with patch.object(config, "load_config") as mock_load_config:
+            mock_load_config.return_value = {
+                "storage": {"access_key": "config_access_key", "secret_key": "config_secret_key"}
+            }
+
+            source = manager._get_credential_source()
+
+            assert source == "config_file"
+
+    @patch.dict(os.environ, {}, clear=True)
+    def test_get_credential_source_1password(self):
+        """Test credential source detection for 1Password."""
+        config = Config(test_mode=False)
+        manager = CredentialManager(config)
+
+        # Mock config to enable 1Password
+        with patch.object(config, "load_config") as mock_load_config:
+            mock_load_config.return_value = {"storage": {"use_1password": True}}
+
+            source = manager._get_credential_source()
+
+            assert source == "1password"
+
+    @patch.dict(os.environ, {}, clear=True)
+    def test_get_credential_source_none(self):
+        """Test credential source detection when no credentials are available."""
+        config = Config(test_mode=False)
+        manager = CredentialManager(config)
+
+        # Mock config to return no credentials
+        with patch.object(config, "load_config") as mock_load_config:
+            mock_load_config.return_value = {"storage": {}}
+
+            source = manager._get_credential_source()
+
+            assert source == "none"
+
+    @patch.dict(os.environ, {"WASABI_ACCESS_KEY": "test_access_key", "WASABI_SECRET_KEY": "test_secret_key"})
+    def test_credential_info_with_direct_credentials(self):
+        """Test credential info with direct credentials."""
+        config = Config(test_mode=False)
+        manager = CredentialManager(config)
+
+        info = manager.get_credential_info()
+
+        assert info["mode"] == "production"
+        assert info["credential_source"] == "environment_variables"
+        assert info["has_access_key"] is True
+        assert info["has_secret_key"] is True
+        assert info["access_key_preview"] == "test..._key"

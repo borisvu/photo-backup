@@ -37,7 +37,7 @@ phases:
   phase_5_credentials:
     name: "Credential Management"
     tasks_total: 11
-    tasks_completed: 6
+    tasks_completed: 7
     status: "in_progress"
     
   phase_6_backup_core:
@@ -318,9 +318,33 @@ tasks:
     notes: "Implemented comprehensive credential validation functionality using rclone. Features include: test_credentials_with_rclone() method that validates credentials by attempting S3-compatible storage connection, _check_rclone_available() method to verify rclone installation, _build_rclone_config() method to generate temporary rclone configuration, integration with existing validate_credentials() method to use rclone testing for test mode validation, comprehensive error handling for access denied, bucket not found, connection errors, timeouts, and rclone unavailability, detailed error messages with actionable feedback, 30-second timeout for rclone operations, and robust subprocess management. Updated _validate_test_credentials() to use actual rclone testing instead of just credential presence checks. Comprehensive test coverage with 12 unit tests covering rclone availability, configuration building, credential testing scenarios, error conditions, and integration with existing validation flow. All 504 tests pass."
 
   task_048_1:
-    name: "Investigate 1Password CLI Authentication Options"
-    status: "not_started"
-    notes: "Research task to find ways to use 1Password CLI without requiring Touch ID authentication. Will investigate service account tokens, API access tokens, environment variable authentication, session token persistence options, and alternative authentication methods. Goal is to document authentication options and their security implications for automated/headless usage scenarios."
+    name: "Implement Direct Credential Support"
+    status: "completed"
+    notes: |
+      Successfully implemented direct credential support as primary method with 1Password as optional fallback:
+      
+      **Key Features:**
+      - Direct credentials from environment variables (WASABI_ACCESS_KEY, WASABI_SECRET_KEY)
+      - Direct credentials from config file (storage.access_key, storage.secret_key)
+      - Fallback to 1Password when configured (storage.use_1password: true)
+      - Credential source detection and reporting
+      - Comprehensive unit and functional tests (14 new unit tests, 8 functional tests)
+      - Maintains backward compatibility with existing 1Password integration
+      
+      **Implementation Details:**
+      - Modified CredentialManager to try direct credentials first
+      - Added _get_direct_credentials() method for environment/config file lookup
+      - Added _get_credential_source() method for source detection
+      - Updated validation to use rclone testing for both test and production modes
+      - Enhanced credential info with source tracking
+      - All 526 tests passing
+      
+      **Benefits:**
+      - Simpler authentication for users with direct Wasabi credentials
+      - No Touch ID requirement for automation scenarios
+      - Maintains flexibility with 1Password integration as option
+      - Better security through environment variable usage
+      - Easier deployment in CI/CD environments
 
 # Current state summary
 current_state:
@@ -418,11 +442,11 @@ current_state:
 next_steps:
   immediate:
     - "Continue Phase 5: Credential Management"
-    - "Start with Task 48.1: Investigate 1Password CLI Authentication Options"
-    - "Find ways to use 1Password without Touch ID"
+    - "Start with Task 49: Add Error Handling"
+    - "Implement comprehensive error handling for credential failures"
     
   upcoming:
-    - "Complete Phase 5: Credential Management (Tasks 48.1, 49-52)"
+    - "Complete Phase 5: Credential Management (Tasks 49-52)"
     - "Move to Phase 6: Backup Engine Core (Tasks 53-62)"
     - "Return to Task 42: Logging Functional Test after backup implementation"
 
