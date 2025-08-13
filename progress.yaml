@@ -37,7 +37,7 @@ phases:
   phase_5_credentials:
     name: "Credential Management"
     tasks_total: 11
-    tasks_completed: 7
+    tasks_completed: 8
     status: "in_progress"
     
   phase_6_backup_core:
@@ -346,6 +346,48 @@ tasks:
       - Better security through environment variable usage
       - Easier deployment in CI/CD environments
 
+  task_049:
+    name: "Add Error Handling"
+    status: "completed"
+    notes: |
+      Successfully implemented comprehensive error handling for credential failures:
+      
+      **Key Features:**
+      - Created CredentialError exception class with message, suggestion, and details
+      - Enhanced error handling throughout CredentialManager with specific error types
+      - Test mode specific suggestions (e.g., "Start Minio container with docker run")
+      - Production mode specific guidance (e.g., "Set WASABI_ACCESS_KEY environment variables")
+      - Comprehensive error catching for 1Password CLI failures, rclone issues, and authentication problems
+      - Graceful handling of missing Minio container with actionable suggestions
+      - Detailed error messages with specific fixes and troubleshooting steps
+      
+      **Implementation Details:**
+      - Added CredentialError class with structured error information
+      - Enhanced _load_credentials() with comprehensive error handling
+      - Improved _retrieve_credentials_from_1password() with specific error types
+      - Enhanced _authenticate_session() with detailed error messages
+      - Added test mode specific error handling in test_credentials_with_rclone()
+      - Created handle_credential_error() method for user-friendly error messages
+      - Added get_credential_status() method for comprehensive status reporting
+      - All 24 unit tests passing with comprehensive error handling coverage
+      
+      **Error Types Handled:**
+      - 1Password CLI not available/not installed
+      - 1Password authentication failures and timeouts
+      - 1Password item not found or missing required fields
+      - rclone not available or command failures
+      - Minio connection refused (test mode specific)
+      - Production credential access denied
+      - Network timeouts and connectivity issues
+      - Configuration errors and missing credentials
+      
+      **Benefits:**
+      - Users get clear, actionable error messages
+      - Test mode provides specific Minio guidance
+      - Production mode guides users to set environment variables
+      - Comprehensive troubleshooting information
+      - Graceful degradation with helpful suggestions
+
 # Current state summary
 current_state:
   working_directory: "/Users/you/git/backup-to-s3"
@@ -442,11 +484,11 @@ current_state:
 next_steps:
   immediate:
     - "Continue Phase 5: Credential Management"
-    - "Start with Task 49: Add Error Handling"
-    - "Implement comprehensive error handling for credential failures"
+    - "Start with Task 50: Create Manual Override"
+    - "Implement manual credential entry fallback for no 1Password scenarios"
     
   upcoming:
-    - "Complete Phase 5: Credential Management (Tasks 49-52)"
+    - "Complete Phase 5: Credential Management (Tasks 50-52)"
     - "Move to Phase 6: Backup Engine Core (Tasks 53-62)"
     - "Return to Task 42: Logging Functional Test after backup implementation"
 
