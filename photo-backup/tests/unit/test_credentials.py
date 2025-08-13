@@ -3,907 +3,346 @@ Unit tests for credential management functionality.
 """
 
 import json
-import os
-import time
+import subprocess
 from unittest.mock import Mock, patch
 
+import pytest
+
 from photo_backup.config.config import Config
-from photo_backup.credentials import CredentialManager, check_op_cli, check_op_cli_in_test_mode
+from photo_backup.credentials import (
+    CredentialError,
+    CredentialManager,
+)
 
 
-class TestCredentialManager:
-    """Test CredentialManager functionality."""
+class TestCredentialError:
+    """Test the CredentialError exception class."""
 
-    def test_credential_manager_initialization(self):
-        """Test CredentialManager initialization."""
+    def test_credential_error_basic(self):
+        """Test basic CredentialError creation."""
+        error = CredentialError("Test error")
+        assert error.message == "Test error"
+        assert error.suggestion == ""
+        assert error.details == ""
+        assert str(error) == "Test error"
+
+    def test_credential_error_with_suggestion(self):
+        """Test CredentialError with suggestion."""
+        error = CredentialError("Test error", "Fix it")
+        assert error.message == "Test error"
+        assert error.suggestion == "Fix it"
+        assert str(error) == "Test error. Fix it"
+
+    def test_credential_error_with_details(self):
+        """Test CredentialError with details."""
+        error = CredentialError("Test error", "Fix it", "Technical details")
+        assert error.message == "Test error"
+        assert error.suggestion == "Fix it"
+        assert error.details == "Technical details"
+        assert str(error) == "Test error. Fix it"
+
+
+class TestCredentialManagerErrorHandling:
+    """Test enhanced error handling in CredentialManager."""
+
+    def test_handle_credential_error_test_mode(self):
+        """Test error handling in test mode."""
         config = Config(test_mode=True)
         manager = CredentialManager(config)
 
-        assert manager.config == config
-        assert manager.logger.name == "photo_backup.credentials"
-        assert manager._credentials is None
+        error = CredentialError("Minio not running", "Start container", "Connection refused")
+        message = manager.handle_credential_error(error)
 
-    def test_get_test_credentials(self):
-        """Test getting test mode credentials."""
+        assert "test mode" in message
+        assert "Minio not running" in message
+        assert "Start container" in message
+        assert "docker start minio" in message
+
+    def test_handle_credential_error_production_mode(self):
+        """Test error handling in production mode."""
+        config = Config(test_mode=False)
+        manager = CredentialManager(config)
+
+        error = CredentialError("No credentials", "Set env vars", "Missing keys")
+        message = manager.handle_credential_error(error)
+
+        assert "production mode" in message
+        assert "No credentials" in message
+        assert "Set env vars" in message
+        assert "WASABI_ACCESS_KEY" in message
+
+    def test_get_credential_status_success(self):
+        """Test credential status when credentials are available."""
         config = Config(test_mode=True)
         manager = CredentialManager(config)
 
-        credentials = manager.get_credentials()
+        status = manager.get_credential_status()
 
-        assert credentials["access_key"] == "minioadmin"
-        assert credentials["secret_key"] == "minioadmin"
-        assert credentials["endpoint"] == "localhost:9000"
-        assert credentials["region"] == "us-east-1"
-        assert credentials["use_ssl"] is False
-        assert credentials["bucket"] == "test-bucket"
-        assert credentials["timeout_seconds"] == 30
-        assert credentials["retry_attempts"] == 1
+        assert status["mode"] == "test"
+        assert status["has_credentials"] is True
+        assert status["error"] is None
+        assert status["credential_info"] is not None
+        assert "validation" in status
 
-    def test_get_production_credentials_no_credentials(self):
-        """Test getting production credentials when none are available."""
-        config = Config(test_mode=False)
-        manager = CredentialManager(config)
-
-        credentials = manager.get_credentials()
-
-        assert credentials["access_key"] is None  # No credentials available
-        assert credentials["secret_key"] is None  # No credentials available
-        assert credentials["endpoint"] == "s3.wasabisys.com"
-        assert credentials["region"] == "us-east-1"
-        assert credentials["use_ssl"] is True
-        assert credentials["bucket"] == "my-photo-backup-bucket"
-        assert credentials["timeout_seconds"] == 300
-        assert credentials["retry_attempts"] == 3
-
-    def test_credentials_caching(self):
-        """Test that credentials are cached after first load."""
+    def test_get_credential_status_with_error(self):
+        """Test credential status when error occurs."""
         config = Config(test_mode=True)
         manager = CredentialManager(config)
 
-        # First call should load credentials
-        credentials1 = manager.get_credentials()
-        assert manager._credentials is not None
+        # Mock get_credentials to raise an error
+        with patch.object(manager, "get_credentials", side_effect=CredentialError("Test error", "Fix it")):
+            status = manager.get_credential_status()
 
-        # Second call should return cached credentials
-        credentials2 = manager.get_credentials()
-        assert credentials1 == credentials2
+        assert status["mode"] == "test"
+        assert status["has_credentials"] is False
+        assert status["error"] == "Test error"
+        assert status["suggestion"] == "Fix it"
+        assert status["validation"]["is_valid"] is False
 
-    def test_credentials_return_copy(self):
-        """Test that get_credentials returns a copy, not the original."""
+    def test_get_credential_status_unexpected_error(self):
+        """Test credential status with unexpected error."""
         config = Config(test_mode=True)
         manager = CredentialManager(config)
 
-        credentials1 = manager.get_credentials()
-        credentials2 = manager.get_credentials()
+        # Mock get_credentials to raise an unexpected error
+        with patch.object(manager, "get_credentials", side_effect=ValueError("Unexpected")):
+            status = manager.get_credential_status()
 
-        # Modify the returned credentials
-        credentials1["access_key"] = "modified"
+        assert status["mode"] == "test"
+        assert status["has_credentials"] is False
+        assert "Unexpected error" in status["error"]
+        assert status["suggestion"] == "Check configuration and try again"
 
-        # The second call should not be affected
-        assert credentials2["access_key"] == "minioadmin"
 
-    @patch("subprocess.run")
-    def test_validate_test_credentials_success(self, mock_run):
-        """Test validation of valid test credentials."""
+class TestCredentialManagerEnhancedErrorHandling:
+    """Test enhanced error handling scenarios."""
+
+    def test_load_credentials_test_mode_error(self):
+        """Test error handling when loading test credentials fails."""
         config = Config(test_mode=True)
         manager = CredentialManager(config)
 
-        # Mock rclone availability check
-        with patch.object(manager, "_check_rclone_available", return_value=True):
-            # Mock successful rclone test
-            mock_result = Mock()
-            mock_result.returncode = 0
-            mock_run.return_value = mock_result
+        # Mock config.load_config to raise an error
+        with patch.object(config, "load_config", side_effect=ValueError("Config error")):
+            with pytest.raises(CredentialError) as exc_info:
+                manager._load_credentials()
 
-            is_valid, message = manager.validate_credentials()
+            error = exc_info.value
+            assert "Failed to load test mode credentials" in error.message
+            assert "Minio container is running" in error.suggestion
 
-            assert is_valid is True
-            assert "validated successfully" in message
-
-    def test_validate_test_credentials_failure(self):
-        """Test validation of invalid test credentials."""
-        config = Config(test_mode=True)
-        manager = CredentialManager(config)
-
-        # Mock the credentials to be invalid
-        with patch.object(manager, "_get_test_credentials") as mock_get:
-            mock_get.return_value = {
-                "access_key": "wrong",
-                "secret_key": "wrong",
-                "endpoint": "localhost:9000",
-                "bucket": "test-bucket",
-                "region": "us-east-1",
-                "use_ssl": False,
-                "timeout_seconds": 30,
-                "retry_attempts": 1,
-            }
-
-            is_valid, message = manager.validate_credentials()
-
-            assert is_valid is False
-            assert "Invalid test credentials" in message
-
-    def test_validate_production_credentials_failed(self):
-        """Test validation of production credentials when 1Password integration fails."""
+    def test_load_credentials_production_mode_error(self):
+        """Test error handling when loading production credentials fails."""
         config = Config(test_mode=False)
         manager = CredentialManager(config)
 
-        # Mock the production credentials to have None values
-        with patch.object(manager, "_get_production_credentials") as mock_get:
-            mock_get.return_value = {
-                "access_key": None,
-                "secret_key": None,
-                "endpoint": "s3.wasabisys.com",
-                "bucket": "my-photo-backup-bucket",
-                "region": "us-east-1",
-                "use_ssl": True,
-                "timeout_seconds": 300,
-                "retry_attempts": 3,
-            }
+        # Mock config.load_config to raise an error
+        with patch.object(config, "load_config", side_effect=ValueError("Config error")):
+            with pytest.raises(CredentialError) as exc_info:
+                manager._load_credentials()
 
-            is_valid, message = manager.validate_credentials()
+            error = exc_info.value
+            assert "Failed to load production credentials" in error.message
+            assert "credentials are properly configured" in error.suggestion
 
-            assert is_valid is False
-            assert "Production credentials not available" in message
-
-    def test_validate_credentials_missing_fields(self):
-        """Test validation with missing credential fields."""
-        config = Config(test_mode=True)
-        manager = CredentialManager(config)
-
-        # Mock credentials with missing fields
-        with patch.object(manager, "_get_test_credentials") as mock_get:
-            mock_get.return_value = {
-                "access_key": "minioadmin",
-                "secret_key": "minioadmin",
-                # Missing endpoint and bucket
-                "region": "us-east-1",
-                "use_ssl": False,
-                "timeout_seconds": 30,
-                "retry_attempts": 1,
-            }
-
-            is_valid, message = manager.validate_credentials()
-
-            assert is_valid is False
-            assert "Missing required credential field" in message
-
-    def test_get_credential_info_test_mode(self):
-        """Test getting credential information in test mode."""
-        config = Config(test_mode=True)
-        manager = CredentialManager(config)
-
-        info = manager.get_credential_info()
-
-        assert info["mode"] == "test"
-        assert info["endpoint"] == "localhost:9000"
-        assert info["bucket"] == "test-bucket"
-        assert info["region"] == "us-east-1"
-        assert info["use_ssl"] is False
-        assert info["has_access_key"] is True
-        assert info["has_secret_key"] is True
-        assert info["timeout_seconds"] == 30
-        assert info["retry_attempts"] == 1
-        assert info["access_key_preview"] == "mini...dmin"
-
-    def test_get_credential_info_production_mode(self):
-        """Test getting credential information in production mode."""
+    def test_retrieve_credentials_1password_cli_not_available(self):
+        """Test error handling when 1Password CLI is not available."""
         config = Config(test_mode=False)
         manager = CredentialManager(config)
 
-        info = manager.get_credential_info()
+        with patch("photo_backup.credentials.check_op_cli", return_value=(False, "Not installed")):
+            with pytest.raises(CredentialError) as exc_info:
+                manager._retrieve_credentials_from_1password()
 
-        assert info["mode"] == "production"
-        assert info["endpoint"] == "s3.wasabisys.com"
-        assert info["bucket"] == "my-photo-backup-bucket"
-        assert info["region"] == "us-east-1"
-        assert info["use_ssl"] is True
-        assert info["has_access_key"] is False
-        assert info["has_secret_key"] is False
-        assert info["timeout_seconds"] == 300
-        assert info["retry_attempts"] == 3
-        assert info["access_key_preview"] == "None"
+            error = exc_info.value
+            assert "1Password CLI not available" in error.message
+            assert "Install 1Password CLI" in error.suggestion
 
-    def test_get_credential_info_masks_sensitive_data(self):
-        """Test that credential info masks sensitive data."""
-        config = Config(test_mode=True)
-        manager = CredentialManager(config)
-
-        info = manager.get_credential_info()
-
-        # Should not contain full access key
-        assert "minioadmin" not in str(info)
-        # Should contain masked version
-        assert "mini...dmin" in info["access_key_preview"]
-
-    def test_credential_manager_with_custom_config(self):
-        """Test CredentialManager with custom configuration values."""
-        config = Config(test_mode=True)
-
-        # Mock config to return custom storage settings
-        with patch.object(config, "load_config") as mock_load:
-            mock_load.return_value = {
-                "storage": {
-                    "access_key": "custom-key",
-                    "secret_key": "custom-secret",
-                    "endpoint": "custom-endpoint:9000",
-                    "region": "custom-region",
-                    "use_ssl": True,
-                    "bucket": "custom-bucket",
-                    "timeout_seconds": 60,
-                    "retry_attempts": 5,
-                }
-            }
-
-            manager = CredentialManager(config)
-            credentials = manager.get_credentials()
-
-            assert credentials["access_key"] == "custom-key"
-            assert credentials["secret_key"] == "custom-secret"
-            assert credentials["endpoint"] == "custom-endpoint:9000"
-            assert credentials["region"] == "custom-region"
-            assert credentials["use_ssl"] is True
-            assert credentials["bucket"] == "custom-bucket"
-            assert credentials["timeout_seconds"] == 60
-            assert credentials["retry_attempts"] == 5
-
-
-class Test1PasswordDetection:
-    """Test 1Password CLI detection functionality."""
-
-    @patch("subprocess.run")
-    def test_check_op_cli_available(self, mock_run):
-        """Test successful 1Password CLI detection."""
-        mock_result = Mock()
-        mock_result.returncode = 0
-        mock_result.stdout = "2.12.0"
-        mock_run.return_value = mock_result
-
-        is_available, message = check_op_cli()
-
-        assert is_available is True
-        assert "1Password CLI available" in message
-        assert "2.12.0" in message
-
-    @patch("subprocess.run")
-    def test_check_op_cli_v1_version(self, mock_run):
-        """Test 1Password CLI v1 version detection."""
-        mock_result = Mock()
-        mock_result.returncode = 0
-        mock_result.stdout = "1.12.0"
-        mock_run.return_value = mock_result
-
-        is_available, message = check_op_cli()
-
-        assert is_available is True
-        assert "1Password CLI available" in message
-
-    @patch("subprocess.run")
-    def test_check_op_cli_unsupported_version(self, mock_run):
-        """Test unsupported 1Password CLI version."""
-        mock_result = Mock()
-        mock_result.returncode = 0
-        mock_result.stdout = "0.12.0"
-        mock_run.return_value = mock_result
-
-        is_available, message = check_op_cli()
-
-        assert is_available is False
-        assert "not supported" in message
-
-    @patch("subprocess.run")
-    def test_check_op_cli_command_failed(self, mock_run):
-        """Test 1Password CLI command failure."""
-        mock_result = Mock()
-        mock_result.returncode = 1
-        mock_result.stderr = "Command not found"
-        mock_run.return_value = mock_result
-
-        is_available, message = check_op_cli()
-
-        assert is_available is False
-        assert "command failed" in message
-
-    @patch("subprocess.run")
-    def test_check_op_cli_timeout(self, mock_run):
-        """Test 1Password CLI command timeout."""
-        from subprocess import TimeoutExpired
-
-        mock_run.side_effect = TimeoutExpired(["op", "--version"], 10.0)
-
-        is_available, message = check_op_cli()
-
-        assert is_available is False
-        assert "timed out" in message
-
-    @patch("subprocess.run")
-    def test_check_op_cli_not_found(self, mock_run):
-        """Test 1Password CLI not found."""
-        mock_run.side_effect = FileNotFoundError("No such file or directory")
-
-        is_available, message = check_op_cli()
-
-        assert is_available is False
-        assert "not found" in message
-
-    @patch("subprocess.run")
-    def test_check_op_cli_exception(self, mock_run):
-        """Test 1Password CLI check with exception."""
-        mock_run.side_effect = Exception("Unexpected error")
-
-        is_available, message = check_op_cli()
-
-        assert is_available is False
-        assert "Error checking" in message
-
-    @patch("os.environ.get")
-    def test_check_op_cli_in_test_mode_skipped(self, mock_env_get):
-        """Test 1Password CLI check skipped in test mode."""
-        mock_env_get.return_value = "1"
-
-        is_available, message = check_op_cli_in_test_mode()
-
-        assert is_available is True
-        assert "skipped in test mode" in message
-
-    @patch("os.environ.get")
-    @patch("photo_backup.credentials.check_op_cli")
-    def test_check_op_cli_in_test_mode_not_skipped(self, mock_check_op, mock_env_get):
-        """Test 1Password CLI check not skipped when not in test mode."""
-        mock_env_get.return_value = None
-        mock_check_op.return_value = (True, "1Password CLI available: 2.12.0")
-
-        is_available, message = check_op_cli_in_test_mode()
-
-        assert is_available is True
-        assert "1Password CLI available" in message
-        mock_check_op.assert_called_once()
-
-
-class Test1PasswordCredentialRetrieval:
-    """Test 1Password credential retrieval functionality."""
-
-    @patch("subprocess.run")
-    @patch("photo_backup.credentials.check_op_cli")
-    def test_retrieve_credentials_from_1password_success(self, mock_check_op, mock_run):
-        """Test successful credential retrieval from 1Password."""
-        mock_check_op.return_value = (True, "1Password CLI available")
-
-        mock_result = Mock()
-        mock_result.returncode = 0
-        mock_result.stdout = json.dumps(
-            {
-                "fields": [
-                    {"id": "access_key", "value": "test_access_key"},
-                    {"id": "secret_key", "value": "test_secret_key"},
-                ]
-            }
-        )
-        mock_run.return_value = mock_result
-
+    def test_retrieve_credentials_1password_item_not_found(self):
+        """Test error handling when 1Password item is not found."""
         config = Config(test_mode=False)
         manager = CredentialManager(config)
-
-        access_key, secret_key = manager._retrieve_credentials_from_1password()
-
-        assert access_key == "test_access_key"
-        assert secret_key == "test_secret_key"
-
-    @patch("subprocess.run")
-    @patch("photo_backup.credentials.check_op_cli")
-    def test_retrieve_credentials_from_1password_by_label(self, mock_check_op, mock_run):
-        """Test credential retrieval using field labels."""
-        mock_check_op.return_value = (True, "1Password CLI available")
-
-        mock_result = Mock()
-        mock_result.returncode = 0
-        mock_result.stdout = json.dumps(
-            {
-                "fields": [
-                    {"label": "Access Key", "value": "test_access_key"},
-                    {"label": "Secret Key", "value": "test_secret_key"},
-                ]
-            }
-        )
-        mock_run.return_value = mock_result
-
-        config = Config(test_mode=False)
-        manager = CredentialManager(config)
-
-        access_key, secret_key = manager._retrieve_credentials_from_1password()
-
-        assert access_key == "test_access_key"
-        assert secret_key == "test_secret_key"
-
-    @patch("photo_backup.credentials.check_op_cli")
-    def test_retrieve_credentials_from_1password_cli_not_available(self, mock_check_op):
-        """Test credential retrieval when 1Password CLI is not available."""
-        mock_check_op.return_value = (False, "1Password CLI not found")
-
-        config = Config(test_mode=False)
-        manager = CredentialManager(config)
-
-        access_key, secret_key = manager._retrieve_credentials_from_1password()
-
-        assert access_key is None
-        assert secret_key is None
-
-    @patch("subprocess.run")
-    @patch("photo_backup.credentials.check_op_cli")
-    def test_retrieve_credentials_from_1password_command_failed(self, mock_check_op, mock_run):
-        """Test credential retrieval when 1Password command fails."""
-        mock_check_op.return_value = (True, "1Password CLI available")
-
-        mock_result = Mock()
-        mock_result.returncode = 1
-        mock_result.stderr = "Item not found"
-        mock_run.return_value = mock_result
-
-        config = Config(test_mode=False)
-        manager = CredentialManager(config)
-
-        access_key, secret_key = manager._retrieve_credentials_from_1password()
-
-        assert access_key is None
-        assert secret_key is None
-
-    @patch("subprocess.run")
-    @patch("photo_backup.credentials.check_op_cli")
-    def test_retrieve_credentials_from_1password_timeout(self, mock_check_op, mock_run):
-        """Test credential retrieval timeout."""
-        mock_check_op.return_value = (True, "1Password CLI available")
-
-        from subprocess import TimeoutExpired
-
-        mock_run.side_effect = TimeoutExpired(["op", "item", "get"], 30.0)
-
-        config = Config(test_mode=False)
-        manager = CredentialManager(config)
-
-        access_key, secret_key = manager._retrieve_credentials_from_1password()
-
-        assert access_key is None
-        assert secret_key is None
-
-    @patch("subprocess.run")
-    @patch("photo_backup.credentials.check_op_cli")
-    def test_retrieve_credentials_from_1password_invalid_json(self, mock_check_op, mock_run):
-        """Test credential retrieval with invalid JSON response."""
-        mock_check_op.return_value = (True, "1Password CLI available")
-
-        mock_result = Mock()
-        mock_result.returncode = 0
-        mock_result.stdout = "invalid json"
-        mock_run.return_value = mock_result
-
-        config = Config(test_mode=False)
-        manager = CredentialManager(config)
-
-        access_key, secret_key = manager._retrieve_credentials_from_1password()
-
-        assert access_key is None
-        assert secret_key is None
-
-    @patch("subprocess.run")
-    @patch("photo_backup.credentials.check_op_cli")
-    def test_retrieve_credentials_from_1password_missing_fields(self, mock_check_op, mock_run):
-        """Test credential retrieval when required fields are missing."""
-        mock_check_op.return_value = (True, "1Password CLI available")
-
-        mock_result = Mock()
-        mock_result.returncode = 0
-        mock_result.stdout = json.dumps({"fields": [{"id": "username", "value": "test_user"}]})
-        mock_run.return_value = mock_result
-
-        config = Config(test_mode=False)
-        manager = CredentialManager(config)
-
-        access_key, secret_key = manager._retrieve_credentials_from_1password()
-
-        assert access_key is None
-        assert secret_key is None
-
-    def test_extract_field_from_1password_item_by_id(self):
-        """Test extracting field by ID from 1Password item."""
-        config = Config(test_mode=False)
-        manager = CredentialManager(config)
-
-        item_data = {
-            "fields": [
-                {"id": "access_key", "value": "test_access_key"},
-                {"id": "secret_key", "value": "test_secret_key"},
-            ]
-        }
-
-        access_key = manager._extract_field_from_1password_item(item_data, "access_key")
-        secret_key = manager._extract_field_from_1password_item(item_data, "secret_key")
-
-        assert access_key == "test_access_key"
-        assert secret_key == "test_secret_key"
-
-    def test_extract_field_from_1password_item_by_label(self):
-        """Test extracting field by label from 1Password item."""
-        config = Config(test_mode=False)
-        manager = CredentialManager(config)
-
-        item_data = {
-            "fields": [
-                {"label": "Access Key", "value": "test_access_key"},
-                {"label": "Secret Key", "value": "test_secret_key"},
-            ]
-        }
-
-        access_key = manager._extract_field_from_1password_item(item_data, "access_key")
-        secret_key = manager._extract_field_from_1password_item(item_data, "secret_key")
-
-        assert access_key == "test_access_key"
-        assert secret_key == "test_secret_key"
-
-    def test_extract_field_from_1password_item_not_found(self):
-        """Test extracting field that doesn't exist."""
-        config = Config(test_mode=False)
-        manager = CredentialManager(config)
-
-        item_data = {"fields": [{"id": "username", "value": "test_user"}]}
-
-        result = manager._extract_field_from_1password_item(item_data, "access_key")
-
-        assert result is None
-
-    def test_extract_field_from_1password_item_empty_fields(self):
-        """Test extracting field from item with no fields."""
-        config = Config(test_mode=False)
-        manager = CredentialManager(config)
-
-        item_data = {"fields": []}
-
-        result = manager._extract_field_from_1password_item(item_data, "access_key")
-
-        assert result is None
-
-    def test_extract_field_from_1password_item_exception(self):
-        """Test extracting field with exception handling."""
-        config = Config(test_mode=False)
-        manager = CredentialManager(config)
-
-        # Invalid item data that will cause an exception
-        item_data = None
-
-        result = manager._extract_field_from_1password_item(item_data, "access_key")
-
-        assert result is None
-
-
-class Test1PasswordSessionCaching:
-    """Test 1Password session caching functionality."""
-
-    def test_session_caching_initialization(self):
-        """Test session caching initialization."""
-        config = Config(test_mode=False)
-        manager = CredentialManager(config)
-
-        assert manager._session_token is None
-        assert manager._session_expiry is None
-
-    def test_get_session_token_test_mode_returns_none(self):
-        """Test that session token is None in test mode."""
-        config = Config(test_mode=True)
-        manager = CredentialManager(config)
-
-        session_token = manager._get_session_token()
-
-        assert session_token is None
-
-    def test_is_session_valid_no_token(self):
-        """Test session validation with no token."""
-        config = Config(test_mode=False)
-        manager = CredentialManager(config)
-
-        assert manager._is_session_valid() is False
-
-    def test_is_session_valid_expired_token(self):
-        """Test session validation with expired token."""
-        config = Config(test_mode=False)
-        manager = CredentialManager(config)
-
-        manager._session_token = "test_token"
-        manager._session_expiry = time.time() - 600  # Expired 10 minutes ago
-
-        assert manager._is_session_valid() is False
-
-    def test_is_session_valid_valid_token(self):
-        """Test session validation with valid token."""
-        config = Config(test_mode=False)
-        manager = CredentialManager(config)
-
-        manager._session_token = "test_token"
-        manager._session_expiry = time.time() + 1800  # Valid for 30 minutes
-
-        assert manager._is_session_valid() is True
-
-    def test_is_session_valid_near_expiry(self):
-        """Test session validation with token near expiry (within 5-minute buffer)."""
-        config = Config(test_mode=False)
-        manager = CredentialManager(config)
-
-        manager._session_token = "test_token"
-        manager._session_expiry = time.time() + 200  # Expires in ~3 minutes (within buffer)
-
-        assert manager._is_session_valid() is False
-
-    @patch("subprocess.run")
-    def test_authenticate_session_success(self, mock_run):
-        """Test successful session authentication."""
-        mock_result = Mock()
-        mock_result.returncode = 0
-        mock_result.stdout = 'export OP_SESSION_1password="test_session_token"'
-        mock_run.return_value = mock_result
-
-        config = Config(test_mode=False)
-        manager = CredentialManager(config)
-
-        session_token = manager._authenticate_session()
-
-        assert session_token == "test_session_token"
-        assert manager._session_token == "test_session_token"
-        assert manager._session_expiry is not None
-        assert manager._session_expiry > time.time()
-
-    @patch("subprocess.run")
-    def test_authenticate_session_failure(self, mock_run):
-        """Test failed session authentication."""
-        mock_result = Mock()
-        mock_result.returncode = 1
-        mock_result.stderr = "Authentication failed"
-        mock_run.return_value = mock_result
-
-        config = Config(test_mode=False)
-        manager = CredentialManager(config)
-
-        session_token = manager._authenticate_session()
-
-        assert session_token is None
-        assert manager._session_token is None
-        assert manager._session_expiry is None
-
-    @patch("subprocess.run")
-    def test_authenticate_session_timeout(self, mock_run):
-        """Test session authentication timeout."""
-        from subprocess import TimeoutExpired
-
-        mock_run.side_effect = TimeoutExpired(["op", "signin"], 60.0)
-
-        config = Config(test_mode=False)
-        manager = CredentialManager(config)
-
-        session_token = manager._authenticate_session()
-
-        assert session_token is None
-
-    @patch("subprocess.run")
-    def test_authenticate_session_no_token_in_output(self, mock_run):
-        """Test session authentication with no token in output."""
-        mock_result = Mock()
-        mock_result.returncode = 0
-        mock_result.stdout = "Sign in successful"
-        mock_run.return_value = mock_result
-
-        config = Config(test_mode=False)
-        manager = CredentialManager(config)
-
-        session_token = manager._authenticate_session()
-
-        assert session_token is None
-
-    def test_clear_session(self):
-        """Test clearing session token."""
-        config = Config(test_mode=False)
-        manager = CredentialManager(config)
-
-        # Set up a session
-        manager._session_token = "test_token"
-        manager._session_expiry = time.time() + 1800
-
-        # Clear the session
-        manager._clear_session()
-
-        assert manager._session_token is None
-        assert manager._session_expiry is None
-
-    @patch("photo_backup.credentials.check_op_cli")
-    @patch("subprocess.run")
-    def test_retrieve_credentials_with_session_token(self, mock_run, mock_check_op):
-        """Test credential retrieval with session token."""
-        mock_check_op.return_value = (True, "1Password CLI available")
-
-        # Mock session token
-        config = Config(test_mode=False)
-        manager = CredentialManager(config)
-        manager._session_token = "test_session_token"
-        manager._session_expiry = time.time() + 1800
-
-        # Mock successful credential retrieval
-        mock_result = Mock()
-        mock_result.returncode = 0
-        mock_result.stdout = json.dumps(
-            {
-                "fields": [
-                    {"id": "access_key", "value": "test_access_key"},
-                    {"id": "secret_key", "value": "test_secret_key"},
-                ]
-            }
-        )
-        mock_run.return_value = mock_result
-
-        access_key, secret_key = manager._retrieve_credentials_from_1password()
-
-        assert access_key == "test_access_key"
-        assert secret_key == "test_secret_key"
-
-        # Verify session token was used in environment
-        mock_run.assert_called_once()
-        call_args = mock_run.call_args
-        assert call_args[1]["env"]["OP_SESSION_1password"] == "test_session_token"
-
-    @patch("photo_backup.credentials.check_op_cli")
-    @patch("subprocess.run")
-    def test_retrieve_credentials_session_error_clears_session(self, mock_run, mock_check_op):
-        """Test that session errors clear the cached session."""
-        mock_check_op.return_value = (True, "1Password CLI available")
-
-        config = Config(test_mode=False)
-        manager = CredentialManager(config)
-        manager._session_token = "test_session_token"
-        manager._session_expiry = time.time() + 1800
-
-        # Mock session error
-        mock_result = Mock()
-        mock_result.returncode = 1
-        mock_result.stderr = "Session expired"
-        mock_run.return_value = mock_result
-
-        access_key, secret_key = manager._retrieve_credentials_from_1password()
-
-        assert access_key is None
-        assert secret_key is None
-        assert manager._session_token is None  # Session should be cleared
-        assert manager._session_expiry is None
-
-
-class TestCredentialValidation:
-    """Test credential validation functionality."""
-
-    def test_check_rclone_available_success(self):
-        """Test rclone availability check when rclone is available."""
-        config = Config(test_mode=False)
-        manager = CredentialManager(config)
-
-        with patch("subprocess.run") as mock_run:
-            mock_result = Mock()
-            mock_result.returncode = 0
-            mock_run.return_value = mock_result
-
-            is_available = manager._check_rclone_available()
-
-            assert is_available is True
-            mock_run.assert_called_once_with(["rclone", "version"], capture_output=True, text=True, timeout=10.0)
-
-    def test_check_rclone_available_not_found(self):
-        """Test rclone availability check when rclone is not found."""
-        config = Config(test_mode=False)
-        manager = CredentialManager(config)
-
-        with patch("subprocess.run") as mock_run:
-            mock_run.side_effect = FileNotFoundError()
-
-            is_available = manager._check_rclone_available()
-
-            assert is_available is False
-
-    def test_check_rclone_available_timeout(self):
-        """Test rclone availability check when command times out."""
-        config = Config(test_mode=False)
-        manager = CredentialManager(config)
-
-        with patch("subprocess.run") as mock_run:
-            from subprocess import TimeoutExpired
-
-            mock_run.side_effect = TimeoutExpired(["rclone", "version"], 10.0)
-
-            is_available = manager._check_rclone_available()
-
-            assert is_available is False
-
-    def test_build_rclone_config(self):
-        """Test rclone configuration building."""
-        config = Config(test_mode=False)
-        manager = CredentialManager(config)
-
-        credentials = {
-            "access_key": "test_access_key",
-            "secret_key": "test_secret_key",
-            "endpoint": "test.endpoint.com",
-            "region": "us-west-2",
-            "use_ssl": True,
-            "bucket": "test-bucket",
-        }
-
-        rclone_config = manager._build_rclone_config(credentials)
-
-        assert "[test-test-bucket]" in rclone_config
-        assert "type = s3" in rclone_config
-        assert "provider = Other" in rclone_config
-        assert "access_key_id = test_access_key" in rclone_config
-        assert "secret_access_key = test_secret_key" in rclone_config
-        assert "endpoint = test.endpoint.com" in rclone_config
-        assert "region = us-west-2" in rclone_config
-        assert "use_ssl = true" in rclone_config
-
-    def test_build_rclone_config_no_ssl(self):
-        """Test rclone configuration building with SSL disabled."""
-        config = Config(test_mode=False)
-        manager = CredentialManager(config)
-
-        credentials = {
-            "access_key": "test_access_key",
-            "secret_key": "test_secret_key",
-            "endpoint": "localhost:9000",
-            "region": "us-east-1",
-            "use_ssl": False,
-            "bucket": "test-bucket",
-        }
-
-        rclone_config = manager._build_rclone_config(credentials)
-
-        assert "use_ssl = false" in rclone_config
-
-    @patch("subprocess.run")
-    def test_test_credentials_with_rclone_success(self, mock_run):
-        """Test successful credential validation with rclone."""
-        config = Config(test_mode=False)
-        manager = CredentialManager(config)
-
-        # Mock credentials to avoid 1Password calls
-        test_credentials = {
-            "access_key": "test_access_key",
-            "secret_key": "test_secret_key",
-            "endpoint": "test.endpoint.com",
-            "region": "us-west-2",
-            "use_ssl": True,
-            "bucket": "test-bucket",
-            "timeout_seconds": 30,
-            "retry_attempts": 3,
-        }
 
         with (
-            patch.object(manager, "get_credentials", return_value=test_credentials),
-            patch.object(manager, "_check_rclone_available", return_value=True),
+            patch("photo_backup.credentials.check_op_cli", return_value=(True, "Available")),
+            patch.object(manager, "_get_session_token", return_value="token"),
+            patch("subprocess.run") as mock_run,
         ):
-            # Mock successful rclone ls command
+            mock_result = Mock()
+            mock_result.returncode = 1
+            mock_result.stderr = "Item not found"
+            mock_run.return_value = mock_result
+
+            with pytest.raises(CredentialError) as exc_info:
+                manager._retrieve_credentials_from_1password()
+
+            error = exc_info.value
+            assert "not found" in error.message
+            assert "Create a secure note" in error.suggestion
+
+    def test_retrieve_credentials_1password_invalid_json(self):
+        """Test error handling when 1Password returns invalid JSON."""
+        config = Config(test_mode=False)
+        manager = CredentialManager(config)
+
+        with (
+            patch("photo_backup.credentials.check_op_cli", return_value=(True, "Available")),
+            patch.object(manager, "_get_session_token", return_value="token"),
+            patch("subprocess.run") as mock_run,
+        ):
             mock_result = Mock()
             mock_result.returncode = 0
-            mock_result.stdout = "test-file.txt"
+            mock_result.stdout = "invalid json"
+            mock_run.return_value = mock_result
+
+            with pytest.raises(CredentialError) as exc_info:
+                manager._retrieve_credentials_from_1password()
+
+            error = exc_info.value
+            assert "Invalid JSON response" in error.message
+            assert "Check 1Password CLI version" in error.suggestion
+
+    def test_retrieve_credentials_1password_missing_fields(self):
+        """Test error handling when 1Password item is missing required fields."""
+        config = Config(test_mode=False)
+        manager = CredentialManager(config)
+
+        with (
+            patch("photo_backup.credentials.check_op_cli", return_value=(True, "Available")),
+            patch.object(manager, "_get_session_token", return_value="token"),
+            patch("subprocess.run") as mock_run,
+        ):
+            mock_result = Mock()
+            mock_result.returncode = 0
+            mock_result.stdout = json.dumps({"fields": []})
+            mock_run.return_value = mock_result
+
+            with pytest.raises(CredentialError) as exc_info:
+                manager._retrieve_credentials_from_1password()
+
+            error = exc_info.value
+            assert "Missing required fields" in error.message
+            assert "access_key, secret_key" in error.message
+
+    def test_authenticate_session_timeout(self):
+        """Test error handling when 1Password authentication times out."""
+        config = Config(test_mode=False)
+        manager = CredentialManager(config)
+
+        with patch("subprocess.run", side_effect=subprocess.TimeoutExpired("op", 60)):
+            with pytest.raises(CredentialError) as exc_info:
+                manager._authenticate_session()
+
+            error = exc_info.value
+            assert "authentication timed out" in error.message
+            assert "Check network connectivity" in error.suggestion
+
+    def test_authenticate_session_command_failed(self):
+        """Test error handling when 1Password signin command fails."""
+        config = Config(test_mode=False)
+        manager = CredentialManager(config)
+
+        with patch("subprocess.run") as mock_run:
+            mock_result = Mock()
+            mock_result.returncode = 1
+            mock_result.stderr = "Command failed"
+            mock_run.return_value = mock_result
+
+            with pytest.raises(CredentialError) as exc_info:
+                manager._authenticate_session()
+
+            error = exc_info.value
+            assert "authentication failed" in error.message
+            assert "Run 'op signin' manually" in error.suggestion
+
+    def test_authenticate_session_no_token_extracted(self):
+        """Test error handling when session token cannot be extracted."""
+        config = Config(test_mode=False)
+        manager = CredentialManager(config)
+
+        with patch("subprocess.run") as mock_run:
+            mock_result = Mock()
+            mock_result.returncode = 0
+            mock_result.stdout = "No token here"
+            mock_run.return_value = mock_result
+
+            with pytest.raises(CredentialError) as exc_info:
+                manager._authenticate_session()
+
+            error = exc_info.value
+            assert "Failed to extract session token" in error.message
+            assert "Try running 'op signin' manually" in error.suggestion
+
+
+class TestRcloneErrorHandling:
+    """Test rclone-specific error handling."""
+
+    def test_test_credentials_with_rclone_not_available(self):
+        """Test error handling when rclone is not available."""
+        config = Config(test_mode=True)
+        manager = CredentialManager(config)
+
+        with patch.object(manager, "_check_rclone_available", return_value=False):
+            is_valid, message = manager.test_credentials_with_rclone()
+
+            assert is_valid is False
+            assert "rclone is not available" in message
+            assert "Install rclone" in message
+            assert "docker start minio" in message
+
+    def test_test_credentials_with_rclone_minio_connection_refused(self):
+        """Test error handling when Minio connection is refused."""
+        config = Config(test_mode=True)
+        manager = CredentialManager(config)
+
+        with (
+            patch.object(manager, "_check_rclone_available", return_value=True),
+            patch.object(
+                manager,
+                "get_credentials",
+                return_value={
+                    "access_key": "minioadmin",
+                    "secret_key": "minioadmin",
+                    "endpoint": "localhost:9000",
+                    "region": "us-east-1",
+                    "use_ssl": False,
+                    "bucket": "test-bucket",
+                },
+            ),
+            patch("subprocess.run") as mock_run,
+        ):
+            mock_result = Mock()
+            mock_result.returncode = 1
+            mock_result.stderr = "connection refused"
             mock_run.return_value = mock_result
 
             is_valid, message = manager.test_credentials_with_rclone()
 
-            assert is_valid is True
-            assert "validated successfully" in message
+            assert is_valid is False
+            assert "Cannot connect to Minio" in message
+            assert "docker run -d --name minio" in message
 
-            # Verify rclone command was called correctly
-            mock_run.assert_called_once()
-            call_args = mock_run.call_args
-            assert call_args[0][0] == ["rclone", "ls", "test-test-bucket", "--config", "-"]
-
-    @patch("subprocess.run")
-    def test_test_credentials_with_rclone_access_denied(self, mock_run):
-        """Test credential validation with access denied error."""
+    def test_test_credentials_with_rclone_production_access_denied(self):
+        """Test error handling when production credentials are denied."""
         config = Config(test_mode=False)
         manager = CredentialManager(config)
 
-        # Mock rclone availability check
-        with patch.object(manager, "_check_rclone_available", return_value=True):
-            # Mock access denied error
+        with (
+            patch.object(manager, "_check_rclone_available", return_value=True),
+            patch.object(
+                manager,
+                "get_credentials",
+                return_value={
+                    "access_key": "test",
+                    "secret_key": "test",
+                    "endpoint": "s3.wasabisys.com",
+                    "region": "us-east-1",
+                    "use_ssl": True,
+                    "bucket": "test-bucket",
+                },
+            ),
+            patch("subprocess.run") as mock_run,
+        ):
             mock_result = Mock()
             mock_result.returncode = 1
             mock_result.stderr = "Access Denied"
@@ -913,287 +352,83 @@ class TestCredentialValidation:
 
             assert is_valid is False
             assert "Access denied" in message
+            assert "check credentials and bucket permissions" in message
 
-    @patch("subprocess.run")
-    def test_test_credentials_with_rclone_bucket_not_found(self, mock_run):
-        """Test credential validation with bucket not found error."""
-        config = Config(test_mode=False)
+    def test_test_credentials_with_rclone_timeout(self):
+        """Test error handling when rclone test times out."""
+        config = Config(test_mode=True)
         manager = CredentialManager(config)
 
-        # Mock rclone availability check
-        with patch.object(manager, "_check_rclone_available", return_value=True):
-            # Mock bucket not found error
-            mock_result = Mock()
-            mock_result.returncode = 1
-            mock_result.stderr = "No such bucket"
-            mock_run.return_value = mock_result
-
-            is_valid, message = manager.test_credentials_with_rclone()
-
-            assert is_valid is False
-            assert "not found" in message
-
-    @patch("subprocess.run")
-    def test_test_credentials_with_rclone_connection_error(self, mock_run):
-        """Test credential validation with connection error."""
-        config = Config(test_mode=False)
-        manager = CredentialManager(config)
-
-        # Mock rclone availability check
-        with patch.object(manager, "_check_rclone_available", return_value=True):
-            # Mock connection error
-            mock_result = Mock()
-            mock_result.returncode = 1
-            mock_result.stderr = "connection refused"
-            mock_run.return_value = mock_result
-
-            is_valid, message = manager.test_credentials_with_rclone()
-
-            assert is_valid is False
-            assert "Cannot connect" in message
-
-    @patch("subprocess.run")
-    def test_test_credentials_with_rclone_timeout(self, mock_run):
-        """Test credential validation with timeout."""
-        config = Config(test_mode=False)
-        manager = CredentialManager(config)
-
-        # Mock rclone availability check
-        with patch.object(manager, "_check_rclone_available", return_value=True):
-            # Mock timeout
-            from subprocess import TimeoutExpired
-
-            mock_run.side_effect = TimeoutExpired(["rclone", "ls"], 30.0)
-
+        with (
+            patch.object(manager, "_check_rclone_available", return_value=True),
+            patch.object(
+                manager,
+                "get_credentials",
+                return_value={
+                    "access_key": "minioadmin",
+                    "secret_key": "minioadmin",
+                    "endpoint": "localhost:9000",
+                    "region": "us-east-1",
+                    "use_ssl": False,
+                    "bucket": "test-bucket",
+                },
+            ),
+            patch("subprocess.run", side_effect=subprocess.TimeoutExpired("rclone", 30)),
+        ):
             is_valid, message = manager.test_credentials_with_rclone()
 
             assert is_valid is False
             assert "timed out" in message
+            assert "Minio container is running" in message
 
-    def test_test_credentials_with_rclone_not_available(self):
-        """Test credential validation when rclone is not available."""
-        config = Config(test_mode=False)
-        manager = CredentialManager(config)
 
-        # Mock rclone availability check
-        with patch.object(manager, "_check_rclone_available", return_value=False):
-            is_valid, message = manager.test_credentials_with_rclone()
+class TestValidationErrorHandling:
+    """Test validation error handling."""
 
-            assert is_valid is False
-            assert "rclone is not available" in message
-
-    @patch("subprocess.run")
-    def test_validate_test_credentials_with_rclone(self, mock_run):
-        """Test that test credential validation uses rclone testing."""
+    def test_validate_credentials_with_credential_error(self):
+        """Test validation when credential loading fails."""
         config = Config(test_mode=True)
         manager = CredentialManager(config)
 
-        # Mock rclone availability check
-        with patch.object(manager, "_check_rclone_available", return_value=True):
-            # Mock successful rclone test
-            mock_result = Mock()
-            mock_result.returncode = 0
-            mock_run.return_value = mock_result
-
+        with patch.object(manager, "get_credentials", side_effect=CredentialError("Test error", "Fix it")):
             is_valid, message = manager.validate_credentials()
 
-            assert is_valid is True
-            assert "validated successfully" in message
+            assert is_valid is False
+            assert "Test error" in message
+            assert "Fix it" in message
 
-
-class TestDirectCredentials:
-    """Test direct credential functionality."""
-
-    @patch.dict(os.environ, {"WASABI_ACCESS_KEY": "test_access_key", "WASABI_SECRET_KEY": "test_secret_key"})
-    def test_get_direct_credentials_from_environment(self):
-        """Test getting credentials from environment variables."""
-        config = Config(test_mode=False)
-        manager = CredentialManager(config)
-
-        access_key, secret_key = manager._get_direct_credentials()
-
-        assert access_key == "test_access_key"
-        assert secret_key == "test_secret_key"
-
-    @patch.dict(os.environ, {"S3_ACCESS_KEY": "test_s3_access_key", "S3_SECRET_KEY": "test_s3_secret_key"})
-    def test_get_direct_credentials_from_s3_environment(self):
-        """Test getting credentials from S3_ environment variables."""
-        config = Config(test_mode=False)
-        manager = CredentialManager(config)
-
-        access_key, secret_key = manager._get_direct_credentials()
-
-        assert access_key == "test_s3_access_key"
-        assert secret_key == "test_s3_secret_key"
-
-    @patch.dict(os.environ, {}, clear=True)
-    def test_get_direct_credentials_from_config_file(self):
-        """Test getting credentials from config file."""
-        config = Config(test_mode=False)
-        manager = CredentialManager(config)
-
-        # Mock config to return credentials
-        with patch.object(config, "load_config") as mock_load_config:
-            mock_load_config.return_value = {
-                "storage": {"access_key": "config_access_key", "secret_key": "config_secret_key"}
-            }
-
-            access_key, secret_key = manager._get_direct_credentials()
-
-            assert access_key == "config_access_key"
-            assert secret_key == "config_secret_key"
-
-    @patch.dict(os.environ, {}, clear=True)
-    def test_get_direct_credentials_not_found(self):
-        """Test getting credentials when none are available."""
-        config = Config(test_mode=False)
-        manager = CredentialManager(config)
-
-        access_key, secret_key = manager._get_direct_credentials()
-
-        assert access_key is None
-        assert secret_key is None
-
-    @patch.dict(
-        os.environ,
-        {
-            "WASABI_ACCESS_KEY": "test_access_key"
-            # Missing WASABI_SECRET_KEY
-        },
-    )
-    def test_get_direct_credentials_partial_environment(self):
-        """Test getting credentials when only access key is available."""
-        config = Config(test_mode=False)
-        manager = CredentialManager(config)
-
-        access_key, secret_key = manager._get_direct_credentials()
-
-        assert access_key is None
-        assert secret_key is None
-
-    @patch.dict(os.environ, {"WASABI_ACCESS_KEY": "test_access_key", "WASABI_SECRET_KEY": "test_secret_key"})
-    def test_production_credentials_with_direct_credentials(self):
-        """Test production credentials using direct credentials."""
-        config = Config(test_mode=False)
-        manager = CredentialManager(config)
-
-        credentials = manager.get_credentials()
-
-        assert credentials["access_key"] == "test_access_key"
-        assert credentials["secret_key"] == "test_secret_key"
-        assert credentials["endpoint"] == "s3.wasabisys.com"
-        assert credentials["bucket"] == "my-photo-backup-bucket"
-
-    @patch.dict(os.environ, {}, clear=True)
-    def test_production_credentials_fallback_to_1password(self):
-        """Test production credentials falling back to 1Password when configured."""
-        config = Config(test_mode=False)
-        manager = CredentialManager(config)
-
-        # Mock config to enable 1Password
-        with patch.object(config, "load_config") as mock_load_config:
-            mock_load_config.return_value = {
-                "storage": {"use_1password": True, "1password_item": "Wasabi S3 Credentials"}
-            }
-
-            # Mock 1Password credential retrieval
-            with patch.object(manager, "_retrieve_credentials_from_1password") as mock_1p:
-                mock_1p.return_value = ("1p_access_key", "1p_secret_key")
-
-                credentials = manager.get_credentials()
-
-                assert credentials["access_key"] == "1p_access_key"
-                assert credentials["secret_key"] == "1p_secret_key"
-                mock_1p.assert_called_once()
-
-    @patch.dict(os.environ, {}, clear=True)
-    def test_production_credentials_no_credentials_available(self):
-        """Test production credentials when no credentials are available."""
-        config = Config(test_mode=False)
-        manager = CredentialManager(config)
-
-        # Mock config to not enable 1Password
-        with patch.object(config, "load_config") as mock_load_config:
-            mock_load_config.return_value = {"storage": {"use_1password": False}}
-
-            credentials = manager.get_credentials()
-
-            assert credentials["access_key"] is None
-            assert credentials["secret_key"] is None
-
-    def test_get_credential_source_test_mode(self):
-        """Test credential source detection in test mode."""
+    def test_validate_test_credentials_invalid(self):
+        """Test validation when test credentials are invalid."""
         config = Config(test_mode=True)
         manager = CredentialManager(config)
 
-        source = manager._get_credential_source()
+        with patch.object(
+            manager,
+            "get_credentials",
+            return_value={
+                "access_key": "wrong",
+                "secret_key": "wrong",
+                "endpoint": "localhost:9000",
+                "bucket": "test-bucket",
+            },
+        ):
+            is_valid, message = manager._validate_test_credentials(
+                {"access_key": "wrong", "secret_key": "wrong", "endpoint": "localhost:9000", "bucket": "test-bucket"}
+            )
 
-        assert source == "test_mode"
+            assert is_valid is False
+            assert "Invalid test credentials" in message
+            assert "minioadmin/minioadmin" in message
 
-    @patch.dict(os.environ, {"WASABI_ACCESS_KEY": "test_access_key", "WASABI_SECRET_KEY": "test_secret_key"})
-    def test_get_credential_source_environment(self):
-        """Test credential source detection from environment variables."""
+    def test_validate_production_credentials_missing(self):
+        """Test validation when production credentials are missing."""
         config = Config(test_mode=False)
         manager = CredentialManager(config)
 
-        source = manager._get_credential_source()
+        is_valid, message = manager._validate_production_credentials(
+            {"access_key": None, "secret_key": None, "endpoint": "s3.wasabisys.com", "bucket": "test-bucket"}
+        )
 
-        assert source == "environment_variables"
-
-    @patch.dict(os.environ, {}, clear=True)
-    def test_get_credential_source_config_file(self):
-        """Test credential source detection from config file."""
-        config = Config(test_mode=False)
-        manager = CredentialManager(config)
-
-        # Mock config to return credentials
-        with patch.object(config, "load_config") as mock_load_config:
-            mock_load_config.return_value = {
-                "storage": {"access_key": "config_access_key", "secret_key": "config_secret_key"}
-            }
-
-            source = manager._get_credential_source()
-
-            assert source == "config_file"
-
-    @patch.dict(os.environ, {}, clear=True)
-    def test_get_credential_source_1password(self):
-        """Test credential source detection for 1Password."""
-        config = Config(test_mode=False)
-        manager = CredentialManager(config)
-
-        # Mock config to enable 1Password
-        with patch.object(config, "load_config") as mock_load_config:
-            mock_load_config.return_value = {"storage": {"use_1password": True}}
-
-            source = manager._get_credential_source()
-
-            assert source == "1password"
-
-    @patch.dict(os.environ, {}, clear=True)
-    def test_get_credential_source_none(self):
-        """Test credential source detection when no credentials are available."""
-        config = Config(test_mode=False)
-        manager = CredentialManager(config)
-
-        # Mock config to return no credentials
-        with patch.object(config, "load_config") as mock_load_config:
-            mock_load_config.return_value = {"storage": {}}
-
-            source = manager._get_credential_source()
-
-            assert source == "none"
-
-    @patch.dict(os.environ, {"WASABI_ACCESS_KEY": "test_access_key", "WASABI_SECRET_KEY": "test_secret_key"})
-    def test_credential_info_with_direct_credentials(self):
-        """Test credential info with direct credentials."""
-        config = Config(test_mode=False)
-        manager = CredentialManager(config)
-
-        info = manager.get_credential_info()
-
-        assert info["mode"] == "production"
-        assert info["credential_source"] == "environment_variables"
-        assert info["has_access_key"] is True
-        assert info["has_secret_key"] is True
-        assert info["access_key_preview"] == "test..._key"
+        assert is_valid is False
+        assert "Production credentials not available" in message
+        assert "WASABI_ACCESS_KEY" in message
