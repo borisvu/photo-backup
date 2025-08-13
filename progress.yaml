@@ -37,7 +37,7 @@ phases:
   phase_5_credentials:
     name: "Credential Management"
     tasks_total: 11
-    tasks_completed: 9
+    tasks_completed: 10
     status: "in_progress"
     
   phase_6_backup_core:
@@ -419,6 +419,46 @@ tasks:
       - Flexible deployment options
       - Maintains backward compatibility with existing setups
 
+  task_051:
+    name: "Add Credential Test Command"
+    status: "completed"
+    notes: |
+      **Goal**: Test credential setup with a photo-backup test-auth command
+      
+      **Implementation Status**: ✅ **COMPLETED**
+      
+      **Key Features Implemented:**
+      - ✅ Added `photo-backup test-auth` command with comprehensive credential testing
+      - ✅ Supports both test mode (Minio) and production mode (Wasabi)
+      - ✅ Validates S3 access using rclone integration
+      - ✅ Automatically creates test bucket in Minio if needed
+      - ✅ Provides detailed credential status reporting
+      - ✅ Includes verbose mode for debugging
+      - ✅ Proper exit codes (0 for success, 1 for failure)
+      - ✅ User-friendly error messages with actionable suggestions
+      
+      **Command Features:**
+      - Shows credential mode (test/production)
+      - Displays credential availability status
+      - Shows endpoint, bucket, region, and SSL configuration
+      - Validates credentials with actual S3 access test
+      - Creates test bucket in Minio when needed
+      - Provides comprehensive error messages and suggestions
+      - Supports --verbose flag for detailed debugging
+      
+      **Test Coverage:**
+      - 8 functional tests covering all scenarios
+      - 4 unit tests for bucket creation functionality
+      - Tests both success and failure cases
+      - Validates proper exit codes and error messages
+      
+      **Benefits:**
+      - Easy credential validation for users
+      - Automatic test bucket creation for development
+      - Clear error messages with actionable suggestions
+      - Comprehensive debugging capabilities
+      - Seamless integration with existing CLI structure
+
 # Current state summary
 current_state:
   working_directory: "/Users/you/git/backup-to-s3"
@@ -515,11 +555,11 @@ current_state:
 next_steps:
   immediate:
     - "Continue Phase 5: Credential Management"
-    - "Start with Task 51: Add Credential Test Command"
-    - "Implement photo-backup test-auth command for credential validation"
+    - "Start with Task 52: Credential Functional Test"
+    - "Implement comprehensive functional testing for credential flow"
     
   upcoming:
-    - "Complete Phase 5: Credential Management (Tasks 51-52)"
+    - "Complete Phase 5: Credential Management (Task 52)"
     - "Move to Phase 6: Backup Engine Core (Tasks 53-62)"
     - "Return to Task 42: Logging Functional Test after backup implementation"
 
