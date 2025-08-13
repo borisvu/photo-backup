@@ -37,7 +37,7 @@ phases:
   phase_5_credentials:
     name: "Credential Management"
     tasks_total: 11
-    tasks_completed: 8
+    tasks_completed: 9
     status: "in_progress"
     
   phase_6_backup_core:
@@ -388,6 +388,37 @@ tasks:
       - Comprehensive troubleshooting information
       - Graceful degradation with helpful suggestions
 
+  task_050:
+    name: "Create Manual Override"
+    status: "completed"
+    notes: |
+      **Goal**: Allow manual credential entry as fallback for no 1Password scenarios
+      
+      **Implementation Status**: ✅ **COMPLETED** (as part of Task 48.1)
+      
+      **Key Features Implemented:**
+      - ✅ Direct credential support via environment variables (WASABI_ACCESS_KEY/WASABI_SECRET_KEY)
+      - ✅ Config file fallback (storage.access_key/storage.secret_key)
+      - ✅ 1Password integration as optional fallback
+      - ✅ Test mode ignores overrides (uses hardcoded Minio credentials)
+      - ✅ Secure priority order: Environment variables → Config file → 1Password
+      - ✅ Never stores credentials in files (environment variables preferred)
+      
+      **Environment Variables Supported:**
+      - WASABI_ACCESS_KEY / WASABI_SECRET_KEY (primary)
+      - S3_ACCESS_KEY / S3_SECRET_KEY (alternative)
+      
+      **Test Coverage:**
+      - 8 functional tests passing for direct credential scenarios
+      - Comprehensive unit tests for credential priority and fallback logic
+      - Test mode correctly ignores manual overrides
+      
+      **Benefits:**
+      - Seamless fallback when 1Password is not available
+      - Secure credential management for CI/CD environments
+      - Flexible deployment options
+      - Maintains backward compatibility with existing setups
+
 # Current state summary
 current_state:
   working_directory: "/Users/you/git/backup-to-s3"
@@ -484,11 +515,11 @@ current_state:
 next_steps:
   immediate:
     - "Continue Phase 5: Credential Management"
-    - "Start with Task 50: Create Manual Override"
-    - "Implement manual credential entry fallback for no 1Password scenarios"
+    - "Start with Task 51: Add Credential Test Command"
+    - "Implement photo-backup test-auth command for credential validation"
     
   upcoming:
-    - "Complete Phase 5: Credential Management (Tasks 50-52)"
+    - "Complete Phase 5: Credential Management (Tasks 51-52)"
     - "Move to Phase 6: Backup Engine Core (Tasks 53-62)"
     - "Return to Task 42: Logging Functional Test after backup implementation"
 
