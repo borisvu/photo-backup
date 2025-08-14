@@ -94,21 +94,24 @@ state:
         manager = CredentialManager(config)
 
         # Test environment variables
-        with patch.dict(os.environ, {"WASABI_ACCESS_KEY": "test"}):
+        with patch.dict(os.environ, {"WASABI_ACCESS_KEY": "test", "WASABI_SECRET_KEY": "test"}):
             info = manager.get_credential_info()
             assert info["credential_source"] == "environment_variables"
 
         # Test config file
         with patch.dict(os.environ, {}, clear=True), patch.object(config, "load_config") as mock_load:
-            mock_load.return_value = {"storage": {"access_key": "test"}}
+            mock_load.return_value = {"storage": {"access_key": "test", "secret_key": "test"}}
             info = manager.get_credential_info()
             assert info["credential_source"] == "config_file"
 
         # Test 1Password
         with patch.dict(os.environ, {}, clear=True), patch.object(config, "load_config") as mock_load:
             mock_load.return_value = {"storage": {"use_1password": True}}
-            info = manager.get_credential_info()
-            assert info["credential_source"] == "1password"
+            # Mock the 1Password provider to return credentials
+            with patch.object(manager._onepassword_provider, "get_credentials") as mock_1p:
+                mock_1p.return_value = {"access_key": "test", "secret_key": "test"}
+                info = manager.get_credential_info()
+                assert info["credential_source"] == "1password"
 
         # Test no credentials
         with patch.dict(os.environ, {}, clear=True), patch.object(config, "load_config") as mock_load:
@@ -146,8 +149,17 @@ state:
                 manager = CredentialManager(config)
 
                 # Mock 1Password credential retrieval
-                with patch.object(manager, "_retrieve_credentials_from_1password") as mock_1p:
-                    mock_1p.return_value = ("1p_access_key", "1p_secret_key")
+                with patch.object(manager._onepassword_provider, "get_credentials") as mock_1p:
+                    mock_1p.return_value = {
+                        "access_key": "1p_access_key",
+                        "secret_key": "1p_secret_key",
+                        "endpoint": "s3.wasabisys.com",
+                        "region": "us-east-1",
+                        "use_ssl": True,
+                        "bucket": "my-photo-backup-bucket",
+                        "timeout_seconds": 300,
+                        "retry_attempts": 3,
+                    }
 
                     credentials = manager.get_credentials()
 
