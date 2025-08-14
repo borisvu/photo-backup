@@ -4,7 +4,6 @@ Functional tests for enhanced credential error handling.
 
 import os
 import subprocess
-import tempfile
 
 import pytest
 from pathlib import Path
@@ -60,67 +59,6 @@ class TestCredentialErrorHandlingFunctional:
         assert result.returncode != 0
         assert "Configuration validation failed" in result.stdout
         assert "backup.source_path does not exist" in result.stdout
-
-    @pytest.mark.skip(reason="Test outdated - validation logic has changed")
-    def test_credential_error_handling_1password_not_available(self):
-        """Test error handling when 1Password CLI is not available."""
-        # Create a config that enables 1Password
-        with tempfile.TemporaryDirectory() as temp_dir:
-            config_file = Path(temp_dir) / "config.yaml"
-            config_content = """
-backup:
-  source_path: /test/photos
-  destination_path: /test/backup
-  max_size_mb: 1000
-  backup_count: 5
-  mount_delay_seconds: 30
-
-storage:
-  endpoint: s3.wasabisys.com
-  region: us-east-1
-  bucket: test-bucket
-  use_ssl: true
-  timeout_seconds: 300
-  retry_attempts: 3
-  use_1password: true
-  1password_item: "Test Credentials"
-
-monitoring:
-  enabled: true
-  check_interval_seconds: 300
-  mount_timeout_seconds: 60
-
-logging:
-  level: INFO
-  format: detailed
-  directory: /tmp/photo-backup-test/logs
-  max_files: 10
-  max_age_days: 7
-
-state:
-  directory: /tmp/photo-backup-test/state
-"""
-            config_file.write_text(config_content)
-
-            # Clear environment variables and set config file path
-            env = os.environ.copy()
-            env.pop("WASABI_ACCESS_KEY", None)
-            env.pop("WASABI_SECRET_KEY", None)
-            env["PHOTO_BACKUP_CONFIG_FILE"] = str(config_file)
-
-            # Test credential validation
-            result = subprocess.run(
-                ["python", "-m", "photo_backup.main", "validate"],
-                capture_output=True,
-                text=True,
-                cwd=".",
-                env=env,
-            )
-
-            # Should show validation failure due to missing paths
-            assert result.returncode != 0
-            assert "Configuration validation failed" in result.stdout
-            assert "backup.source_path does not exist" in result.stdout
 
     def test_credential_error_handling_rclone_not_available(self):
         """Test error handling when rclone is not available."""
