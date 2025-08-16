@@ -1,0 +1,180 @@
+# Photo Backup System - Cursor Rules
+
+## Project Context
+
+This is a personal photo backup system that monitors a 4TB external SSD and backs up to Wasabi S3 storage, running automatically on macOS when the drive is connected. The system provides integrity verification and auto-repair, using Minio for local testing to avoid Wasabi costs during development.
+
+## Core Development Principles
+
+### 1. Task-Driven Development
+
+- **Reference**: @tasks.md for complete task definitions and implementation steps
+- **Reference**: @architecture.md for system design and component details
+- **Reference**: @instructions.md for coding protocol and testing approach
+- **Maintain**: @progress.yaml to track task completion status
+- Complete one task at a time, test thoroughly before proceeding
+- Each task should be independently testable and functional
+
+### 2. Testing Requirements
+
+- **Use pytest** for all testing (prefer `pytest` command over `python -m pytest`)
+- **No disabled or empty tests** - if a test is obsolete, explain why and delete after confirmation
+- **Functional tests via main.py** - test through CLI interface, not just unit tests
+- **Test mode first** - use Minio (localhost:9000) for S3 testing before Wasabi
+- **Ensure all tests pass** before committing any changes
+- **Clean up after tests** - remove temporary files, containers, and state
+
+### 3. Code Quality Standards
+
+- **Minimum viable implementation** - write only what's needed for the task
+- **No sweeping changes** - focus on the specific task requirements
+- **Modular and testable** - keep functions small and focused
+- **Clear error messages** - provide actionable feedback for users
+- **Type hints** where helpful for clarity
+- **Docstrings** for classes and major functions
+- **PEP 8 compliance** with clear, descriptive names
+
+### 4. Test Mode Implementation
+
+- **Accelerated timers** - minutes instead of hours for faster testing
+- **Local directories** - use /tmp/photo-backup-test/ for test state
+- **Minio credentials** - hardcoded minioadmin/minioadmin for testing
+- **Verbose logging** - DEBUG level in test mode
+- **Skip 1Password** - test mode doesn't require 1Password integration
+- **Docker dependency** - gracefully handle when Docker is unavailable
+
+### 5. Configuration Management
+
+- **Test mode override** - automatically use Minio settings in test mode
+- **Environment variables** - support PHOTO*BACKUP*\* overrides
+- **Multiple config locations** - current dir, user config, system config
+- **Validation** - always validate configuration before use
+- **Sensitive data masking** - never log credentials or sensitive information
+
+### 6. Error Handling
+
+- **Specific exceptions** - catch specific exceptions, not broad Exception
+- **Helpful messages** - provide clear, actionable error messages
+- **Test mode guidance** - suggest Minio setup for test mode failures
+- **Graceful degradation** - handle missing dependencies gracefully
+- **Log errors appropriately** - use proper log levels and context
+
+### 7. File Organization
+
+- **Follow architecture** - use structure defined in @architecture.md
+- **Single purpose modules** - each module should have a clear purpose
+- **Related functionality together** - keep related code in the same module
+- **No unnecessary files** - don't create files not specified in tasks
+
+### 8. Security Considerations
+
+- **No hardcoded credentials** - use environment variables or 1Password
+- **Test mode isolation** - test credentials never used in production
+- **File permissions** - config files 600, logs 644
+- **HTTPS only** - no HTTP for production storage connections
+- **Input validation** - sanitize all user inputs and paths
+
+### 9. Performance Guidelines
+
+- **Streaming processing** - don't load entire file lists into memory
+- **Incremental operations** - only sync changed files
+- **Timeout handling** - use appropriate timeouts for network operations
+- **Resource cleanup** - always clean up temporary files and connections
+- **Rate limiting** - respect bandwidth and API limits
+
+### 10. Documentation Requirements
+
+- **Inline comments** - only where logic isn't obvious
+- **Docstrings** - for all public functions and classes
+- **README updates** - document new features and configuration options
+- **Error messages** - include troubleshooting steps in error messages
+- **Test documentation** - explain what each test validates
+
+## Development Workflow
+
+### Starting a Task
+
+1. Read the task description carefully in @tasks.md
+2. Check if any previous tasks need updates
+3. Implement only what's specified
+4. Add necessary imports and dependencies
+5. Include a simple way to test the functionality
+
+### Testing a Task
+
+1. If the task has a **Test** section, implement that exact test
+2. For S3-related features, always use test mode with Minio first
+3. Make tests runnable from command line
+4. Ensure tests clean up after themselves
+5. Verify all existing tests still pass
+6. No disabled or empty tests left behind
+
+### Completing a Task
+
+1. Verify the test passes
+2. Check you haven't broken previous functionality
+3. Ensure code follows the protocol
+4. Update @progress.yaml with completion status
+5. Wait for confirmation before proceeding
+
+## Special Considerations
+
+### Minio Testing
+
+- Assume Minio will be running at localhost:9000
+- Use bucket name: my-photo-backup-bucket-test
+- If Minio isn't running, provide clear error message with setup instructions
+- Handle Docker unavailability gracefully
+
+### Platform-Specific Code
+
+- This is for macOS only
+- Use macOS-specific paths (~/Library/...)
+- Assume launchd for service management
+- Use Unix tools for log processing and filtering
+
+### State Management
+
+- Use JSON for simple state files
+- SQLite for history/log data
+- Always use test directories in test mode
+- Clean up state files between test runs
+
+### Credential Management
+
+- Test mode: hardcoded Minio credentials
+- Production: 1Password CLI integration or environment variables
+- Never store credentials in files
+- Always validate credentials before use
+
+## What to Tell the User
+
+- If a task seems too large or unclear
+- If you discover missing dependencies
+- If previous code needs refactoring to support new features
+- If you need manual steps performed (e.g., Wasabi setup)
+- If you find conflicts between tasks and architecture
+- If tests are failing and why
+
+## What the User Will Do
+
+- Run tests after each task
+- Verify functionality works as expected
+- Commit to GitHub when task is complete
+- Provide feedback if adjustments needed
+- Handle any external configuration (Wasabi setup, etc.)
+
+## Remember
+
+- **One task at a time** - don't try to implement multiple tasks simultaneously
+- **Minimum viable implementation** - focus on working code over perfect code
+- **Test mode for everything S3-related** - use Minio before Wasabi
+- **Stop after each task** - wait for testing and confirmation
+- **Keep it simple and working** - complexity can be added later
+- **Maintain progress tracking** - update @progress.yaml regularly
+- **No broken tests** - ensure all tests pass before proceeding
+  description:
+  globs:
+  alwaysApply: false
+
+---
