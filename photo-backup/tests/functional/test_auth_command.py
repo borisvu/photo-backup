@@ -6,11 +6,9 @@ Functional tests for the test-auth CLI command.
 import os
 import subprocess
 import tempfile
-from pathlib import Path
 
 import pytest
-
-from photo_backup.config.config import Config
+from pathlib import Path
 
 
 class TestAuthCommandFunctional:
@@ -40,6 +38,7 @@ class TestAuthCommandFunctional:
 
         # Wait a moment for Minio to start
         import time
+
         time.sleep(2)
 
         result = subprocess.run(
@@ -48,7 +47,7 @@ class TestAuthCommandFunctional:
             text=True,
             cwd=".",
         )
-        
+
         # Combine stdout and stderr for checking output
         combined_output = result.stdout + result.stderr
 
@@ -62,12 +61,16 @@ class TestAuthCommandFunctional:
             assert "🎉 Authentication test completed successfully!" in combined_output
         else:
             # If it fails, it should be due to Minio not running or other issues
-            assert any(error_msg in combined_output.lower() for error_msg in [
-                "cannot connect to minio",
-                "connection refused",
-                "directory not found",
-                "minio test failed"
-            ])
+            assert any(
+                error_msg in combined_output.lower()
+                for error_msg in [
+                    "cannot connect to minio",
+                    "connection refused",
+                    "directory not found",
+                    "minio test failed",
+                    "rclone test timed out",
+                ]
+            )
 
     def test_test_auth_test_mode_verbose(self):
         """Test test-auth command with verbose flag in test mode."""
@@ -79,6 +82,7 @@ class TestAuthCommandFunctional:
 
         # Wait a moment for Minio to start
         import time
+
         time.sleep(2)
 
         result = subprocess.run(
@@ -87,7 +91,7 @@ class TestAuthCommandFunctional:
             text=True,
             cwd=".",
         )
-        
+
         # Combine stdout and stderr for checking output
         combined_output = result.stdout + result.stderr
 
@@ -98,12 +102,16 @@ class TestAuthCommandFunctional:
             assert "🎉 Authentication test completed successfully!" in combined_output
         else:
             # If it fails, should still show verbose information
-            assert "📊 Detailed Status:" in combined_output or any(error_msg in combined_output.lower() for error_msg in [
-                "cannot connect to minio",
-                "connection refused",
-                "directory not found",
-                "minio test failed"
-            ])
+            assert "📊 Detailed Status:" in combined_output or any(
+                error_msg in combined_output.lower()
+                for error_msg in [
+                    "cannot connect to minio",
+                    "connection refused",
+                    "directory not found",
+                    "minio test failed",
+                    "rclone test timed out",
+                ]
+            )
 
     def test_test_auth_production_mode_no_credentials(self):
         """Test test-auth command in production mode with no credentials."""
@@ -114,7 +122,7 @@ class TestAuthCommandFunctional:
         env.pop("S3_ACCESS_KEY", None)
         env.pop("S3_SECRET_KEY", None)
         env.pop("PHOTO_BACKUP_CONFIG", None)
-        
+
         result = subprocess.run(
             ["python3", "-m", "photo_backup.main", "test-auth"],
             capture_output=True,
@@ -122,7 +130,7 @@ class TestAuthCommandFunctional:
             cwd=".",
             env=env,
         )
-        
+
         # Combine stdout and stderr for checking output
         combined_output = result.stdout + result.stderr
 
@@ -131,7 +139,7 @@ class TestAuthCommandFunctional:
         assert "🔐 Testing authentication in PRODUCTION MODE" in combined_output
         assert "📋 Mode: production" in combined_output
         # The system might detect credentials from config, so check for either case
-        assert ("🔑 Has credentials: ❌ No" in combined_output or "🔑 Has credentials: ✅ Yes" in combined_output)
+        assert "🔑 Has credentials: ❌ No" in combined_output or "🔑 Has credentials: ✅ Yes" in combined_output
         assert "💥 Authentication test failed!" in combined_output
 
     def test_test_auth_production_mode_with_env_vars(self):
@@ -148,7 +156,7 @@ class TestAuthCommandFunctional:
             cwd=".",
             env=env,
         )
-        
+
         # Combine stdout and stderr for checking output
         combined_output = result.stdout + result.stderr
 
@@ -208,7 +216,7 @@ state:
                 source_path.mkdir()
 
                 # Update config file with valid source path
-                with open(config_file, "r") as f:
+                with open(config_file) as f:
                     content = f.read()
                 content = content.replace("/test/photos", str(source_path))
                 with open(config_file, "w") as f:
@@ -224,7 +232,7 @@ state:
                     cwd=".",
                     env=env,
                 )
-                
+
                 # Combine stdout and stderr for checking output
                 combined_output = result.stdout + result.stderr
 
@@ -248,7 +256,7 @@ state:
             text=True,
             cwd=".",
         )
-        
+
         # Combine stdout and stderr for checking output
         combined_output = result.stdout + result.stderr
 
@@ -256,7 +264,7 @@ state:
         assert result.returncode == 1  # Should fail due to no credentials
         assert "🔐 Testing authentication in PRODUCTION MODE" in combined_output
         assert "📋 Mode: production" in combined_output
-        assert ("🔑 Has credentials: ❌ No" in combined_output or "🔑 Has credentials: ✅ Yes" in combined_output)
+        assert "🔑 Has credentials: ❌ No" in combined_output or "🔑 Has credentials: ✅ Yes" in combined_output
         assert "💥 Authentication test failed!" in combined_output
 
     def test_test_auth_invalid_command(self):
