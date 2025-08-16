@@ -247,3 +247,173 @@ class TestBackupEngineWithRclone:
 
         assert is_valid is False
         assert any("rclone check failed" in error for error in errors)
+
+
+class TestRcloneCommandBuilding:
+    """Test rclone command building functionality."""
+
+    def test_build_sync_command_test_mode(self):
+        """Test building rclone sync command in test mode."""
+        engine = BackupEngine(test_mode=True)
+        job = BackupJob("/source/path", "minio-test:bucket", dry_run=False)
+
+        cmd = engine.build_sync_command(job)
+
+        # Verify basic command structure
+        assert cmd[0] == "rclone"
+        assert cmd[1] == "sync"
+        assert cmd[2] == "/source/path"
+        assert cmd[3] == "test:bucket"  # Should use 'test' remote name
+
+        # Verify key options are present
+        assert "--transfers" in cmd
+        assert "--checkers" in cmd
+        assert "--progress" in cmd
+        assert "--checksum" in cmd
+        assert "--config" in cmd
+        assert "RCLONE_CONFIG_PATH" in cmd
+
+        # Verify test mode specific options
+        assert "--verbose" in cmd
+
+        # Verify dry-run is NOT present when dry_run=False
+        assert "--dry-run" not in cmd
+
+    def test_build_sync_command_with_dry_run(self):
+        """Test building rclone sync command with dry-run enabled."""
+        engine = BackupEngine(test_mode=True)
+        job = BackupJob("/source/path", "minio-test:bucket", dry_run=True)
+
+        cmd = engine.build_sync_command(job)
+
+        # Verify dry-run flag is present
+        assert "--dry-run" in cmd
+
+    @patch("photo_backup.backup.CredentialManager")
+    def test_build_sync_command_production_mode(self, _mock_credential_manager):
+        """Test building rclone sync command in production mode."""
+        # Mock credential manager to avoid real credential lookup
+        mock_creds = {
+            "access_key": "test_key",
+            "secret_key": "test_secret",
+            "endpoint": "s3.wasabisys.com",
+            "region": "us-east-1",
+            "use_ssl": True,
+            "bucket": "test-bucket",
+        }
+
+        engine = BackupEngine(test_mode=False)
+        engine.credential_manager.get_credentials = MagicMock(return_value=mock_creds)
+        job = BackupJob("/source/path", "wasabi:bucket", dry_run=False)
+
+        cmd = engine.build_sync_command(job)
+
+        # Verify basic command structure
+        assert cmd[0] == "rclone"
+        assert cmd[1] == "sync"
+        assert cmd[2] == "/source/path"
+        assert cmd[3] == "test:bucket"  # Still uses 'test' but with production destination
+
+        # Verify production mode specific options
+        assert "--quiet" in cmd
+        assert "--verbose" not in cmd
+
+    def test_build_sync_command_with_config_options(self):
+        """Test that command includes configuration-based options."""
+        engine = BackupEngine(test_mode=True)
+        job = BackupJob("/source/path", "minio-test:bucket")
+
+        cmd = engine.build_sync_command(job)
+
+        # Check that config values are used (with defaults)
+        transfers_idx = cmd.index("--transfers")
+        assert cmd[transfers_idx + 1] == "8"  # Default value
+
+        checkers_idx = cmd.index("--checkers")
+        assert cmd[checkers_idx + 1] == "16"  # Default value
+
+        chunk_size_idx = cmd.index("--s3-chunk-size")
+        assert cmd[chunk_size_idx + 1] == "10M"  # Default value
+
+    def test_build_sync_command_destination_parsing(self):
+        """Test destination parsing for different formats."""
+        engine = BackupEngine(test_mode=True)
+
+        # Test with colon-separated destination
+        job1 = BackupJob("/source", "minio-test:bucket/path", dry_run=False)
+        cmd1 = engine.build_sync_command(job1)
+        assert "test:bucket/path" in cmd1
+
+        # Test with simple destination (no colon)
+        job2 = BackupJob("/source", "bucket", dry_run=False)
+        cmd2 = engine.build_sync_command(job2)
+        assert "test:bucket" in cmd2
+
+    def test_build_sync_command_excludes_hidden_files(self):
+        """Test that command excludes common unwanted files."""
+        engine = BackupEngine(test_mode=True)
+        job = BackupJob("/source/path", "minio-test:bucket")
+
+        cmd = engine.build_sync_command(job)
+
+        # Verify exclude patterns
+        assert "--exclude" in cmd
+        exclude_indices = [i for i, x in enumerate(cmd) if x == "--exclude"]
+        exclude_patterns = [cmd[i + 1] for i in exclude_indices]
+
+        assert ".*" in exclude_patterns  # Hidden files
+        assert "Thumbs.db" in exclude_patterns  # Windows thumbnails
+        assert ".DS_Store" in exclude_patterns  # macOS metadata
+
+    def test_build_rclone_config_test_mode(self):
+        """Test building rclone config in test mode."""
+        engine = BackupEngine(test_mode=True)
+
+        config = engine._build_rclone_config()
+
+        # Verify config structure
+        assert "[test]" in config
+        assert "type = s3" in config
+        assert "provider = Other" in config
+        assert "access_key_id = minioadmin" in config
+        assert "secret_access_key = minioadmin" in config
+        assert "endpoint = http://localhost:9000" in config
+        assert "use_ssl = false" in config
+
+    def test_build_rclone_config_with_ssl(self):
+        """Test rclone config building with SSL enabled."""
+        # Mock credentials with SSL enabled
+        engine = BackupEngine(test_mode=False)
+        engine.credential_manager.get_credentials = MagicMock(
+            return_value={
+                "access_key": "test_key",
+                "secret_key": "test_secret",
+                "endpoint": "s3.wasabisys.com",
+                "region": "us-east-1",
+                "use_ssl": True,
+                "bucket": "test-bucket",
+            }
+        )
+
+        config = engine._build_rclone_config()
+
+        # Verify HTTPS endpoint
+        assert "endpoint = https://s3.wasabisys.com" in config
+        assert "use_ssl = true" in config
+
+    def test_build_sync_command_logging(self):
+        """Test that command building includes appropriate logging."""
+        engine = BackupEngine(test_mode=True)
+        job = BackupJob("/source/path", "minio-test:bucket", dry_run=True)
+
+        with patch.object(engine.logger, "info") as mock_log:
+            engine.build_sync_command(job)
+
+            # Verify logging calls
+            assert mock_log.call_count >= 2
+            log_calls = [call.args[0] for call in mock_log.call_args_list]
+
+            # Check for command building log
+            assert any("Built rclone command" in call for call in log_calls)
+            # Check for dry-run log
+            assert any("Command includes --dry-run flag" in call for call in log_calls)

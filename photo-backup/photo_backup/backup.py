@@ -204,6 +204,108 @@ class BackupEngine:
 
         return len(errors) == 0, errors
 
+    def build_sync_command(self, job: BackupJob) -> list[str]:
+        """Build rclone sync command with all parameters.
+
+        Args:
+            job: BackupJob containing source, destination, and options
+
+        Returns:
+            List of command arguments for rclone sync
+        """
+        # Base rclone sync command
+        cmd = ["rclone", "sync"]
+
+        # Add source path
+        cmd.append(job.source_path)
+
+        # Add destination with proper remote name
+        # Always use 'test' as remote name (matches rclone config section)
+        destination_parts = job.destination.split(":", 1)
+        if len(destination_parts) == 2:
+            bucket_path = destination_parts[1]
+            cmd.append(f"test:{bucket_path}")
+        else:
+            cmd.append(f"test:{job.destination}")
+
+        # Add performance and reliability options
+        cmd.extend(
+            [
+                "--transfers",
+                str(self.config.get("rclone.transfers", 8)),
+                "--checkers",
+                str(self.config.get("rclone.checkers", 16)),
+                "--s3-chunk-size",
+                str(self.config.get("rclone.s3_chunk_size", "10M")),
+                "--s3-upload-concurrency",
+                str(self.config.get("rclone.s3_upload_concurrency", 4)),
+            ]
+        )
+
+        # Add progress and verbosity options
+        cmd.extend(
+            [
+                "--progress",
+                "--stats",
+                "1s",
+                "--verbose" if self.test_mode else "--quiet",
+            ]
+        )
+
+        # Add backup-specific options
+        cmd.extend(
+            [
+                "--checksum",  # Use checksums for file comparison
+                "--create-empty-src-dirs",  # Create empty directories on destination
+                "--exclude",
+                ".*",  # Exclude hidden files
+                "--exclude",
+                "Thumbs.db",  # Exclude Windows thumbnails
+                "--exclude",
+                ".DS_Store",  # Exclude macOS metadata
+            ]
+        )
+
+        # Add dry-run option if enabled
+        if job.dry_run:
+            cmd.append("--dry-run")
+
+        # Add config file option (will be set when executing)
+        # This is a placeholder - actual config file path will be added during execution
+        cmd.extend(["--config", "RCLONE_CONFIG_PATH"])
+
+        self.logger.info(f"Built rclone command: {' '.join(cmd[:5])}... ({len(cmd)} total args)")
+        if job.dry_run:
+            self.logger.info("Command includes --dry-run flag")
+
+        return cmd
+
+    def _build_rclone_config(self) -> str:
+        """Build rclone configuration content for sync operations.
+
+        Returns:
+            rclone configuration content as string
+        """
+        credentials = self.credential_manager.get_credentials()
+
+        # Ensure endpoint has proper scheme
+        endpoint = credentials["endpoint"]
+        if not endpoint.startswith(("http://", "https://")):
+            endpoint = f"https://{endpoint}" if credentials["use_ssl"] else f"http://{endpoint}"
+
+        # Use 'test' as remote name for both test and production modes
+        # This matches the pattern used in credential validation
+        config = f"""[test]
+type = s3
+provider = Other
+access_key_id = {credentials["access_key"]}
+secret_access_key = {credentials["secret_key"]}
+endpoint = {endpoint}
+region = {credentials["region"]}
+use_ssl = {str(credentials["use_ssl"]).lower()}
+"""
+        return config
+
 
 # Quick test for the module
 if __name__ == "__main__":
@@ -236,6 +338,16 @@ if __name__ == "__main__":
         # Test backup info (now includes rclone status)
         info = engine_test.get_backup_info()
         print(f"✓ Backup info includes rclone status: {info['rclone_status']}")
+
+        # Test rclone command building
+        job = engine_test.create_backup_job()
+        cmd = engine_test.build_sync_command(job)
+        print(f"✓ Built rclone command with {len(cmd)} arguments")
+        print(f"  Command: {' '.join(cmd[:8])}...")
+
+        # Test rclone config building
+        config = engine_test._build_rclone_config()
+        print(f"✓ Built rclone config ({len(config)} chars)")
 
         # Test environment validation (now includes rclone check)
         is_valid, errors = engine_test.validate_backup_environment()
