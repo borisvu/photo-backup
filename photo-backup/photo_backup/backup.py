@@ -6,10 +6,84 @@ to S3-compatible storage (Wasabi in production, Minio in test mode).
 """
 
 import logging
+import re
+import subprocess
 from typing import Any
 
 from .config.config import Config
 from .credentials.manager import CredentialManager
+
+
+def check_rclone() -> tuple[bool, str, str | None]:
+    """Check if rclone is installed and get version information.
+
+    Returns:
+        Tuple of (is_available, message, version_string)
+        - is_available: True if rclone is installed and accessible
+        - message: Human-readable status message
+        - version_string: Version string if available, None otherwise
+    """
+    try:
+        # Try to run rclone version command
+        result = subprocess.run(["rclone", "version"], capture_output=True, text=True, timeout=10.0)
+
+        if result.returncode == 0:
+            # Parse version from output
+            version_line = result.stdout.split("\n")[0] if result.stdout else ""
+            # Extract version number from output like "rclone v1.64.2"
+            version_match = re.search(r"rclone v(\d+\.\d+\.\d+)", version_line)
+            version = version_match.group(1) if version_match else None
+
+            if version:
+                # Check minimum version (require 1.50.0 or higher)
+                if _is_version_sufficient(version, "1.50.0"):
+                    return True, f"rclone v{version} found (meets minimum requirement v1.50.0)", version
+                else:
+                    return False, f"rclone v{version} found but is too old (minimum required: v1.50.0)", version
+            else:
+                return True, "rclone found but version could not be determined", None
+        else:
+            return False, f"rclone command failed: {result.stderr.strip()}", None
+
+    except FileNotFoundError:
+        return False, "rclone not found - please install from https://rclone.org/install/", None
+    except subprocess.TimeoutExpired:
+        return False, "rclone version check timed out", None
+    except Exception as e:
+        return False, f"Error checking rclone: {e}", None
+
+
+def _is_version_sufficient(current_version: str, minimum_version: str) -> bool:
+    """Check if current version meets minimum version requirement.
+
+    Args:
+        current_version: Version string like "1.64.2"
+        minimum_version: Minimum required version string like "1.50.0"
+
+    Returns:
+        True if current version >= minimum version
+    """
+    try:
+        current_parts = [int(x) for x in current_version.split(".")]
+        minimum_parts = [int(x) for x in minimum_version.split(".")]
+
+        # Pad shorter version with zeros
+        while len(current_parts) < len(minimum_parts):
+            current_parts.append(0)
+        while len(minimum_parts) < len(current_parts):
+            minimum_parts.append(0)
+
+        # Compare version parts
+        for current, minimum in zip(current_parts, minimum_parts, strict=False):
+            if current > minimum:
+                return True
+            elif current < minimum:
+                return False
+
+        return True  # Versions are equal
+    except (ValueError, AttributeError):
+        # If we can't parse versions, assume it's sufficient
+        return True
 
 
 class BackupJob:
@@ -77,6 +151,9 @@ class BackupEngine:
         Returns:
             Dict containing backup configuration details
         """
+        # Get rclone information
+        rclone_available, rclone_message, rclone_version = check_rclone()
+
         return {
             "mode": "test" if self.test_mode else "production",
             "source_path": self.config.get("backup.source_path"),
@@ -84,6 +161,11 @@ class BackupEngine:
             "endpoint": self.config.get("storage.endpoint"),
             "dry_run": self.config.is_dry_run(),
             "credential_status": self.credential_manager.get_credential_status(),
+            "rclone_status": {
+                "available": rclone_available,
+                "message": rclone_message,
+                "version": rclone_version,
+            },
         }
 
     def validate_backup_environment(self) -> tuple[bool, list[str]]:
@@ -104,6 +186,13 @@ class BackupEngine:
         if not destination:
             errors.append("No destination configured")
 
+        # Check rclone availability
+        rclone_available, rclone_message, rclone_version = check_rclone()
+        if not rclone_available:
+            errors.append(f"rclone check failed: {rclone_message}")
+        else:
+            self.logger.info(f"rclone check passed: {rclone_message}")
+
         # Check credentials
         try:
             self.credential_manager.get_credentials()
@@ -119,6 +208,14 @@ class BackupEngine:
 # Quick test for the module
 if __name__ == "__main__":
     import sys
+
+    # Test rclone detection first
+    print("Testing rclone detection...")
+    try:
+        rclone_available, rclone_message, rclone_version = check_rclone()
+        print(f"✓ rclone check: available={rclone_available}, message='{rclone_message}', version={rclone_version}")
+    except Exception as e:
+        print(f"✗ rclone check failed: {e}")
 
     # Test basic instantiation
     print("Testing BackupEngine instantiation...")
@@ -136,15 +233,15 @@ if __name__ == "__main__":
         job = engine_test.create_backup_job()
         print(f"✓ Backup job created: {job}")
 
-        # Test backup info
+        # Test backup info (now includes rclone status)
         info = engine_test.get_backup_info()
-        print(f"✓ Backup info: {info}")
+        print(f"✓ Backup info includes rclone status: {info['rclone_status']}")
 
-        # Test environment validation (may fail without Minio)
+        # Test environment validation (now includes rclone check)
         is_valid, errors = engine_test.validate_backup_environment()
         print(f"✓ Environment validation: valid={is_valid}, errors={errors}")
 
-        print("✓ All basic tests passed!")
+        print("✓ All tests passed!")
 
     except Exception as e:
         print(f"✗ Test failed: {e}")

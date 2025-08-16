@@ -43,7 +43,7 @@ phases:
   phase_6_backup_core:
     name: "Backup Engine Core"
     tasks_total: 10
-    tasks_completed: 1
+    tasks_completed: 2
     status: "in_progress"
     
   phase_7_monitoring:
@@ -533,6 +533,51 @@ tasks:
       - Full integration with existing test infrastructure
       - Ready for rclone integration in subsequent tasks
 
+  task_054:
+    name: "Add rclone Detection"
+    status: "completed"
+    notes: |
+      **Goal**: Verify rclone installation and check minimum version
+      
+      **Implementation Status**: ✅ **COMPLETED**
+      
+      **Key Features Implemented:**
+      - ✅ check_rclone() function that detects rclone installation and version
+      - ✅ Version information parsing from rclone output using regex
+      - ✅ Minimum version checking (requires v1.50.0 or higher)
+      - ✅ Comprehensive error handling for all failure scenarios
+      - ✅ Integration with BackupEngine for environment validation
+      - ✅ Real-world verification detected rclone v1.70.1 successfully
+      
+      **Implementation Details:**
+      - check_rclone() returns tuple: (is_available, message, version_string)
+      - _is_version_sufficient() helper for semantic version comparison
+      - Handles FileNotFoundError, TimeoutExpired, subprocess failures gracefully
+      - Version parsing uses regex to extract from "rclone v1.64.2" format
+      - Updated validate_backup_environment() to include rclone check
+      - Enhanced get_backup_info() to include rclone status information
+      
+      **Test Coverage:**
+      - Added 14 comprehensive unit tests with full coverage
+      - 6 tests for check_rclone() function covering all scenarios
+      - 5 tests for version comparison logic with edge cases
+      - 3 tests for BackupEngine integration
+      - Mock-based testing for reliable execution without rclone dependency
+      - All 531 tests passing (517 existing + 14 new)
+      
+      **Error Handling:**
+      - rclone not found: Clear installation instructions
+      - Version too old: Specific version requirement message
+      - Command timeout: Graceful timeout handling
+      - Unparseable output: Falls back gracefully
+      - All error cases tested and validated
+      
+      **Benefits:**
+      - Robust rclone detection with comprehensive error handling
+      - Foundation ready for building rclone commands in next task
+      - Full integration with existing validation infrastructure
+      - Real-world tested and verified functionality
+
 # Current state summary
 current_state:
   working_directory: "/Users/you/git/backup-to-s3"
@@ -630,12 +675,12 @@ current_state:
 # Next steps
 next_steps:
   immediate:
-    - "Phase 6: Backup Engine Core started successfully"
-    - "Task 53: Create Backup Module completed"
-    - "Ready to continue with Task 54: Add rclone Detection"
+    - "Phase 6: Backup Engine Core progressing well"
+    - "Task 54: Add rclone Detection completed"
+    - "Ready to continue with Task 55: Build rclone Command"
     
   upcoming:
-    - "Continue Phase 6: Backup Engine Core (Tasks 54-62)"
+    - "Continue Phase 6: Backup Engine Core (Tasks 55-62)"
     - "Return to Task 42: Logging Functional Test after backup implementation"
 
 # Phase 1 Achievements
