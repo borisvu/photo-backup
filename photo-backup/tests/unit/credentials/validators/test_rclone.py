@@ -25,16 +25,15 @@ class TestRcloneCredentialValidator:
             "bucket": "test-bucket",
         }
 
-        with patch.object(validator, "_check_rclone_available", return_value=True):
-            with patch("subprocess.run") as mock_run:
-                mock_result = Mock()
-                mock_result.returncode = 0
-                mock_run.return_value = mock_result
+        with patch.object(validator, "_check_rclone_available", return_value=True), patch("subprocess.run") as mock_run:
+            mock_result = Mock()
+            mock_result.returncode = 0
+            mock_run.return_value = mock_result
 
-                is_valid, message = validator.validate_credentials(credentials)
+            is_valid, message = validator.validate_credentials(credentials)
 
-                assert is_valid is True
-                assert "validated successfully" in message
+            assert is_valid is True
+            assert "validated successfully" in message
 
     def test_validate_credentials_rclone_not_available(self):
         """Test validation when rclone is not available."""
@@ -71,17 +70,16 @@ class TestRcloneCredentialValidator:
             "bucket": "test-bucket",
         }
 
-        with patch.object(validator, "_check_rclone_available", return_value=True):
-            with patch("subprocess.run") as mock_run:
-                mock_result = Mock()
-                mock_result.returncode = 1
-                mock_result.stderr = "Access Denied"
-                mock_run.return_value = mock_result
+        with patch.object(validator, "_check_rclone_available", return_value=True), patch("subprocess.run") as mock_run:
+            mock_result = Mock()
+            mock_result.returncode = 1
+            mock_result.stderr = "Access Denied"
+            mock_run.return_value = mock_result
 
-                is_valid, message = validator.validate_credentials(credentials)
+            is_valid, message = validator.validate_credentials(credentials)
 
-                assert is_valid is False
-                assert "Access denied" in message
+            assert is_valid is False
+            assert "Access denied" in message
 
     def test_build_rclone_config(self):
         """Test rclone config building."""
@@ -99,10 +97,10 @@ class TestRcloneCredentialValidator:
 
         config_content = validator._build_rclone_config(credentials)
 
-        assert "test-test-bucket" in config_content
+        assert "[test]" in config_content
         assert "test_key" in config_content
         assert "test_secret" in config_content
-        assert "test.endpoint.com" in config_content
+        assert "https://test.endpoint.com" in config_content
         assert "us-east-1" in config_content
         assert "true" in config_content
 

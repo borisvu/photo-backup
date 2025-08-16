@@ -4,7 +4,11 @@ Rclone-based credential validator for S3-compatible storage.
 
 import logging
 import subprocess
+import tempfile
+from contextlib import suppress
 from typing import Any
+
+from pathlib import Path
 
 from .base import CredentialValidator
 
@@ -42,62 +46,74 @@ class RcloneCredentialValidator(CredentialValidator):
                 # Create a temporary rclone config for testing
                 config_content = self._build_rclone_config(credentials)
 
-                # Test the connection with a simple ls command
-                result = subprocess.run(
-                    ["rclone", "ls", f"test-{credentials['bucket']}", "--config", "-"],
-                    input=config_content,
-                    capture_output=True,
-                    text=True,
-                    timeout=30.0,
-                )
+                # Write config to temporary file
+                with tempfile.NamedTemporaryFile(mode="w", suffix=".conf", delete=False) as temp_config:
+                    temp_config.write(config_content)
+                    temp_config_path = temp_config.name
 
-                if result.returncode == 0:
-                    return True, "Credentials validated successfully with rclone"
-                else:
-                    error_msg = result.stderr.strip()
+                try:
+                    # Test the connection with a simple lsd command (lists buckets)
+                    # Use shorter timeout for test mode
+                    timeout_seconds = 10.0 if self.config.is_test_mode() else 30.0
+                    result = subprocess.run(
+                        ["rclone", "lsd", "test:", "--config", temp_config_path],
+                        capture_output=True,
+                        text=True,
+                        timeout=timeout_seconds,
+                    )
 
-                    # Test mode specific error handling
-                    if self.config.is_test_mode():
-                        if (
-                            "connection refused" in error_msg.lower()
-                            or "connect: no route to host" in error_msg.lower()
-                        ):
-                            return False, (
-                                f"Cannot connect to Minio at {credentials['endpoint']}. "
-                                "Start Minio container with: docker run -d --name minio -p 9000:9000 "
-                                "minio/minio server /data"
-                            )
-                        elif "no such bucket" in error_msg.lower():
-                            return False, (
-                                f"Test bucket '{credentials['bucket']}' not found. "
-                                "Create bucket in Minio or check bucket name in configuration"
-                            )
-                        elif "access denied" in error_msg.lower() or "403" in error_msg:
-                            return False, (
-                                "Access denied to Minio. "
-                                "Check that Minio is running and credentials are correct (minioadmin/minioadmin)"
-                            )
-                        else:
-                            return False, f"Minio test failed: {error_msg}"
+                    if result.returncode == 0:
+                        return True, "Credentials validated successfully with rclone"
                     else:
-                        # Production mode error handling
-                        if "Access Denied" in error_msg or "403" in error_msg:
-                            return False, (
-                                "Access denied - check credentials and bucket permissions. "
-                                "Verify access key and secret key are correct"
-                            )
-                        elif "No such bucket" in error_msg or "404" in error_msg:
-                            return False, (
-                                f"Bucket '{credentials['bucket']}' not found. "
-                                f"Create bucket in {credentials['endpoint']} or check bucket name"
-                            )
-                        elif "connection" in error_msg.lower():
-                            return False, (
-                                f"Cannot connect to {credentials['endpoint']}. "
-                                "Check endpoint URL, network connectivity, and SSL settings"
-                            )
+                        error_msg = result.stderr.strip()
+
+                        # Test mode specific error handling
+                        if self.config.is_test_mode():
+                            if (
+                                "connection refused" in error_msg.lower()
+                                or "connect: no route to host" in error_msg.lower()
+                            ):
+                                return False, (
+                                    f"Cannot connect to Minio at {credentials['endpoint']}. "
+                                    "Start Minio container with: docker run -d --name minio -p 9000:9000 "
+                                    "minio/minio server /data"
+                                )
+                            elif "no such bucket" in error_msg.lower():
+                                return False, (
+                                    f"Test bucket '{credentials['bucket']}' not found. "
+                                    "Create bucket in Minio or check bucket name in configuration"
+                                )
+                            elif "access denied" in error_msg.lower() or "403" in error_msg:
+                                return False, (
+                                    "Access denied to Minio. "
+                                    "Check that Minio is running and credentials are correct (minioadmin/minioadmin)"
+                                )
+                            else:
+                                return False, f"Minio test failed: {error_msg}"
                         else:
-                            return False, f"rclone test failed: {error_msg}"
+                            # Production mode error handling
+                            if "Access Denied" in error_msg or "403" in error_msg:
+                                return False, (
+                                    "Access denied - check credentials and bucket permissions. "
+                                    "Verify access key and secret key are correct"
+                                )
+                            elif "No such bucket" in error_msg or "404" in error_msg:
+                                return False, (
+                                    f"Bucket '{credentials['bucket']}' not found. "
+                                    f"Create bucket in {credentials['endpoint']} or check bucket name"
+                                )
+                            elif "connection" in error_msg.lower():
+                                return False, (
+                                    f"Cannot connect to {credentials['endpoint']}. "
+                                    "Check endpoint URL, network connectivity, and SSL settings"
+                                )
+                            else:
+                                return False, f"rclone test failed: {error_msg}"
+
+                finally:
+                    # Clean up temporary config file
+                    with suppress(Exception):
+                        Path(temp_config_path).unlink()
 
             except subprocess.TimeoutExpired:
                 suggestion = "Check network connectivity"
@@ -131,12 +147,17 @@ class RcloneCredentialValidator(CredentialValidator):
         Returns:
             rclone configuration content as string
         """
-        config = f"""[test-{credentials["bucket"]}]
+        # Ensure endpoint has proper scheme
+        endpoint = credentials["endpoint"]
+        if not endpoint.startswith(("http://", "https://")):
+            endpoint = f"https://{endpoint}" if credentials["use_ssl"] else f"http://{endpoint}"
+
+        config = f"""[test]
 type = s3
 provider = Other
 access_key_id = {credentials["access_key"]}
 secret_access_key = {credentials["secret_key"]}
-endpoint = {credentials["endpoint"]}
+endpoint = {endpoint}
 region = {credentials["region"]}
 use_ssl = {str(credentials["use_ssl"]).lower()}
 """

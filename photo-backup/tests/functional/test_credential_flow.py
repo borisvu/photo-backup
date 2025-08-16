@@ -26,17 +26,46 @@ class TestCredentialFlow:
     @pytest.fixture
     def minio_container(self) -> Generator[str]:
         """Start Minio container and yield container ID."""
+        client = None
         try:
-            client = docker.from_env()
-        except docker.errors.DockerException:
+            # Try to get the Docker Desktop socket path programmatically
+            result = subprocess.run(["docker", "context", "ls"], capture_output=True, text=True)
+            if result.returncode == 0:
+                lines = result.stdout.split("\n")
+                socket_path = None
+
+                # Find the active context (marked with *)
+                for line in lines:
+                    if "*" in line and "desktop" in line.lower():
+                        parts = line.split()
+                        for part in parts:
+                            if part.startswith("unix://"):
+                                socket_path = part.replace("unix://", "")
+                                break
+                        if socket_path:
+                            break
+
+                if socket_path:
+                    client = docker.DockerClient(base_url=f"unix://{socket_path}") if socket_path else docker.from_env()
+                else:
+                    client = docker.from_env()
+            else:
+                client = docker.from_env()
+
+        except Exception as e:
+            print(f"Error connecting to Docker: {e}")
+            pytest.skip("Docker not available or not running")
+
+        if client is None:
             pytest.skip("Docker not available or not running")
 
         # Start Minio container
+        assert client is not None  # Type guard for mypy
         container = client.containers.run(
             "minio/minio:latest",
             command="server /data --console-address :9001",
             ports={"9000/tcp": 9000, "9001/tcp": 9001},
-            environment={"MINIO_ROOT_USER": "testuser", "MINIO_ROOT_PASSWORD": "testpass123"},
+            environment={"MINIO_ROOT_USER": "minioadmin", "MINIO_ROOT_PASSWORD": "minioadmin"},
             detach=True,
             remove=True,
         )
@@ -48,7 +77,7 @@ class TestCredentialFlow:
         for _attempt in range(max_attempts):
             try:
                 result = subprocess.run(
-                    ["curl", "-f", "http://localhost:9000/minio/health/live"], capture_output=True, timeout=5
+                    ["curl", "-f", "http://localhost:9000/minio/health/live"], capture_output=True, text=True, timeout=5
                 )
                 if result.returncode == 0:
                     break
@@ -69,9 +98,10 @@ class TestCredentialFlow:
 
         # Cleanup
         try:
-            container = client.containers.get(container_id)
-            container.stop(timeout=5)
-            container.remove()
+            if client is not None:  # Type guard for mypy
+                container = client.containers.get(container_id)
+                container.stop(timeout=5)
+                container.remove()
         except Exception:
             pass
 
@@ -93,6 +123,9 @@ class TestCredentialFlow:
         for i in range(3):
             test_file = test_photos_dir / f"test_photo_{i}.jpg"
             test_file.write_text(f"Test photo content {i}")
+
+        # Initialize rclone_config_path to None to avoid UnboundLocalError
+        rclone_config_path = None
 
         try:
             # Initialize credential manager
@@ -133,13 +166,23 @@ region = us-east-1
 
             # Test bucket creation
             result = subprocess.run(
-                ["rclone", "mkdir", "minio:test-bucket"], capture_output=True, text=True, timeout=30
+                ["rclone", "mkdir", "minio:test-bucket", "--config", str(rclone_config_path)],
+                capture_output=True,
+                text=True,
+                timeout=30,
             )
             assert result.returncode == 0, f"Failed to create bucket: {result.stderr}"
 
             # Test file upload
             result = subprocess.run(
-                ["rclone", "copy", str(test_photos_dir), "minio:test-bucket/photos"],
+                [
+                    "rclone",
+                    "copy",
+                    str(test_photos_dir),
+                    "minio:test-bucket/photos",
+                    "--config",
+                    str(rclone_config_path),
+                ],
                 capture_output=True,
                 text=True,
                 timeout=60,
@@ -148,7 +191,10 @@ region = us-east-1
 
             # Test file listing
             result = subprocess.run(
-                ["rclone", "ls", "minio:test-bucket/photos"], capture_output=True, text=True, timeout=30
+                ["rclone", "ls", "minio:test-bucket/photos", "--config", str(rclone_config_path)],
+                capture_output=True,
+                text=True,
+                timeout=30,
             )
             assert result.returncode == 0, f"Failed to list files: {result.stderr}"
             assert "test_photo_0.jpg" in result.stdout
@@ -162,8 +208,8 @@ region = us-east-1
             if test_photos_dir.exists():
                 shutil.rmtree(test_photos_dir)
 
-            # Cleanup rclone config
-            if rclone_config_path.exists():
+            # Cleanup rclone config - only if it was created
+            if rclone_config_path and rclone_config_path.exists():
                 rclone_config_path.unlink()
 
     def test_credential_flow_with_cli(self, minio_container: str):  # noqa: ARG002
@@ -191,7 +237,7 @@ region = us-east-1
         assert "🔐 Testing authentication in TEST MODE" in combined_output
         assert "📋 Mode: test" in combined_output
         assert "🔑 Has credentials: ✅ Yes" in combined_output
-        assert "✅ Credential validation: Success" in combined_output
+        assert "✅ Credential validation: PASSED" in combined_output
         assert "🎉 Authentication test completed successfully!" in combined_output
 
         print("✅ CLI credential flow test passed!")
@@ -251,6 +297,6 @@ region = us-east-1
         is_valid, message = manager.validate_credentials()
         # In test mode without Minio, this should fail but not crash
         assert not is_valid
-        assert "connection" in message.lower() or "timeout" in message.lower() or "failed" in message.lower()
+        assert "timed out" in message.lower() or "connection" in message.lower() or "failed" in message.lower()
 
         print("✅ Basic credential flow test passed!")
