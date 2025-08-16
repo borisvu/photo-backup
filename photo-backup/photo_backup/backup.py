@@ -6,8 +6,11 @@ to S3-compatible storage (Wasabi in production, Minio in test mode).
 """
 
 import logging
+import os
 import re
 import subprocess
+import tempfile
+import time
 from typing import Any
 
 from .config.config import Config
@@ -101,7 +104,7 @@ class BackupJob:
         self.destination = destination
         self.dry_run = dry_run
         self.status = "pending"
-        self.error = None
+        self.error: str | None = None
 
     def __repr__(self):
         return f"BackupJob(source='{self.source_path}', dest='{self.destination}', status='{self.status}')"
@@ -306,6 +309,129 @@ use_ssl = {str(credentials["use_ssl"]).lower()}
 """
         return config
 
+    def sync(self, job: BackupJob) -> tuple[bool, str, dict[str, Any]]:
+        """Execute rclone sync operation.
+
+        Args:
+            job: BackupJob containing sync parameters
+
+        Returns:
+            Tuple of (success, output, sync_info)
+            - success: True if sync completed successfully
+            - output: Complete rclone output (stdout + stderr)
+            - sync_info: Dictionary with sync statistics and metadata
+        """
+        self.logger.info(f"Starting sync: {job.source_path} -> {job.destination}")
+
+        # Build the sync command
+        cmd = self.build_sync_command(job)
+
+        # Create temporary config file
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".conf", delete=False) as config_file:
+            config_content = self._build_rclone_config()
+            config_file.write(config_content)
+            config_file.flush()
+
+            # Update command to use the config file
+            for i, arg in enumerate(cmd):
+                if arg == "--config" and i + 1 < len(cmd):
+                    cmd[i + 1] = config_file.name
+                    break
+
+            try:
+                # Record start time
+                start_time = time.time()
+
+                # Execute rclone command
+                self.logger.info(f"Executing: {' '.join(cmd[:3])} ... (config file: {config_file.name})")
+
+                result = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=300.0,  # 5 minute timeout
+                )
+
+                # Record completion time
+                end_time = time.time()
+                duration = end_time - start_time
+
+                # Combine stdout and stderr for complete output
+                complete_output = f"STDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
+
+                # Build sync info
+                sync_info = {
+                    "command": cmd,
+                    "return_code": result.returncode,
+                    "duration_seconds": duration,
+                    "start_time": start_time,
+                    "end_time": end_time,
+                    "stdout": result.stdout,
+                    "stderr": result.stderr,
+                    "config_file": config_file.name,
+                    "dry_run": job.dry_run,
+                    "test_mode": self.test_mode,
+                }
+
+                # Determine success
+                success = result.returncode == 0
+
+                if success:
+                    self.logger.info(f"Sync completed successfully in {duration:.2f}s")
+                    if job.dry_run:
+                        self.logger.info("Dry run completed - no files were actually transferred")
+                else:
+                    self.logger.error(f"Sync failed with return code {result.returncode}")
+                    self.logger.error(f"Error output: {result.stderr}")
+
+                # Update job status
+                job.status = "completed" if success else "error"
+                if not success:
+                    job.error = result.stderr
+
+                return success, complete_output, sync_info
+
+            except subprocess.TimeoutExpired:
+                self.logger.error("Sync operation timed out after 5 minutes")
+                job.status = "error"
+                job.error = "Sync operation timed out"
+
+                sync_info = {
+                    "command": cmd,
+                    "return_code": -1,
+                    "duration_seconds": 300.0,
+                    "error": "Timeout",
+                    "config_file": config_file.name,
+                    "dry_run": job.dry_run,
+                    "test_mode": self.test_mode,
+                }
+
+                return False, "ERROR: Sync operation timed out after 5 minutes", sync_info
+
+            except Exception as e:
+                self.logger.error(f"Sync failed with exception: {e}")
+                job.status = "error"
+                job.error = str(e)
+
+                sync_info = {
+                    "command": cmd,
+                    "return_code": -1,
+                    "error": str(e),
+                    "config_file": config_file.name,
+                    "dry_run": job.dry_run,
+                    "test_mode": self.test_mode,
+                }
+
+                return False, f"ERROR: {e}", sync_info
+
+            finally:
+                # Clean up temporary config file
+                try:
+                    os.unlink(config_file.name)
+                    self.logger.debug(f"Cleaned up config file: {config_file.name}")
+                except Exception as e:
+                    self.logger.warning(f"Failed to clean up config file {config_file.name}: {e}")
+
 
 # Quick test for the module
 if __name__ == "__main__":
@@ -353,8 +479,26 @@ if __name__ == "__main__":
         is_valid, errors = engine_test.validate_backup_environment()
         print(f"✓ Environment validation: valid={is_valid}, errors={errors}")
 
+        # Test sync functionality with dry run (if environment is valid)
+        if rclone_available:
+            print("Testing sync functionality...")
+            job = engine_test.create_backup_job()
+            job.dry_run = True  # Use dry run to avoid needing real Minio
+
+            success, output, sync_info = engine_test.sync(job)
+            print(f"✓ Sync test: success={success}, duration={sync_info.get('duration_seconds', 0):.2f}s")
+            if success:
+                print("  Dry run sync completed successfully")
+            else:
+                print(f"  Sync failed (expected without Minio): {sync_info.get('error', 'Unknown error')}")
+        else:
+            print("⏭️  Skipping sync test (rclone not available)")
+
         print("✓ All tests passed!")
 
     except Exception as e:
         print(f"✗ Test failed: {e}")
+        import traceback
+
+        traceback.print_exc()
         sys.exit(1)

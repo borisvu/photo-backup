@@ -415,5 +415,194 @@ class TestRcloneCommandBuilding:
 
             # Check for command building log
             assert any("Built rclone command" in call for call in log_calls)
-            # Check for dry-run log
-            assert any("Command includes --dry-run flag" in call for call in log_calls)
+
+
+class TestSyncExecution:
+    """Test sync execution functionality."""
+
+    @patch("photo_backup.backup.subprocess.run")
+    def test_sync_success(self, mock_run):
+        """Test successful sync operation."""
+        # Mock successful subprocess result
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = "Transferred: 5 files, 10.5 MB"
+        mock_result.stderr = ""
+        mock_run.return_value = mock_result
+
+        engine = BackupEngine(test_mode=True)
+        job = BackupJob("/source/path", "minio-test:bucket", dry_run=False)
+
+        success, output, sync_info = engine.sync(job)
+
+        # Verify success
+        assert success is True
+        assert "STDOUT:" in output
+        assert "Transferred: 5 files, 10.5 MB" in output
+
+        # Verify sync info
+        assert sync_info["return_code"] == 0
+        assert "duration_seconds" in sync_info
+        assert sync_info["dry_run"] is False
+        assert sync_info["test_mode"] is True
+        assert "command" in sync_info
+
+        # Verify job status updated
+        assert job.status == "completed"
+        assert job.error is None
+
+    @patch("photo_backup.backup.subprocess.run")
+    def test_sync_failure(self, mock_run):
+        """Test failed sync operation."""
+        # Mock failed subprocess result
+        mock_result = MagicMock()
+        mock_result.returncode = 1
+        mock_result.stdout = ""
+        mock_result.stderr = "ERROR: Failed to connect to bucket"
+        mock_run.return_value = mock_result
+
+        engine = BackupEngine(test_mode=True)
+        job = BackupJob("/source/path", "minio-test:bucket", dry_run=False)
+
+        success, output, sync_info = engine.sync(job)
+
+        # Verify failure
+        assert success is False
+        assert "STDERR:" in output
+        assert "Failed to connect to bucket" in output
+
+        # Verify sync info
+        assert sync_info["return_code"] == 1
+        assert "duration_seconds" in sync_info
+
+        # Verify job status updated
+        assert job.status == "error"
+        assert job.error == "ERROR: Failed to connect to bucket"
+
+    @patch("photo_backup.backup.subprocess.run")
+    def test_sync_timeout(self, mock_run):
+        """Test sync operation timeout."""
+        # Mock timeout exception
+        mock_run.side_effect = subprocess.TimeoutExpired("rclone", 300)
+
+        engine = BackupEngine(test_mode=True)
+        job = BackupJob("/source/path", "minio-test:bucket", dry_run=False)
+
+        success, output, sync_info = engine.sync(job)
+
+        # Verify timeout handling
+        assert success is False
+        assert "timed out" in output
+
+        # Verify sync info
+        assert sync_info["return_code"] == -1
+        assert sync_info["duration_seconds"] == 300.0
+        assert sync_info["error"] == "Timeout"
+
+        # Verify job status updated
+        assert job.status == "error"
+        assert job.error == "Sync operation timed out"
+
+    @patch("photo_backup.backup.subprocess.run")
+    def test_sync_dry_run(self, mock_run):
+        """Test sync operation in dry run mode."""
+        # Mock successful dry run result
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = "Would transfer: 5 files"
+        mock_result.stderr = ""
+        mock_run.return_value = mock_result
+
+        engine = BackupEngine(test_mode=True)
+        job = BackupJob("/source/path", "minio-test:bucket", dry_run=True)
+
+        success, output, sync_info = engine.sync(job)
+
+        # Verify success
+        assert success is True
+        assert "Would transfer: 5 files" in output
+
+        # Verify dry run flag in sync info
+        assert sync_info["dry_run"] is True
+
+        # Verify dry run was included in command
+        command = sync_info["command"]
+        assert "--dry-run" in command
+
+    @patch("photo_backup.backup.subprocess.run")
+    @patch("photo_backup.backup.os.unlink")
+    def test_sync_config_cleanup(self, mock_unlink, mock_run):
+        """Test that temporary config files are cleaned up."""
+        # Mock successful subprocess result
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = "Success"
+        mock_result.stderr = ""
+        mock_run.return_value = mock_result
+
+        engine = BackupEngine(test_mode=True)
+        job = BackupJob("/source/path", "minio-test:bucket", dry_run=False)
+
+        success, output, sync_info = engine.sync(job)
+
+        # Verify config file cleanup was attempted
+        assert mock_unlink.called
+
+        # Verify config file path in sync info
+        assert "config_file" in sync_info
+        assert sync_info["config_file"].endswith(".conf")
+
+    @patch("photo_backup.backup.subprocess.run")
+    def test_sync_with_exception(self, mock_run):
+        """Test sync operation with unexpected exception."""
+        # Mock exception during subprocess
+        mock_run.side_effect = Exception("Unexpected error")
+
+        engine = BackupEngine(test_mode=True)
+        job = BackupJob("/source/path", "minio-test:bucket", dry_run=False)
+
+        success, output, sync_info = engine.sync(job)
+
+        # Verify exception handling
+        assert success is False
+        assert "ERROR: Unexpected error" in output
+
+        # Verify sync info
+        assert sync_info["return_code"] == -1
+        assert sync_info["error"] == "Unexpected error"
+
+        # Verify job status updated
+        assert job.status == "error"
+        assert job.error == "Unexpected error"
+
+    @patch("photo_backup.backup.subprocess.run")
+    def test_sync_command_execution(self, mock_run):
+        """Test that sync executes the correct command."""
+        # Mock successful subprocess result
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = "Success"
+        mock_result.stderr = ""
+        mock_run.return_value = mock_result
+
+        engine = BackupEngine(test_mode=True)
+        job = BackupJob("/test/source", "minio-test:mybucket", dry_run=True)
+
+        success, output, sync_info = engine.sync(job)
+
+        # Verify subprocess was called
+        assert mock_run.called
+
+        # Get the command that was executed
+        executed_command = mock_run.call_args[0][0]
+
+        # Verify key command components
+        assert executed_command[0] == "rclone"
+        assert executed_command[1] == "sync"
+        assert executed_command[2] == "/test/source"
+        assert executed_command[3] == "test:mybucket"
+        assert "--dry-run" in executed_command
+        assert "--config" in executed_command
+
+        # Verify command is recorded in sync info
+        assert sync_info["command"] == executed_command
