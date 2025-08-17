@@ -5,7 +5,15 @@ These tests verify that the backup system can successfully sync test photos
 to Minio in test mode.
 """
 
+import pytest
+
 from photo_backup.backup import BackupEngine, BackupJob
+
+
+@pytest.fixture
+def _minio_container(minio_container):
+    """Alias for minio_container fixture to satisfy ruff ARG002."""
+    return minio_container
 
 
 class TestBackupSync:
@@ -13,6 +21,7 @@ class TestBackupSync:
 
     def test_sync_test_photos_to_minio(self, _minio_container, test_photos):
         """Test syncing test photos to Minio bucket."""
+        # The _minio_container fixture ensures Minio is running
         # Create backup engine in test mode
         engine = BackupEngine(test_mode=True)
 
@@ -50,6 +59,7 @@ class TestBackupSync:
 
     def test_sync_dry_run_with_minio(self, _minio_container, test_photos):
         """Test dry run sync with Minio."""
+        # The _minio_container fixture ensures Minio is running
         # Create backup engine in test mode
         engine = BackupEngine(test_mode=True)
 
@@ -72,6 +82,7 @@ class TestBackupSync:
 
     def test_sync_nonexistent_source(self, _minio_container):
         """Test sync with nonexistent source directory."""
+        # The _minio_container fixture ensures Minio is running
         # Create backup engine in test mode
         engine = BackupEngine(test_mode=True)
 
@@ -94,6 +105,7 @@ class TestBackupSync:
 
     def test_sync_command_structure(self, _minio_container, test_photos):
         """Test that sync generates correct rclone command structure."""
+        # The _minio_container fixture ensures Minio is running
         # Create backup engine in test mode
         engine = BackupEngine(test_mode=True)
 
@@ -124,3 +136,44 @@ class TestBackupSync:
         config_file = command[config_index]
         assert config_file.endswith(".conf")
         assert "tmp" in config_file.lower()
+
+    def test_sync_with_progress_parsing(self, _minio_container, test_photos):
+        """Test sync with progress parsing functionality."""
+        # The _minio_container fixture ensures Minio is running
+        # Create backup engine in test mode
+        engine = BackupEngine(test_mode=True)
+
+        # Create backup job
+        job = BackupJob(
+            source_path=str(test_photos),
+            destination="minio-test:my-photo-backup-bucket-test",
+            dry_run=True,  # Use dry run for predictable results
+        )
+
+        # Execute sync with progress
+        success, output, sync_info = engine.sync_with_progress(job)
+
+        # Verify sync succeeded
+        assert success, f"Sync with progress failed: {output}"
+        assert sync_info["return_code"] == 0
+
+        # Verify progress statistics are included
+        assert "transfer_stats" in sync_info
+        transfer_stats = sync_info["transfer_stats"]
+
+        # Check that transfer statistics structure is correct
+        assert "files_transferred" in transfer_stats
+        assert "files_total" in transfer_stats
+        assert "bytes_transferred" in transfer_stats
+        assert "bytes_total" in transfer_stats
+        assert "transfer_rate_mbps" in transfer_stats
+        assert "percentage" in transfer_stats
+        assert "errors" in transfer_stats
+
+        # Verify that transfer stats are reasonable (values depend on rclone output)
+        assert transfer_stats["files_transferred"] >= 0
+        assert transfer_stats["files_total"] >= 0
+        assert transfer_stats["bytes_transferred"] >= 0
+        assert transfer_stats["bytes_total"] >= 0
+        assert transfer_stats["percentage"] >= 0.0
+        assert transfer_stats["errors"] >= 0

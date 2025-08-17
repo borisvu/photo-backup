@@ -13,8 +13,11 @@ import tempfile
 import time
 from typing import Any
 
+from pathlib import Path
+
 from .config.config import Config
 from .credentials.manager import CredentialManager
+from .progress_parser import RcloneProgressParser
 
 
 def check_rclone() -> tuple[bool, str, str | None]:
@@ -420,6 +423,194 @@ use_ssl = {str(credentials["use_ssl"]).lower()}
                     "config_file": config_file.name,
                     "dry_run": job.dry_run,
                     "test_mode": self.test_mode,
+                }
+
+                return False, f"ERROR: {e}", sync_info
+
+            finally:
+                # Clean up temporary config file
+                try:
+                    os.unlink(config_file.name)
+                    self.logger.debug(f"Cleaned up config file: {config_file.name}")
+                except Exception as e:
+                    self.logger.warning(f"Failed to clean up config file {config_file.name}: {e}")
+
+    def sync_with_progress(self, job: BackupJob) -> tuple[bool, str, dict[str, Any]]:
+        """Execute rclone sync operation with real-time progress parsing.
+
+        This method enhances the basic sync with real-time progress monitoring,
+        transfer statistics, and progress events.
+
+        Args:
+            job: BackupJob containing sync parameters
+
+        Returns:
+            Tuple of (success, output, sync_info)
+            - success: True if sync completed successfully
+            - output: Complete rclone output
+            - sync_info: Dictionary with sync statistics and metadata including transfer_stats
+        """
+        self.logger.info(f"Starting sync with progress: {job.source_path} -> {job.destination}")
+
+        # Initialize progress parser
+        progress_parser = RcloneProgressParser(self.logger)
+
+        # Estimate total files for progress tracking
+        total_files = 0
+        try:
+            source_path = Path(job.source_path)
+            if source_path.exists():
+                total_files = len([f for f in source_path.rglob("*") if f.is_file()])
+                if total_files > 0:
+                    progress_parser.init_progress_logger(total_files, "backup")
+                    self.logger.info(f"Estimated {total_files} files to sync")
+        except Exception as e:
+            self.logger.debug(f"Could not estimate file count: {e}")
+
+        # Build the sync command
+        cmd = self.build_sync_command(job)
+
+        # Create temporary config file
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".conf", delete=False) as config_file:
+            config_content = self._build_rclone_config()
+            config_file.write(config_content)
+            config_file.flush()
+
+            # Update command to use the config file
+            for i, arg in enumerate(cmd):
+                if arg == "--config" and i + 1 < len(cmd):
+                    cmd[i + 1] = config_file.name
+                    break
+
+            try:
+                # Record start time
+                start_time = time.time()
+
+                # Execute rclone command with real-time output parsing
+                self.logger.info(f"Executing: {' '.join(cmd[:3])} ... (config file: {config_file.name})")
+
+                # Use Popen for real-time output processing
+                process = subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,  # Combine stderr into stdout
+                    text=True,
+                    bufsize=1,  # Line buffered
+                    universal_newlines=True,
+                )
+
+                # Capture output while parsing progress
+                output_lines = []
+
+                try:
+                    # Process output line by line in real-time
+                    if process.stdout:
+                        for line in iter(process.stdout.readline, ""):
+                            if line:
+                                output_lines.append(line.rstrip())
+                                # Parse progress from this line
+                                progress_parser.parse_line(line)
+
+                    # Wait for process to complete
+                    return_code = process.wait(timeout=300.0)  # 5 minute timeout
+
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait()
+                    raise
+
+                # Record completion time
+                end_time = time.time()
+                duration = end_time - start_time
+
+                # Mark progress as complete
+                progress_parser.complete()
+
+                # Combine all output
+                complete_output = "\n".join(output_lines)
+
+                # Get final transfer statistics
+                transfer_stats = progress_parser.get_final_stats()
+
+                # Build sync info with progress statistics
+                sync_info = {
+                    "command": cmd,
+                    "return_code": return_code,
+                    "duration_seconds": duration,
+                    "start_time": start_time,
+                    "end_time": end_time,
+                    "stdout": complete_output,
+                    "stderr": "",  # Combined with stdout
+                    "config_file": config_file.name,
+                    "dry_run": job.dry_run,
+                    "test_mode": self.test_mode,
+                    "transfer_stats": {
+                        "files_transferred": transfer_stats.files_transferred,
+                        "files_total": transfer_stats.files_total,
+                        "bytes_transferred": transfer_stats.bytes_transferred,
+                        "bytes_total": transfer_stats.bytes_total,
+                        "transfer_rate_mbps": transfer_stats.transfer_rate_mbps,
+                        "percentage": transfer_stats.percentage,
+                        "errors": transfer_stats.errors,
+                    },
+                }
+
+                # Determine success
+                success = return_code == 0
+
+                if success:
+                    self.logger.info(f"Sync completed successfully in {duration:.2f}s")
+                    self.logger.info(
+                        f"Transferred {transfer_stats.files_transferred} files ({transfer_stats.bytes_transferred / (1024 * 1024):.1f} MB)"
+                    )
+                    if transfer_stats.transfer_rate_mbps > 0:
+                        self.logger.info(f"Average transfer rate: {transfer_stats.transfer_rate_mbps:.1f} MB/s")
+                    if job.dry_run:
+                        self.logger.info("Dry run completed - no files were actually transferred")
+                else:
+                    self.logger.error(f"Sync failed with return code {return_code}")
+                    # Log last few lines of output as error details
+                    error_lines = output_lines[-5:] if output_lines else ["No output captured"]
+                    self.logger.error(f"Error details: {'; '.join(error_lines)}")
+
+                # Update job status
+                job.status = "completed" if success else "error"
+                if not success:
+                    job.error = "; ".join(output_lines[-3:]) if output_lines else "Unknown error"
+
+                return success, complete_output, sync_info
+
+            except subprocess.TimeoutExpired:
+                self.logger.error("Sync operation timed out after 5 minutes")
+                job.status = "error"
+                job.error = "Sync operation timed out"
+
+                sync_info = {
+                    "command": cmd,
+                    "return_code": -1,
+                    "duration_seconds": 300.0,
+                    "error": "Timeout",
+                    "config_file": config_file.name,
+                    "dry_run": job.dry_run,
+                    "test_mode": self.test_mode,
+                    "transfer_stats": progress_parser.get_final_stats().__dict__,
+                }
+
+                return False, "ERROR: Sync operation timed out after 5 minutes", sync_info
+
+            except Exception as e:
+                self.logger.error(f"Sync failed with exception: {e}")
+                job.status = "error"
+                job.error = str(e)
+
+                sync_info = {
+                    "command": cmd,
+                    "return_code": -1,
+                    "error": str(e),
+                    "config_file": config_file.name,
+                    "dry_run": job.dry_run,
+                    "test_mode": self.test_mode,
+                    "transfer_stats": progress_parser.get_final_stats().__dict__,
                 }
 
                 return False, f"ERROR: {e}", sync_info

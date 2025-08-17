@@ -606,3 +606,163 @@ class TestSyncExecution:
 
         # Verify command is recorded in sync info
         assert sync_info["command"] == executed_command
+
+
+class TestSyncWithProgress:
+    """Test sync with progress parsing functionality."""
+
+    @patch("photo_backup.backup.subprocess.Popen")
+    def test_sync_with_progress_success(self, mock_popen):
+        """Test successful sync with progress parsing."""
+        # Mock process and output
+        mock_process = MagicMock()
+        mock_process.stdout.readline.side_effect = [
+            "Transferred: 2 / 5 files, 1.0 MiB / 2.5 MiB, 40% complete, 0.5 MiB/s, ETA 3s\n",
+            "Transferred: 5 / 5 files, 2.5 MiB / 2.5 MiB, 100% complete\n",
+            "",  # End of output
+        ]
+        mock_process.wait.return_value = 0
+        mock_popen.return_value = mock_process
+
+        engine = BackupEngine(test_mode=True)
+        job = BackupJob("/source/path", "minio-test:bucket", dry_run=False)
+
+        success, output, sync_info = engine.sync_with_progress(job)
+
+        # Verify success
+        assert success is True
+        assert "Transferred: 5 / 5 files" in output
+
+        # Verify transfer stats are included
+        assert "transfer_stats" in sync_info
+        transfer_stats = sync_info["transfer_stats"]
+        assert transfer_stats["files_transferred"] == 5
+        assert transfer_stats["files_total"] == 5
+        assert transfer_stats["percentage"] == 100.0
+
+    @patch("photo_backup.backup.subprocess.Popen")
+    def test_sync_with_progress_real_time_parsing(self, mock_popen):
+        """Test that progress is parsed in real-time."""
+        # Mock process with progressive output
+        mock_process = MagicMock()
+        output_lines = [
+            "Transferred: 1 / 5 files, 0.5 MiB / 2.5 MiB, 20% complete\n",
+            "Transferred: 3 / 5 files, 1.5 MiB / 2.5 MiB, 60% complete\n",
+            "Transferred: 5 files (2.5 MiB)\n",
+            "",  # End of output
+        ]
+        mock_process.stdout.readline.side_effect = output_lines
+        mock_process.wait.return_value = 0
+        mock_popen.return_value = mock_process
+
+        engine = BackupEngine(test_mode=True)
+        job = BackupJob("/source/path", "minio-test:bucket", dry_run=False)
+
+        # Mock progress callback to verify it's called
+        progress_events = []
+
+        def capture_progress(stats):
+            progress_events.append((stats.files_transferred, stats.percentage))
+
+        # Execute sync with progress
+        success, output, sync_info = engine.sync_with_progress(job)
+
+        # Verify success and that all lines were processed
+        assert success is True
+        assert "Transferred: 5 files" in output
+
+        # Verify final stats
+        transfer_stats = sync_info["transfer_stats"]
+        assert transfer_stats["files_transferred"] == 5
+        assert transfer_stats["percentage"] == 100.0
+
+    @patch("photo_backup.backup.subprocess.Popen")
+    def test_sync_with_progress_timeout(self, mock_popen):
+        """Test sync with progress handling timeout."""
+        # Mock process that times out
+        mock_process = MagicMock()
+        mock_process.stdout.readline.side_effect = [
+            "Transferred: 1 / 5 files, 0.5 MiB / 2.5 MiB, 20% complete\n",
+            "",  # End of output before completion
+        ]
+        mock_process.wait.side_effect = subprocess.TimeoutExpired("rclone", 300)
+        mock_popen.return_value = mock_process
+
+        engine = BackupEngine(test_mode=True)
+        job = BackupJob("/source/path", "minio-test:bucket", dry_run=False)
+
+        success, output, sync_info = engine.sync_with_progress(job)
+
+        # Verify timeout handling
+        assert success is False
+        assert "timed out" in output
+        assert sync_info["return_code"] == -1
+
+        # Verify transfer stats are still available
+        assert "transfer_stats" in sync_info
+
+        # Verify process was killed
+        mock_process.kill.assert_called_once()
+
+    @patch("photo_backup.backup.Path")
+    @patch("photo_backup.backup.subprocess.Popen")
+    def test_sync_with_progress_file_estimation(self, mock_popen, mock_path):
+        """Test file count estimation for progress tracking."""
+        # Mock file system
+        mock_source_path = MagicMock()
+        mock_source_path.exists.return_value = True
+        mock_source_path.rglob.return_value = [
+            MagicMock(is_file=lambda: True),
+            MagicMock(is_file=lambda: True),
+            MagicMock(is_file=lambda: True),
+        ]
+        mock_path.return_value = mock_source_path
+
+        # Mock process
+        mock_process = MagicMock()
+        mock_process.stdout.readline.side_effect = ["Transferred: 3 files (1.5 MiB)\n", ""]
+        mock_process.wait.return_value = 0
+        mock_popen.return_value = mock_process
+
+        engine = BackupEngine(test_mode=True)
+        job = BackupJob("/source/path", "minio-test:bucket", dry_run=False)
+
+        success, output, sync_info = engine.sync_with_progress(job)
+
+        # Verify success
+        assert success is True
+
+        # Verify file estimation was attempted
+        mock_source_path.rglob.assert_called_with("*")
+
+    @patch("photo_backup.backup.subprocess.Popen")
+    def test_sync_with_progress_error_parsing(self, mock_popen):
+        """Test parsing of error messages in progress output."""
+        # Mock process with errors
+        mock_process = MagicMock()
+        mock_process.stdout.readline.side_effect = [
+            "Transferred: 1 / 5 files, 0.5 MiB / 2.5 MiB, 20% complete\n",
+            "ERROR : file1.jpg: permission denied\n",
+            "ERROR : file2.jpg: not found\n",
+            "Transferred: 3 files (1.5 MiB)\n",
+            "",
+        ]
+        mock_process.wait.return_value = 0
+        mock_popen.return_value = mock_process
+
+        engine = BackupEngine(test_mode=True)
+        job = BackupJob("/source/path", "minio-test:bucket", dry_run=False)
+
+        success, output, sync_info = engine.sync_with_progress(job)
+
+        # Verify success (rclone returns 0 even with some errors)
+        assert success is True
+
+        # Verify errors were captured in output
+        assert "ERROR" in output
+        assert "permission denied" in output
+        assert "not found" in output
+
+        # Verify transfer stats include error count
+        transfer_stats = sync_info["transfer_stats"]
+        assert transfer_stats["errors"] == 2
