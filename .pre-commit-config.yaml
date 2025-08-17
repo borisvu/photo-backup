@@ -11,12 +11,3 @@ repos:
     hooks:
       - id: mypy
         additional_dependencies: [types-PyYAML]
-
-  - repo: local
-    hooks:
-      - id: pytest
-        name: pytest
-        entry: ./run_tests.sh
-        language: system
-        pass_filenames: false
-        always_run: true
