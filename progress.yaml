@@ -43,7 +43,7 @@ phases:
   phase_6_backup_core:
     name: "Backup Engine Core"
     tasks_total: 10
-    tasks_completed: 5
+    tasks_completed: 6
     status: "in_progress"
     
   phase_7_monitoring:
@@ -782,6 +782,85 @@ tasks:
       - Enhanced user experience with live progress updates
       - Production-ready progress parsing with comprehensive error handling
 
+  task_058:
+    name: "Create Backup Statistics"
+    status: "completed"
+    notes: |
+      **Goal**: Track backup metrics including files, bytes, duration and calculate transfer rates
+      
+      **Implementation:**
+      - Added comprehensive `BackupStats` dataclass with full metric tracking
+      - Integrated with existing `TransferStats` from progress parser
+      - Enhanced `sync_with_progress()` to return `BackupStats` as fourth parameter
+      - Added `sync_with_stats()` convenience method for easy consumption
+      - DateTime-based start/end time tracking with duration calculations
+      - Transfer rate calculations (MB/s and files/s) with zero duration protection
+      
+      **Key Features:**
+      - Complete backup metadata: source, destination, dry_run, test_mode, success status
+      - Transfer metrics: files/bytes transferred and total, transfer rates, percentages  
+      - Human-readable formatting: bytes (B/KB/MB/GB/TB), duration (s/m/h), summaries
+      - Error tracking: error count and detailed error messages
+      - JSON serialization: `to_dict()` method for easy persistence and API responses
+      - Summary generation: formatted multi-line summaries for logging and display
+      
+      **Calculated Metrics:**
+      - Transfer rate in MB/s: bytes transferred converted to MB divided by duration
+      - Files rate in files/s: files transferred divided by duration
+      - Files percentage: (files transferred / files total) × 100
+      - Bytes percentage: (bytes transferred / bytes total) × 100
+      - Human-readable durations: automatic s/m/h formatting based on duration
+      - Smart byte formatting: automatic B/KB/MB/GB/TB unit selection
+      
+      **Integration Points:**
+      - `BackupStats.from_transfer_stats()`: Creates stats from rclone progress parser
+      - `BackupEngine.sync_with_progress()`: Now returns (success, output, sync_info, backup_stats)
+      - `BackupEngine.sync_with_stats()`: Convenience method returning only BackupStats
+      - Error handling: Comprehensive stats even for timeouts and exceptions
+      - Logging integration: Automatic summary logging after sync completion
+      
+      **Test Coverage:**
+      - 14 new unit tests covering all BackupStats functionality (initialization, conversions, formatting, calculations)
+      - 1 new functional test verifying stats with real Minio sync
+      - Rate calculation tests with precise floating-point verification
+      - Edge case tests (zero duration, zero totals, error scenarios)
+      - Format testing for all byte and duration ranges
+      - Summary generation tests for success/failure scenarios
+      
+      **Files Modified:**
+      - `photo_backup/backup.py`: Added BackupStats class and integration
+      - `tests/unit/test_backup.py`: Added 15 new BackupStats tests
+      - `tests/functional/test_backup_sync.py`: Added functional BackupStats test
+      - Updated all existing sync_with_progress tests for new return signature
+      
+      **Performance:**
+      - Zero overhead when not using stats (existing sync() method unchanged)  
+      - Efficient rate calculations with single division operations
+      - Lazy property evaluation for formatted strings
+      - Memory efficient with dataclass structure
+      - No external dependencies beyond datetime and existing components
+      
+      **Error Handling:**
+      - Graceful handling of zero durations (rates default to 0.0)
+      - Safe division operations with zero total protection
+      - Comprehensive error message capture and storage
+      - Timeout and exception scenarios fully covered with stats
+      - Maintains statistics even during partial failures
+      
+      **Production Readiness:**
+      - All 606 tests passing (591 existing + 15 new)
+      - Backward compatibility maintained for existing sync methods
+      - Comprehensive logging integration for operational visibility
+      - JSON serialization ready for dashboard and monitoring integration
+      - Human-readable summaries for user feedback and reports
+      
+      **Benefits:**
+      - Complete backup operation visibility with detailed metrics
+      - Foundation for backup dashboards and monitoring systems
+      - User-friendly progress and completion reporting
+      - Operational insights for performance analysis and troubleshooting
+      - Ready for integration with notification and alerting systems
+
 # Current state summary
 current_state:
   working_directory: "/Users/you/git/backup-to-s3"
@@ -882,9 +961,9 @@ current_state:
 # Next steps
 next_steps:
   immediate:
-    - "Phase 6: Backup Engine Core progressing excellently (50% complete)"
-    - "Task 57: Add Progress Parsing completed"
-    - "Ready to continue with Task 58: Create Backup Statistics"
+    - "Phase 6: Backup Engine Core progressing excellently (60% complete)"
+    - "Task 58: Create Backup Statistics completed"
+    - "Ready to continue with Task 59: Add Error Detection"
     
   upcoming:
     - "Continue Phase 6: Backup Engine Core (Tasks 58-62)"

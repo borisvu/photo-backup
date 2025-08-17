@@ -3,9 +3,11 @@ Unit tests for the backup module.
 """
 
 import subprocess
+from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
 
-from photo_backup.backup import BackupEngine, BackupJob, _is_version_sufficient, check_rclone
+from photo_backup.backup import BackupEngine, BackupJob, BackupStats, _is_version_sufficient, check_rclone
+from photo_backup.progress_parser import TransferStats
 
 
 class TestBackupJob:
@@ -627,7 +629,7 @@ class TestSyncWithProgress:
         engine = BackupEngine(test_mode=True)
         job = BackupJob("/source/path", "minio-test:bucket", dry_run=False)
 
-        success, output, sync_info = engine.sync_with_progress(job)
+        success, output, sync_info, backup_stats = engine.sync_with_progress(job)
 
         # Verify success
         assert success is True
@@ -665,7 +667,7 @@ class TestSyncWithProgress:
             progress_events.append((stats.files_transferred, stats.percentage))
 
         # Execute sync with progress
-        success, output, sync_info = engine.sync_with_progress(job)
+        success, output, sync_info, backup_stats = engine.sync_with_progress(job)
 
         # Verify success and that all lines were processed
         assert success is True
@@ -691,7 +693,7 @@ class TestSyncWithProgress:
         engine = BackupEngine(test_mode=True)
         job = BackupJob("/source/path", "minio-test:bucket", dry_run=False)
 
-        success, output, sync_info = engine.sync_with_progress(job)
+        success, output, sync_info, backup_stats = engine.sync_with_progress(job)
 
         # Verify timeout handling
         assert success is False
@@ -727,7 +729,7 @@ class TestSyncWithProgress:
         engine = BackupEngine(test_mode=True)
         job = BackupJob("/source/path", "minio-test:bucket", dry_run=False)
 
-        success, output, sync_info = engine.sync_with_progress(job)
+        success, output, sync_info, backup_stats = engine.sync_with_progress(job)
 
         # Verify success
         assert success is True
@@ -753,7 +755,7 @@ class TestSyncWithProgress:
         engine = BackupEngine(test_mode=True)
         job = BackupJob("/source/path", "minio-test:bucket", dry_run=False)
 
-        success, output, sync_info = engine.sync_with_progress(job)
+        success, output, sync_info, backup_stats = engine.sync_with_progress(job)
 
         # Verify success (rclone returns 0 even with some errors)
         assert success is True
@@ -766,3 +768,345 @@ class TestSyncWithProgress:
         # Verify transfer stats include error count
         transfer_stats = sync_info["transfer_stats"]
         assert transfer_stats["errors"] == 2
+
+
+class TestBackupStats:
+    """Test BackupStats class."""
+
+    def test_backup_stats_initialization(self):
+        """Test BackupStats can be initialized correctly."""
+        start_time = datetime.now()
+        end_time = start_time + timedelta(seconds=30)
+
+        stats = BackupStats(
+            start_time=start_time,
+            end_time=end_time,
+            duration_seconds=30.0,
+            files_transferred=100,
+            files_total=120,
+            bytes_transferred=1048576,  # 1 MB
+            bytes_total=1258291,  # ~1.2 MB
+            source_path="/test/source",
+            destination="test:bucket",
+            dry_run=False,
+            test_mode=True,
+            success=True,
+        )
+
+        assert stats.start_time == start_time
+        assert stats.end_time == end_time
+        assert stats.duration_seconds == 30.0
+        assert stats.files_transferred == 100
+        assert stats.files_total == 120
+        assert stats.bytes_transferred == 1048576
+        assert stats.bytes_total == 1258291
+        assert stats.source_path == "/test/source"
+        assert stats.destination == "test:bucket"
+        assert stats.dry_run is False
+        assert stats.test_mode is True
+        assert stats.success is True
+        assert stats.error_message is None
+
+    def test_backup_stats_from_transfer_stats(self):
+        """Test creating BackupStats from TransferStats."""
+        # Create mock transfer stats
+        transfer_stats = TransferStats(
+            files_transferred=50,
+            files_total=60,
+            bytes_transferred=524288,  # 512 KB
+            bytes_total=629145,  # ~615 KB
+            transfer_rate_mbps=2.5,
+            errors=1,
+        )
+
+        start_time = datetime.now()
+        end_time = start_time + timedelta(seconds=15)
+
+        backup_stats = BackupStats.from_transfer_stats(
+            transfer_stats=transfer_stats,
+            start_time=start_time,
+            end_time=end_time,
+            source_path="/test/photos",
+            destination="minio:test-bucket",
+            dry_run=True,
+            test_mode=True,
+            success=True,
+        )
+
+        assert backup_stats.files_transferred == 50
+        assert backup_stats.files_total == 60
+        assert backup_stats.bytes_transferred == 524288
+        assert backup_stats.bytes_total == 629145
+        assert backup_stats.errors == 1
+        assert backup_stats.duration_seconds == 15.0
+        assert backup_stats.source_path == "/test/photos"
+        assert backup_stats.destination == "minio:test-bucket"
+        assert backup_stats.dry_run is True
+        assert backup_stats.test_mode is True
+        assert backup_stats.success is True
+
+        # Verify calculated rates
+        assert backup_stats.transfer_rate_mbps > 0  # Should be calculated from bytes/duration
+        assert backup_stats.files_rate_per_second > 0  # Should be calculated from files/duration
+
+    def test_backup_stats_percentages(self):
+        """Test percentage calculations."""
+        stats = BackupStats(
+            start_time=datetime.now(),
+            files_transferred=75,
+            files_total=100,
+            bytes_transferred=750000,
+            bytes_total=1000000,
+        )
+
+        assert stats.files_percentage == 75.0
+        assert stats.bytes_percentage == 75.0
+
+        # Test edge cases
+        stats_empty = BackupStats(
+            start_time=datetime.now(),
+            files_transferred=0,
+            files_total=0,
+            bytes_transferred=0,
+            bytes_total=0,
+        )
+
+        assert stats_empty.files_percentage == 0.0
+        assert stats_empty.bytes_percentage == 0.0
+
+    def test_backup_stats_formatted_bytes(self):
+        """Test byte formatting."""
+        stats = BackupStats(
+            start_time=datetime.now(),
+            bytes_transferred=1024,
+            bytes_total=1048576,
+        )
+
+        assert stats.formatted_bytes_transferred == "1.0 KB"
+        assert stats.formatted_bytes_total == "1.0 MB"
+
+        # Test different sizes
+        stats.bytes_transferred = 512
+        assert stats._format_bytes(512) == "512 B"
+
+        stats.bytes_transferred = 1536
+        assert stats._format_bytes(1536) == "1.5 KB"
+
+        stats.bytes_transferred = 1073741824
+        assert stats._format_bytes(1073741824) == "1.0 GB"
+
+    def test_backup_stats_formatted_duration(self):
+        """Test duration formatting."""
+        # Test seconds
+        stats = BackupStats(
+            start_time=datetime.now(),
+            duration_seconds=45.5,
+        )
+        assert stats.formatted_duration == "45.5s"
+
+        # Test minutes
+        stats.duration_seconds = 125.0  # 2m 5s
+        assert stats.formatted_duration == "2m 5s"
+
+        # Test hours
+        stats.duration_seconds = 3665.0  # 1h 1m
+        assert stats.formatted_duration == "1h 1m"
+
+    def test_backup_stats_summary(self):
+        """Test summary generation."""
+        stats = BackupStats(
+            start_time=datetime.now(),
+            end_time=datetime.now() + timedelta(seconds=60),
+            duration_seconds=60.0,
+            files_transferred=100,
+            files_total=100,
+            bytes_transferred=1048576,  # 1 MB
+            bytes_total=1048576,
+            transfer_rate_mbps=1.0,
+            files_rate_per_second=1.67,
+            source_path="/test/source",
+            destination="test:bucket",
+            dry_run=False,
+            test_mode=True,
+            success=True,
+            errors=0,
+        )
+
+        summary = stats.get_summary()
+
+        assert "SUCCESS" in summary
+        assert "TEST MODE" in summary
+        assert "1m 0s" in summary
+        assert "100/100 (100.0%)" in summary
+        assert "1.0 MB/1.0 MB (100.0%)" in summary
+        assert "1.0 MB/s" in summary
+        assert "1.7 files/s" in summary
+
+    def test_backup_stats_summary_with_errors(self):
+        """Test summary with errors and failure."""
+        stats = BackupStats(
+            start_time=datetime.now(),
+            duration_seconds=30.0,
+            files_transferred=50,
+            files_total=100,
+            bytes_transferred=500000,
+            bytes_total=1000000,
+            errors=3,
+            dry_run=True,
+            test_mode=False,
+            success=False,
+            error_message="Connection timeout",
+        )
+
+        summary = stats.get_summary()
+
+        assert "FAILED" in summary
+        assert "DRY RUN PRODUCTION" in summary
+        assert "Errors: 3" in summary
+        assert "Error: Connection timeout" in summary
+
+    def test_backup_stats_to_dict(self):
+        """Test dictionary conversion."""
+        start_time = datetime.now()
+        end_time = start_time + timedelta(seconds=45)
+
+        stats = BackupStats(
+            start_time=start_time,
+            end_time=end_time,
+            duration_seconds=45.0,
+            files_transferred=25,
+            files_total=30,
+            bytes_transferred=262144,  # 256 KB
+            bytes_total=314572,  # ~307 KB
+            transfer_rate_mbps=0.5,
+            files_rate_per_second=0.56,
+            source_path="/test/src",
+            destination="s3:my-bucket",
+            dry_run=False,
+            test_mode=False,
+            success=True,
+        )
+
+        data = stats.to_dict()
+
+        assert data["start_time"] == start_time.isoformat()
+        assert data["end_time"] == end_time.isoformat()
+        assert data["duration_seconds"] == 45.0
+        assert data["files_transferred"] == 25
+        assert data["files_total"] == 30
+        assert data["bytes_transferred"] == 262144
+        assert data["bytes_total"] == 314572
+        assert data["transfer_rate_mbps"] == 0.5
+        assert data["files_rate_per_second"] == 0.56
+        assert data["files_percentage"] == stats.files_percentage
+        assert data["bytes_percentage"] == stats.bytes_percentage
+        assert data["source_path"] == "/test/src"
+        assert data["destination"] == "s3:my-bucket"
+        assert data["dry_run"] is False
+        assert data["test_mode"] is False
+        assert data["success"] is True
+        assert data["error_message"] is None
+        assert data["formatted_bytes_transferred"] == "256.0 KB"
+        assert data["formatted_bytes_total"] == "307.2 KB"
+        assert data["formatted_duration"] == "45.0s"
+
+    def test_backup_stats_rate_calculations(self):
+        """Test rate calculations in from_transfer_stats."""
+        transfer_stats = TransferStats(
+            files_transferred=60,
+            bytes_transferred=6291456,  # 6 MB
+        )
+
+        start_time = datetime.now()
+        end_time = start_time + timedelta(seconds=30)  # 30 seconds
+
+        backup_stats = BackupStats.from_transfer_stats(
+            transfer_stats=transfer_stats,
+            start_time=start_time,
+            end_time=end_time,
+            source_path="/test",
+            destination="test:bucket",
+            dry_run=False,
+            test_mode=True,
+            success=True,
+        )
+
+        # Verify rate calculations
+        expected_mb_rate = 6.0 / 30.0  # 6 MB in 30 seconds = 0.2 MB/s
+        expected_files_rate = 60.0 / 30.0  # 60 files in 30 seconds = 2.0 files/s
+
+        assert abs(backup_stats.transfer_rate_mbps - expected_mb_rate) < 0.01
+        assert abs(backup_stats.files_rate_per_second - expected_files_rate) < 0.01
+
+    def test_backup_stats_zero_duration(self):
+        """Test behavior with zero duration."""
+        transfer_stats = TransferStats(
+            files_transferred=10,
+            bytes_transferred=1024,
+        )
+
+        start_time = datetime.now()
+        end_time = start_time  # Same time = zero duration
+
+        backup_stats = BackupStats.from_transfer_stats(
+            transfer_stats=transfer_stats,
+            start_time=start_time,
+            end_time=end_time,
+            source_path="/test",
+            destination="test:bucket",
+            dry_run=False,
+            test_mode=True,
+            success=True,
+        )
+
+        # Rates should be 0 when duration is 0
+        assert backup_stats.transfer_rate_mbps == 0.0
+        assert backup_stats.files_rate_per_second == 0.0
+        assert backup_stats.duration_seconds == 0.0
+
+
+class TestSyncWithStats:
+    """Test BackupEngine sync_with_stats method."""
+
+    @patch("photo_backup.backup.subprocess.Popen")
+    @patch("photo_backup.backup.Path")
+    def test_sync_with_stats_success(self, mock_path, mock_popen):
+        """Test sync_with_stats returns BackupStats."""
+        # Setup mocks
+        mock_path.return_value.rglob.return_value = ["file1.jpg", "file2.jpg"]
+
+        mock_process = MagicMock()
+        mock_process.stdout.readline.side_effect = [
+            "Transferred:   2 / 2, 100%\n",
+            "",  # End of output
+        ]
+        mock_process.wait.return_value = 0
+        mock_popen.return_value = mock_process
+
+        # Create engine and job
+        engine = BackupEngine(test_mode=True)
+        job = BackupJob("/test/source", "test:bucket", dry_run=False)
+
+        # Mock credential manager
+        with patch.object(engine.credential_manager, "get_credentials") as mock_creds:
+            mock_creds.return_value = {
+                "access_key": "test_key",
+                "secret_key": "test_secret",
+                "endpoint": "localhost:9000",
+                "region": "us-east-1",
+                "use_ssl": False,
+            }
+
+            # Execute sync_with_stats
+            backup_stats = engine.sync_with_stats(job)
+
+            # Verify BackupStats object
+            assert isinstance(backup_stats, BackupStats)
+            assert backup_stats.source_path == "/test/source"
+            assert backup_stats.destination == "test:bucket"
+            assert backup_stats.dry_run is False
+            assert backup_stats.test_mode is True
+            assert backup_stats.success is True
+            assert backup_stats.duration_seconds > 0
+            assert backup_stats.start_time is not None
+            assert backup_stats.end_time is not None

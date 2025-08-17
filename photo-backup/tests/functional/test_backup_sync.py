@@ -7,7 +7,7 @@ to Minio in test mode.
 
 import pytest
 
-from photo_backup.backup import BackupEngine, BackupJob
+from photo_backup.backup import BackupEngine, BackupJob, BackupStats
 
 
 @pytest.fixture
@@ -151,7 +151,7 @@ class TestBackupSync:
         )
 
         # Execute sync with progress
-        success, output, sync_info = engine.sync_with_progress(job)
+        success, output, sync_info, backup_stats = engine.sync_with_progress(job)
 
         # Verify sync succeeded
         assert success, f"Sync with progress failed: {output}"
@@ -177,3 +177,51 @@ class TestBackupSync:
         assert transfer_stats["bytes_total"] >= 0
         assert transfer_stats["percentage"] >= 0.0
         assert transfer_stats["errors"] >= 0
+
+    def test_sync_with_backup_stats(self, _minio_container, test_photos):
+        """Test sync_with_stats method returns comprehensive BackupStats."""
+        # The _minio_container fixture ensures Minio is running
+        # Create backup engine in test mode
+        engine = BackupEngine(test_mode=True)
+
+        # Create backup job
+        job = BackupJob(
+            source_path=str(test_photos),
+            destination="minio-test:my-photo-backup-bucket-test",
+            dry_run=False,
+        )
+
+        # Execute sync with stats
+        backup_stats = engine.sync_with_stats(job)
+
+        # Verify BackupStats object
+        assert isinstance(backup_stats, BackupStats)
+        assert backup_stats.source_path == str(test_photos)
+        assert backup_stats.destination == "minio-test:my-photo-backup-bucket-test"
+        assert backup_stats.dry_run is False
+        assert backup_stats.test_mode is True
+        assert backup_stats.success is True
+        assert backup_stats.duration_seconds > 0
+        assert backup_stats.start_time is not None
+        assert backup_stats.end_time is not None
+
+        # Verify transfer metrics (note: values may be 0 for very quick transfers or dry runs)
+        assert backup_stats.files_transferred >= 0
+        assert backup_stats.bytes_transferred >= 0
+        assert backup_stats.transfer_rate_mbps >= 0
+        assert backup_stats.files_rate_per_second >= 0
+
+        # Verify formatting methods work
+        assert backup_stats.formatted_duration != "0.0s"  # Duration should always be > 0
+
+        # Verify summary generation
+        summary = backup_stats.get_summary()
+        assert "SUCCESS" in summary
+        assert "TEST MODE" in summary
+
+        # Verify dictionary conversion
+        stats_dict = backup_stats.to_dict()
+        assert stats_dict["success"] is True
+        assert stats_dict["test_mode"] is True
+        assert stats_dict["files_transferred"] >= 0
+        assert stats_dict["bytes_transferred"] >= 0

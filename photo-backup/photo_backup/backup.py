@@ -11,13 +11,210 @@ import re
 import subprocess
 import tempfile
 import time
+from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
 from pathlib import Path
 
 from .config.config import Config
 from .credentials.manager import CredentialManager
-from .progress_parser import RcloneProgressParser
+from .progress_parser import RcloneProgressParser, TransferStats
+
+
+@dataclass
+class BackupStats:
+    """Comprehensive backup statistics and metrics."""
+
+    # Basic metadata
+    start_time: datetime
+    end_time: datetime | None = None
+    duration_seconds: float = 0.0
+
+    # Transfer statistics
+    files_transferred: int = 0
+    files_total: int = 0
+    bytes_transferred: int = 0
+    bytes_total: int = 0
+    errors: int = 0
+
+    # Calculated metrics
+    transfer_rate_mbps: float = 0.0
+    files_rate_per_second: float = 0.0
+
+    # Backup metadata
+    source_path: str = ""
+    destination: str = ""
+    dry_run: bool = False
+    test_mode: bool = False
+    success: bool = False
+    error_message: str | None = None
+
+    @classmethod
+    def from_transfer_stats(
+        cls,
+        transfer_stats: TransferStats,
+        start_time: datetime,
+        end_time: datetime,
+        source_path: str,
+        destination: str,
+        dry_run: bool,
+        test_mode: bool,
+        success: bool,
+        error_message: str | None = None,
+    ) -> "BackupStats":
+        """Create BackupStats from TransferStats and additional metadata.
+
+        Args:
+            transfer_stats: Transfer statistics from rclone progress parser
+            start_time: Backup start time
+            end_time: Backup end time
+            source_path: Source directory path
+            destination: Backup destination
+            dry_run: Whether this was a dry run
+            test_mode: Whether this was run in test mode
+            success: Whether the backup completed successfully
+            error_message: Error message if backup failed
+
+        Returns:
+            BackupStats instance with calculated metrics
+        """
+        duration = (end_time - start_time).total_seconds()
+
+        # Calculate rates
+        transfer_rate_mbps = 0.0
+        files_rate_per_second = 0.0
+
+        if duration > 0:
+            # Convert bytes to MB and calculate rate
+            mb_transferred = transfer_stats.bytes_transferred / (1024 * 1024)
+            transfer_rate_mbps = mb_transferred / duration
+
+            # Calculate files per second rate
+            files_rate_per_second = transfer_stats.files_transferred / duration
+
+        return cls(
+            start_time=start_time,
+            end_time=end_time,
+            duration_seconds=duration,
+            files_transferred=transfer_stats.files_transferred,
+            files_total=transfer_stats.files_total,
+            bytes_transferred=transfer_stats.bytes_transferred,
+            bytes_total=transfer_stats.bytes_total,
+            errors=transfer_stats.errors,
+            transfer_rate_mbps=transfer_rate_mbps,
+            files_rate_per_second=files_rate_per_second,
+            source_path=source_path,
+            destination=destination,
+            dry_run=dry_run,
+            test_mode=test_mode,
+            success=success,
+            error_message=error_message,
+        )
+
+    @property
+    def files_percentage(self) -> float:
+        """Calculate percentage of files transferred."""
+        if self.files_total == 0:
+            return 0.0
+        return (self.files_transferred / self.files_total) * 100
+
+    @property
+    def bytes_percentage(self) -> float:
+        """Calculate percentage of bytes transferred."""
+        if self.bytes_total == 0:
+            return 0.0
+        return (self.bytes_transferred / self.bytes_total) * 100
+
+    @property
+    def formatted_bytes_transferred(self) -> str:
+        """Format bytes transferred as human-readable string."""
+        return self._format_bytes(self.bytes_transferred)
+
+    @property
+    def formatted_bytes_total(self) -> str:
+        """Format total bytes as human-readable string."""
+        return self._format_bytes(self.bytes_total)
+
+    @property
+    def formatted_duration(self) -> str:
+        """Format duration as human-readable string."""
+        if self.duration_seconds < 60:
+            return f"{self.duration_seconds:.1f}s"
+        elif self.duration_seconds < 3600:
+            minutes = int(self.duration_seconds // 60)
+            seconds = int(self.duration_seconds % 60)
+            return f"{minutes}m {seconds}s"
+        else:
+            hours = int(self.duration_seconds // 3600)
+            minutes = int((self.duration_seconds % 3600) // 60)
+            return f"{hours}h {minutes}m"
+
+    def _format_bytes(self, bytes_count: int) -> str:
+        """Format bytes as human-readable string with appropriate units."""
+        if bytes_count == 0:
+            return "0 B"
+
+        units = ["B", "KB", "MB", "GB", "TB"]
+        size = float(bytes_count)
+        unit_index = 0
+
+        while size >= 1024 and unit_index < len(units) - 1:
+            size /= 1024
+            unit_index += 1
+
+        if unit_index == 0:
+            return f"{int(size)} {units[unit_index]}"
+        else:
+            return f"{size:.1f} {units[unit_index]}"
+
+    def get_summary(self) -> str:
+        """Get a human-readable summary of the backup statistics."""
+        status = "SUCCESS" if self.success else "FAILED"
+        mode = f"{'DRY RUN ' if self.dry_run else ''}{'TEST MODE' if self.test_mode else 'PRODUCTION'}"
+
+        summary_lines = [
+            f"Backup {status} ({mode})",
+            f"Duration: {self.formatted_duration}",
+            f"Files: {self.files_transferred:,}/{self.files_total:,} ({self.files_percentage:.1f}%)",
+            f"Data: {self.formatted_bytes_transferred}/{self.formatted_bytes_total} ({self.bytes_percentage:.1f}%)",
+            f"Transfer Rate: {self.transfer_rate_mbps:.1f} MB/s",
+            f"Files Rate: {self.files_rate_per_second:.1f} files/s",
+        ]
+
+        if self.errors > 0:
+            summary_lines.append(f"Errors: {self.errors}")
+
+        if not self.success and self.error_message:
+            summary_lines.append(f"Error: {self.error_message}")
+
+        return "\n".join(summary_lines)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert backup statistics to dictionary for JSON serialization."""
+        return {
+            "start_time": self.start_time.isoformat(),
+            "end_time": self.end_time.isoformat() if self.end_time else None,
+            "duration_seconds": self.duration_seconds,
+            "files_transferred": self.files_transferred,
+            "files_total": self.files_total,
+            "bytes_transferred": self.bytes_transferred,
+            "bytes_total": self.bytes_total,
+            "errors": self.errors,
+            "transfer_rate_mbps": self.transfer_rate_mbps,
+            "files_rate_per_second": self.files_rate_per_second,
+            "files_percentage": self.files_percentage,
+            "bytes_percentage": self.bytes_percentage,
+            "source_path": self.source_path,
+            "destination": self.destination,
+            "dry_run": self.dry_run,
+            "test_mode": self.test_mode,
+            "success": self.success,
+            "error_message": self.error_message,
+            "formatted_bytes_transferred": self.formatted_bytes_transferred,
+            "formatted_bytes_total": self.formatted_bytes_total,
+            "formatted_duration": self.formatted_duration,
+        }
 
 
 def check_rclone() -> tuple[bool, str, str | None]:
@@ -435,7 +632,7 @@ use_ssl = {str(credentials["use_ssl"]).lower()}
                 except Exception as e:
                     self.logger.warning(f"Failed to clean up config file {config_file.name}: {e}")
 
-    def sync_with_progress(self, job: BackupJob) -> tuple[bool, str, dict[str, Any]]:
+    def sync_with_progress(self, job: BackupJob) -> tuple[bool, str, dict[str, Any], BackupStats]:
         """Execute rclone sync operation with real-time progress parsing.
 
         This method enhances the basic sync with real-time progress monitoring,
@@ -445,10 +642,11 @@ use_ssl = {str(credentials["use_ssl"]).lower()}
             job: BackupJob containing sync parameters
 
         Returns:
-            Tuple of (success, output, sync_info)
+            Tuple of (success, output, sync_info, backup_stats)
             - success: True if sync completed successfully
             - output: Complete rclone output
             - sync_info: Dictionary with sync statistics and metadata including transfer_stats
+            - backup_stats: BackupStats object with comprehensive metrics and analysis
         """
         self.logger.info(f"Starting sync with progress: {job.source_path} -> {job.destination}")
 
@@ -485,6 +683,7 @@ use_ssl = {str(credentials["use_ssl"]).lower()}
             try:
                 # Record start time
                 start_time = time.time()
+                start_datetime = datetime.now()
 
                 # Execute rclone command with real-time output parsing
                 self.logger.info(f"Executing: {' '.join(cmd[:3])} ... (config file: {config_file.name})")
@@ -521,6 +720,7 @@ use_ssl = {str(credentials["use_ssl"]).lower()}
 
                 # Record completion time
                 end_time = time.time()
+                end_datetime = datetime.now()
                 duration = end_time - start_time
 
                 # Mark progress as complete
@@ -575,15 +775,51 @@ use_ssl = {str(credentials["use_ssl"]).lower()}
 
                 # Update job status
                 job.status = "completed" if success else "error"
+                error_message = None
                 if not success:
-                    job.error = "; ".join(output_lines[-3:]) if output_lines else "Unknown error"
+                    error_message = "; ".join(output_lines[-3:]) if output_lines else "Unknown error"
+                    job.error = error_message
 
-                return success, complete_output, sync_info
+                # Create backup statistics
+                backup_stats = BackupStats.from_transfer_stats(
+                    transfer_stats=transfer_stats,
+                    start_time=start_datetime,
+                    end_time=end_datetime,
+                    source_path=job.source_path,
+                    destination=job.destination,
+                    dry_run=job.dry_run,
+                    test_mode=self.test_mode,
+                    success=success,
+                    error_message=error_message,
+                )
+
+                # Log backup statistics summary
+                self.logger.info("Backup Statistics:")
+                for line in backup_stats.get_summary().split("\n"):
+                    self.logger.info(f"  {line}")
+
+                return success, complete_output, sync_info, backup_stats
 
             except subprocess.TimeoutExpired:
                 self.logger.error("Sync operation timed out after 5 minutes")
                 job.status = "error"
                 job.error = "Sync operation timed out"
+
+                # Create backup statistics for timeout case
+                end_datetime = datetime.now()
+                transfer_stats = progress_parser.get_final_stats()
+
+                backup_stats = BackupStats.from_transfer_stats(
+                    transfer_stats=transfer_stats,
+                    start_time=start_datetime,
+                    end_time=end_datetime,
+                    source_path=job.source_path,
+                    destination=job.destination,
+                    dry_run=job.dry_run,
+                    test_mode=self.test_mode,
+                    success=False,
+                    error_message="Sync operation timed out",
+                )
 
                 sync_info = {
                     "command": cmd,
@@ -593,15 +829,31 @@ use_ssl = {str(credentials["use_ssl"]).lower()}
                     "config_file": config_file.name,
                     "dry_run": job.dry_run,
                     "test_mode": self.test_mode,
-                    "transfer_stats": progress_parser.get_final_stats().__dict__,
+                    "transfer_stats": transfer_stats.__dict__,
                 }
 
-                return False, "ERROR: Sync operation timed out after 5 minutes", sync_info
+                return False, "ERROR: Sync operation timed out after 5 minutes", sync_info, backup_stats
 
             except Exception as e:
                 self.logger.error(f"Sync failed with exception: {e}")
                 job.status = "error"
                 job.error = str(e)
+
+                # Create backup statistics for exception case
+                end_datetime = datetime.now()
+                transfer_stats = progress_parser.get_final_stats()
+
+                backup_stats = BackupStats.from_transfer_stats(
+                    transfer_stats=transfer_stats,
+                    start_time=start_datetime,
+                    end_time=end_datetime,
+                    source_path=job.source_path,
+                    destination=job.destination,
+                    dry_run=job.dry_run,
+                    test_mode=self.test_mode,
+                    success=False,
+                    error_message=str(e),
+                )
 
                 sync_info = {
                     "command": cmd,
@@ -610,10 +862,10 @@ use_ssl = {str(credentials["use_ssl"]).lower()}
                     "config_file": config_file.name,
                     "dry_run": job.dry_run,
                     "test_mode": self.test_mode,
-                    "transfer_stats": progress_parser.get_final_stats().__dict__,
+                    "transfer_stats": transfer_stats.__dict__,
                 }
 
-                return False, f"ERROR: {e}", sync_info
+                return False, f"ERROR: {e}", sync_info, backup_stats
 
             finally:
                 # Clean up temporary config file
@@ -622,6 +874,21 @@ use_ssl = {str(credentials["use_ssl"]).lower()}
                     self.logger.debug(f"Cleaned up config file: {config_file.name}")
                 except Exception as e:
                     self.logger.warning(f"Failed to clean up config file {config_file.name}: {e}")
+
+    def sync_with_stats(self, job: BackupJob) -> BackupStats:
+        """Execute sync and return comprehensive backup statistics.
+
+        This is a convenience method that performs sync_with_progress and
+        returns only the BackupStats for easier consumption.
+
+        Args:
+            job: BackupJob containing sync parameters
+
+        Returns:
+            BackupStats: Comprehensive backup statistics and metrics
+        """
+        success, output, sync_info, backup_stats = self.sync_with_progress(job)
+        return backup_stats
 
 
 # Quick test for the module
