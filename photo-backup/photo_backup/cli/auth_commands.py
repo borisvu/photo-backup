@@ -111,12 +111,14 @@ def test_auth(ctx, verbose):
             logger.error("Authentication test failed")
             click.echo("\n💥 Authentication test failed!")
             import sys
+
             sys.exit(1)
 
     except Exception as e:
         logger.error(f"Unexpected error during authentication test: {e}")
         click.echo(f"💥 Unexpected error: {e}")
         import sys
+
         sys.exit(1)
 
 
@@ -133,12 +135,19 @@ def _ensure_test_bucket(manager: CredentialManager, logger: logging.Logger) -> N
         # Use rclone to create bucket if it doesn't exist
         # First, try to list the bucket to see if it exists
         cmd = [
-            "rclone", "ls", f"minio:{bucket}",
-            "--config", "/dev/null",  # Use minimal config
-            "--s3-endpoint", endpoint,
-            "--s3-access-key-id", credentials["access_key"],
-            "--s3-secret-access-key", credentials["secret_key"],
-            "--s3-region", credentials.get("region", "us-east-1"),
+            "rclone",
+            "ls",
+            f"minio:{bucket}",
+            "--config",
+            "/dev/null",  # Use minimal config
+            "--s3-endpoint",
+            endpoint,
+            "--s3-access-key-id",
+            credentials["access_key"],
+            "--s3-secret-access-key",
+            credentials["secret_key"],
+            "--s3-region",
+            credentials.get("region", "us-east-1"),
             "--s3-no-ssl" if not credentials.get("use_ssl", False) else "",
         ]
 
@@ -156,12 +165,19 @@ def _ensure_test_bucket(manager: CredentialManager, logger: logging.Logger) -> N
 
             # Use rclone mkdir to create bucket
             mkdir_cmd = [
-                "rclone", "mkdir", f"minio:{bucket}",
-                "--config", "/dev/null",
-                "--s3-endpoint", endpoint,
-                "--s3-access-key-id", credentials["access_key"],
-                "--s3-secret-access-key", credentials["secret_key"],
-                "--s3-region", credentials.get("region", "us-east-1"),
+                "rclone",
+                "mkdir",
+                f"minio:{bucket}",
+                "--config",
+                "/dev/null",
+                "--s3-endpoint",
+                endpoint,
+                "--s3-access-key-id",
+                credentials["access_key"],
+                "--s3-secret-access-key",
+                credentials["secret_key"],
+                "--s3-region",
+                credentials.get("region", "us-east-1"),
                 "--s3-no-ssl" if not credentials.get("use_ssl", False) else "",
             ]
 

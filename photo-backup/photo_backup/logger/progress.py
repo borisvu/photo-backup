@@ -21,7 +21,7 @@ class ProgressLogger:
         operation_type: str = "operation",
         update_interval: float = 5.0,
         logger: logging.Logger | None = None,
-        operation_context: OperationContext | None = None
+        operation_context: OperationContext | None = None,
     ):
         """Initialize progress logger.
 
@@ -84,10 +84,12 @@ class ProgressLogger:
 
         # Add operation context if available
         if self.operation_context:
-            extra.update({
-                "operation": self.operation_context.operation_type,
-                "operation_id": self.operation_context.operation_id,
-            })
+            extra.update(
+                {
+                    "operation": self.operation_context.operation_type,
+                    "operation_id": self.operation_context.operation_id,
+                }
+            )
 
         self.logger.info(progress_msg, extra=extra)
 
@@ -119,10 +121,12 @@ class ProgressLogger:
 
         # Add operation context if available
         if self.operation_context:
-            extra.update({
-                "operation": self.operation_context.operation_type,
-                "operation_id": self.operation_context.operation_id,
-            })
+            extra.update(
+                {
+                    "operation": self.operation_context.operation_type,
+                    "operation_id": self.operation_context.operation_id,
+                }
+            )
 
         self.logger.info(completion_msg, extra=extra)
 

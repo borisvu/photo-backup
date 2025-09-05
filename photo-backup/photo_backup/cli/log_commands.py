@@ -153,7 +153,7 @@ def logs(ctx: click.Context, tail: int, level: str | None, errors: bool, follow:
         photo-backup logs --follow           # Follow logs in real-time
         photo-backup logs --json             # Output in JSON format
     """
-        # Get config from context
+    # Get config from context
     context_data = ctx.obj
     test_mode = context_data.get("test_mode", False)
     dry_run = context_data.get("dry_run", False)

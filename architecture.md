@@ -1,5 +1,5 @@
 ---
-aliases: 
+aliases:
 tags:
   - architecture
   - backup
@@ -7,6 +7,7 @@ tags:
   - project
 creation_date: 2025-06-21
 ---
+
 # Photo Backup System Architecture
 
 ## Overview
@@ -20,16 +21,16 @@ graph TB
     subgraph "macOS System"
         launchd[launchd Service]
         PBS[Photo Backup Service]
-        
+
         launchd -->|starts| PBS
-        
+
         subgraph "Photo Backup Core System"
             Monitor[Monitor Module]
             Creds[Credential Manager]
             Backup[Backup Engine]
             Verify[Verify Module]
             Logger[Logger/Reporter]
-            
+
             Monitor -->|triggers| Backup
             Creds -->|provides auth| Backup
             Backup -->|logs to| Logger
@@ -37,28 +38,28 @@ graph TB
             Verify -->|uses| Backup
         end
     end
-    
+
     subgraph "External Tools"
         OnePass[1Password CLI]
         rclone[rclone]
-        
+
         Creds -->|retrieves from| OnePass
         Backup -->|executes| rclone
     end
-    
+
     subgraph "Storage"
         Local[4TB-SSD<br/>/Volumes/4TB-SSD/Photo]
         Wasabi[Wasabi S3<br/>my-photo-backup-bucket]
-        
+
         rclone -->|reads from| Local
         rclone -->|syncs to| Wasabi
     end
-    
+
     subgraph "File System"
         StateFiles[State Files<br/>~/Library/Application Support/photo-backup/]
         LogFiles[Log Files<br/>~/Library/Logs/photo-backup/]
         Config[Config File<br/>config.yaml]
-        
+
         PBS -->|reads/writes| StateFiles
         Logger -->|writes| LogFiles
         PBS -->|reads| Config
@@ -68,6 +69,7 @@ graph TB
 ## Directory Structure
 
 ### Project Structure
+
 ```
 photo-backup/
 ├── setup.py                    # Package installation configuration
@@ -83,27 +85,91 @@ photo-backup/
 │   ├── __version__.py        # Version information
 │   ├── main.py               # Entry point and CLI interface
 │   ├── backup.py             # Core backup orchestration logic
-│   ├── monitor.py            # File system monitoring
-│   ├── credentials.py        # 1Password integration
-│   ├── verify.py             # Integrity verification
-│   ├── config.py             # Configuration management
-│   ├── logger.py             # Logging setup and management
-│   └── utils.py              # Utility functions
+│   ├── progress_parser.py    # rclone progress parsing
+│   ├── consts.py             # Application constants
+│   │
+│   ├── cli/                  # CLI command modules
+│   │   ├── __init__.py
+│   │   ├── auth_commands.py  # Authentication commands
+│   │   ├── config_commands.py # Configuration commands
+│   │   └── log_commands.py   # Log viewing commands
+│   │
+│   ├── config/               # Configuration system
+│   │   ├── __init__.py
+│   │   ├── config.py         # Core configuration class
+│   │   ├── defaults.py       # Default configuration values
+│   │   ├── env_override.py   # Environment variable overrides
+│   │   ├── loader.py         # Configuration loading logic
+│   │   ├── utils.py          # Configuration utilities
+│   │   └── validator.py      # Configuration validation
+│   │
+│   ├── credentials/          # Credential management system
+│   │   ├── __init__.py
+│   │   ├── manager.py        # Main credential manager
+│   │   ├── exceptions.py     # Credential-specific exceptions
+│   │   ├── utils.py          # Credential utilities
+│   │   ├── providers/        # Credential providers
+│   │   │   ├── __init__.py
+│   │   │   ├── base.py       # Base provider interface
+│   │   │   ├── direct.py     # Direct credential provider
+│   │   │   ├── onepassword.py # 1Password integration
+│   │   │   └── test_mode.py  # Test mode credentials
+│   │   ├── session/          # Session management
+│   │   │   ├── __init__.py
+│   │   │   └── onepassword.py # 1Password session handling
+│   │   └── validators/       # Credential validators
+│   │       ├── __init__.py
+│   │       ├── base.py       # Base validator interface
+│   │       └── rclone.py     # rclone-based validation
+│   │
+│   ├── logger/               # Comprehensive logging system
+│   │   ├── __init__.py
+│   │   ├── core.py           # Core logger setup
+│   │   ├── formatters.py     # Log formatters (JSON, detailed, simple)
+│   │   ├── context.py        # Operation context tracking
+│   │   ├── progress.py       # Progress logging
+│   │   ├── summary.py        # Summary statistics
+│   │   ├── cleanup.py        # Log cleanup functionality
+│   │   └── utils.py          # Logger utilities
+│   │
+│   ├── monitor.py            # File system monitoring (future)
+│   ├── verify.py             # Integrity verification (future)
+│   │
+│   └── *_utils.py            # Utility modules
+│       ├── format_utils.py   # Formatting utilities
+│       ├── fs_utils.py       # File system utilities
+│       ├── lock_utils.py     # Process locking utilities
+│       ├── process_utils.py  # Process execution utilities
+│       ├── state_utils.py    # State management utilities
+│       └── time_utils.py     # Time calculation utilities
 │
-├── tests/                     # Test suite
+├── tests/                     # Comprehensive test suite
 │   ├── __init__.py
-│   ├── test_backup.py
-│   ├── test_monitor.py
-│   ├── test_credentials.py
-│   ├── test_verify.py
-│   └── fixtures/             # Test data
+│   ├── conftest.py           # pytest configuration
+│   ├── fixtures/             # Test data and fixtures
+│   │   ├── __init__.py
+│   │   └── photo_fixtures.py # Test photo generation
+│   │
+│   ├── unit/                 # Unit tests
+│   │   ├── cli/              # CLI command tests
+│   │   ├── config/           # Configuration system tests
+│   │   ├── credentials/      # Credential management tests
+│   │   ├── logger/           # Logging system tests
+│   │   └── test_*.py         # Individual module tests
+│   │
+│   ├── functional/           # End-to-end functional tests
+│   │   └── test_*.py         # Full workflow tests with Minio
+│   │
+│   └── integration/          # Integration tests
+│       └── test_*.py         # Component interaction tests
 │
-└── scripts/                   # Utility scripts
+└── scripts/                   # Utility scripts (future)
     ├── uninstall.py          # Clean removal script
     └── debug.py              # Diagnostic tool
 ```
 
 ### System Directories (Created by installer)
+
 ```
 ~/Library/Application Support/photo-backup/
 ├── state/                     # Persistent state files
@@ -132,137 +198,168 @@ photo-backup/
 ## Component Details
 
 ### 1. Entry Point (`main.py`)
+
 **Purpose**: CLI interface and command routing
+
 - Handles command-line arguments
-- Routes to appropriate actions (sync, verify, status)
+- Routes to appropriate CLI command modules
 - Manages daemon vs one-shot execution
 - Implements singleton pattern to prevent multiple instances
 
 **Key Functions**:
-- `main()`: Entry point
-- `sync_command()`: Manual sync trigger
-- `verify_command()`: Manual verification
-- `status_command()`: Show current status
-- `daemon_command()`: Run as background service
 
-### 2. Backup Engine (`backup.py`)
-**Purpose**: Core backup orchestration
+- `main()`: Entry point with click CLI framework
+- Command routing to specialized CLI modules
+- Global flag handling (--test-mode, --dry-run, --verbose)
+
+### 2. CLI Command System (`cli/`)
+
+**Purpose**: Modular command-line interface
+
+- **`cli/auth_commands.py`**: Authentication and credential testing
+- **`cli/config_commands.py`**: Configuration display and validation
+- **`cli/log_commands.py`**: Log viewing and filtering
+
+**Key Commands**:
+
+- `photo-backup config`: Display current configuration
+- `photo-backup validate`: Validate configuration and dependencies
+- `photo-backup test-auth`: Test credential authentication
+- `photo-backup logs`: View and filter log files
+- `photo-backup setup-config`: Initialize user configuration
+
+### 3. Configuration System (`config/`)
+
+**Purpose**: Multi-layered configuration management
+
+- **`config/config.py`**: Core configuration class with dot notation access
+- **`config/defaults.py`**: Default configuration values and documentation
+- **`config/env_override.py`**: Environment variable override system
+- **`config/loader.py`**: Configuration file loading and search paths
+- **`config/validator.py`**: Configuration validation and error reporting
+- **`config/utils.py`**: Configuration utility functions
+
+**Key Features**:
+
+- YAML file loading with multiple search paths
+- Environment variable overrides (`PHOTO_BACKUP_*`)
+- Test mode automatic overrides
+- Comprehensive validation with detailed error messages
+- Hot-reload capability and configuration merging
+
+### 4. Credential Management System (`credentials/`)
+
+**Purpose**: Secure, multi-source credential handling
+
+- **`credentials/manager.py`**: Main credential orchestration
+- **`credentials/exceptions.py`**: Credential-specific error handling
+- **`credentials/providers/`**: Multiple credential sources
+  - `direct.py`: Environment variables and config file credentials
+  - `onepassword.py`: 1Password CLI integration
+  - `test_mode.py`: Hardcoded test credentials for Minio
+- **`credentials/session/`**: Session management for 1Password
+- **`credentials/validators/`**: rclone-based credential validation
+
+**Key Features**:
+
+- Primary: Direct credentials via environment variables
+- Fallback: 1Password CLI integration with session caching
+- Test mode: Hardcoded Minio credentials
+- rclone-based validation for all credential sources
+- Never stores credentials on disk
+
+### 5. Backup Engine (`backup.py`)
+
+**Purpose**: Core backup orchestration with rclone integration
+
 - Coordinates the entire backup workflow
-- Manages rclone subprocess execution
-- Handles retry logic and error recovery
-- Tracks backup state and progress
+- Manages rclone subprocess execution with real-time progress parsing
+- Comprehensive error detection and categorization
+- Tracks detailed backup statistics and metrics
 
 **Key Classes**:
-- `BackupEngine`: Main orchestrator
-- `BackupJob`: Single backup operation
-- `BackupStats`: Statistics tracking
 
-**Key Methods**:
-- `execute_backup()`: Run full backup cycle
-- `sync_to_wasabi()`: rclone wrapper
-- `handle_errors()`: Error recovery logic
+- `BackupEngine`: Main orchestrator with credential and config integration
+- `BackupJob`: Single backup operation representation
+- `BackupStats`: Comprehensive transfer statistics and metrics
+- `ErrorDetector`: rclone error parsing and categorization
 
-### 3. File Monitor (`monitor.py`)
+**Key Features**:
+
+- Real-time progress parsing from rclone output
+- Transfer rate and ETA calculations
+- Comprehensive error detection with actionable suggestions
+- Support for dry-run mode and test mode
+- Detailed backup statistics with human-readable formatting
+
+### 6. Progress and Statistics (`progress_parser.py`)
+
+**Purpose**: Real-time rclone output parsing and progress tracking
+
+- **`RcloneProgressParser`**: Regex-based parsing of rclone stats output
+- **`TransferStats`**: Structured transfer statistics data
+- Real-time progress events with percentage and ETA calculations
+- Integration with logging system for progress reporting
+
+### 7. Comprehensive Logging System (`logger/`)
+
+**Purpose**: Multi-format logging with operation tracking
+
+- **`logger/core.py`**: Core logger setup and configuration
+- **`logger/formatters.py`**: Multiple format support (simple, detailed, JSON)
+- **`logger/context.py`**: Operation context tracking with job IDs
+- **`logger/progress.py`**: Progress logging with rate limiting
+- **`logger/summary.py`**: Operation summary statistics
+- **`logger/cleanup.py`**: Automatic log cleanup and rotation
+- **`logger/utils.py`**: Logger utility functions
+
+**Key Features**:
+
+- Multi-format output (console, file, JSON)
+- Operation context with unique job IDs
+- Progress logging with ETA and transfer rates
+- Automatic log cleanup and rotation
+- Comprehensive log viewing commands
+
+### 8. File Monitor (`monitor.py`) - Future
+
 **Purpose**: Detect changes in photo directory
+
 - Watches for file system events
 - Implements 4-hour check interval
 - Detects drive mount/unmount
 - Triggers backups on changes
 
-**Key Classes**:
-- `PhotoMonitor`: Main monitoring class
-- `ChangeDetector`: Change detection logic
-- `DriveWatcher`: USB drive detection
+### 9. Verification Module (`verify.py`) - Future
 
-**Uses**: `watchdog` library for efficient file system monitoring
-
-### 4. Credentials Manager (`credentials.py`)
-**Purpose**: Secure credential retrieval
-- Interfaces with 1Password CLI
-- Caches session for efficiency
-- Handles authentication failures
-- Never stores credentials on disk
-
-**Key Functions**:
-- `get_wasabi_credentials()`: Retrieve from 1Password
-- `refresh_session()`: Handle session expiry
-- `validate_credentials()`: Verify credentials work
-
-### 5. Verification Module (`verify.py`)
 **Purpose**: Ensure backup integrity
+
 - Monthly full verification
 - Compare local vs remote hashes
 - Auto-repair mismatches
 - Generate verification reports
 
-**Key Classes**:
-- `IntegrityVerifier`: Main verification logic
-- `HashComparator`: Hash comparison
-- `RepairEngine`: Fix mismatches
+### 10. Utility Modules (`*_utils.py`)
 
-### 6. Configuration (`config.py`)
-**Purpose**: Centralized configuration management
-- Load YAML configuration
-- Provide defaults
-- Validate settings
-- Hot-reload capability
+**Purpose**: Specialized utility functions
 
-**Configuration Schema**:
-```yaml
-# config.yaml
-backup:
-  source_path: "/Volumes/4TB-SSD/Photo"
-  destination: "wasabi-photo:my-photo-backup-bucket"
-  
-monitoring:
-  check_interval_hours: 4
-  mount_delay_minutes: 15
-  change_delay_minutes: 30
-  
-verification:
-  monthly_day: 1  # Day of month to run
-  auto_repair: true
-  
-rclone:
-  transfers: 8
-  checkers: 16
-  s3_chunk_size: "10M"
-  s3_upload_concurrency: 4
-  
-logging:
-  level: "INFO"
-  max_size_mb: 100
-  backup_count: 5
-  
-notifications:
-  errors_to_terminal: true
-```
+- **`format_utils.py`**: Human-readable formatting (bytes, duration)
+- **`fs_utils.py`**: File system operations and path validation
+- **`lock_utils.py`**: Process locking and singleton enforcement
+- **`process_utils.py`**: Safe subprocess execution with timeouts
+- **`state_utils.py`**: JSON state file management
+- **`time_utils.py`**: Time parsing and calculation utilities
 
-### 7. Logger (`logger.py`)
-**Purpose**: Comprehensive logging system
-- Structured logging with rotation
-- Multiple log levels
-- Separate error log
-- Report generation
+## Configuration Schema
 
-**Features**:
-- Console and file output
-- JSON structured logs for parsing
-- Automatic rotation at size limit
-- Contextual logging (job IDs)
-
-### 8. Utilities (`utils.py`)
-**Purpose**: Shared helper functions
-- Path manipulation
-- Size formatting
-- Time calculations
-- Process management
+The configuration system supports comprehensive settings across multiple sections. See `config.yaml.example` for the complete configuration template with detailed documentation.
 
 ## State Management
 
 ### Persistent State Files
 
 #### 1. `last_sync.json`
+
 ```json
 {
   "timestamp": "2025-06-21T10:30:00Z",
@@ -275,6 +372,7 @@ notifications:
 ```
 
 #### 2. `sync_history.db` (SQLite)
+
 ```sql
 CREATE TABLE sync_runs (
     id INTEGER PRIMARY KEY,
@@ -296,6 +394,7 @@ CREATE TABLE file_history (
 ```
 
 #### 3. `verification_cache.json`
+
 ```json
 {
   "last_full_verify": "2025-06-01T00:00:00Z",
@@ -312,6 +411,7 @@ CREATE TABLE file_history (
 ## Service Integration
 
 ### launchd Configuration
+
 The system integrates with macOS launchd for automatic startup:
 
 ```xml
@@ -321,23 +421,23 @@ The system integrates with macOS launchd for automatic startup:
 <dict>
     <key>Label</key>
     <string>com.example.photo-backup</string>
-    
+
     <key>ProgramArguments</key>
     <array>
         <string>/usr/bin/python3</string>
         <string>/path/to/photo_backup/main.py</string>
         <string>daemon</string>
     </array>
-    
+
     <key>StartOnMount</key>
     <dict>
         <key>/Volumes/4TB-SSD</key>
         <true/>
     </dict>
-    
+
     <key>RunAtLoad</key>
     <false/>
-    
+
     <key>KeepAlive</key>
     <dict>
         <key>PathState</key>
@@ -353,6 +453,7 @@ The system integrates with macOS launchd for automatic startup:
 ## Process Flow
 
 ### 1. Startup Flow
+
 ```
 launchd detects drive mount
     ↓
@@ -370,6 +471,7 @@ Enters monitoring loop
 ```
 
 ### 2. Backup Flow
+
 ```
 Change detected / Timer elapsed
     ↓
@@ -387,6 +489,7 @@ Log results and statistics
 ```
 
 ### 3. Verification Flow
+
 ```
 Monthly timer triggers
     ↓
