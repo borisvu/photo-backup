@@ -82,4 +82,4 @@ def format_duration(seconds: float) -> str:
         return f"{hours:.2f}h"
     else:
         days = seconds / 86400
-        return f"{days:.2f}d" 
+        return f"{days:.2f}d"

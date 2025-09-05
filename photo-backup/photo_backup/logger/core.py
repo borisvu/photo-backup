@@ -6,16 +6,17 @@ This module provides the main logging setup and configuration functions.
 
 import logging
 import sys
+from typing import Any
+
 from pathlib import Path
-from typing import Any, Optional
 
-from .formatters import create_formatter
-from .context import JobContextFilter
-from .utils import _parse_log_level
 from .cleanup import cleanup_old_logs
+from .context import JobContextFilter
+from .formatters import create_formatter
+from .utils import _parse_log_level
 
 
-def setup_logger_from_config(config_obj: Any, job_id: Optional[str] = None, name: str = "photo_backup") -> logging.Logger:
+def setup_logger_from_config(config_obj: Any, job_id: str | None = None, name: str = "photo_backup") -> logging.Logger:
     """Set up logger using configuration settings.
 
     Args:
@@ -138,7 +139,7 @@ def setup_logger(name: str = "photo_backup", level: int = logging.INFO) -> loggi
     return logger
 
 
-def get_logger(name: Optional[str] = None) -> logging.Logger:
+def get_logger(name: str | None = None) -> logging.Logger:
     """Get an existing logger or create a new one.
 
     Args:
@@ -165,4 +166,4 @@ def set_log_level(level: int, logger_name: str = "photo_backup") -> None:
 
     # Update all handlers
     for handler in logger.handlers:
-        handler.setLevel(level) 
+        handler.setLevel(level)

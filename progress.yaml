@@ -43,7 +43,7 @@ phases:
   phase_6_backup_core:
     name: "Backup Engine Core"
     tasks_total: 10
-    tasks_completed: 6
+    tasks_completed: 7
     status: "in_progress"
     
   phase_7_monitoring:
@@ -860,6 +860,119 @@ tasks:
       - User-friendly progress and completion reporting
       - Operational insights for performance analysis and troubleshooting
       - Ready for integration with notification and alerting systems
+
+  task_059:
+    name: "Add Error Detection"
+    status: "completed"
+    notes: |
+      **Goal**: Parse rclone error output, categorize error types, return error details, and test with permission errors
+      
+      **Implementation Status**: ✅ **COMPLETED**
+      
+      **Key Features Implemented:**
+      - ✅ Comprehensive `ErrorDetector` class for parsing rclone output
+      - ✅ `ErrorType` enum with 8 error categories (permission, network, auth, storage, file, config, timeout, unknown)
+      - ✅ `BackupError` dataclass for structured error information
+      - ✅ Error pattern matching with regex for common rclone error formats
+      - ✅ File path extraction from error messages (Unix/Windows paths)
+      - ✅ Error categorization with actionable suggestions
+      - ✅ Error summary statistics and analysis
+      - ✅ Integration with BackupEngine and BackupStats
+      - ✅ Error detection for timeout and exception scenarios
+      
+      **Error Types Detected:**
+      - Permission errors: "permission denied", "access denied"
+      - Network errors: "connection refused", "network unreachable"
+      - Authentication errors: "authentication failed", "invalid credentials", "401 unauthorized"
+      - Storage errors: "bucket not found", "no space left", "quota exceeded"
+      - File errors: "no such file", "file corrupt", "checksum mismatch"
+      - Configuration errors: "config not found", "unknown flag"
+      - Timeout errors: "operation timeout", subprocess timeouts
+      - Unknown errors: fallback category with documentation suggestions
+      
+      **Error Parsing Capabilities:**
+      - Regex pattern matching for multiple rclone output formats
+      - File path extraction with support for quoted paths and Windows drive letters
+      - Line-by-line error detection with line number tracking
+      - Error categorization with specific suggestions for each type
+      - Error summary generation with counts by type and file statistics
+      - Comprehensive error logging with file paths and suggestions
+      
+      **Integration with BackupEngine:**
+      - Added `ErrorDetector` to `BackupEngine` initialization
+      - Error parsing in `sync_with_progress()` method after output capture
+      - Error information passed to `BackupStats.from_transfer_stats()`
+      - Enhanced timeout and exception handling with proper error categorization
+      - Error logging during sync operations with file paths and suggestions
+      
+      **BackupStats Enhancements:**
+      - Added `detailed_errors` field with list of `BackupError` objects
+      - Added `error_summary` field with error statistics dictionary
+      - Updated `from_transfer_stats()` method to accept error information
+      - Error information preserved through all backup statistics workflows
+      
+      **Test Coverage:**
+      - **Unit Tests**: 24 tests in `tests/unit/test_error_detection.py`
+        - ErrorType enum validation
+        - BackupError dataclass functionality
+        - ErrorDetector initialization and basic functions
+        - Error line detection and file path extraction
+        - Error categorization for all error types (8 categories tested)
+        - Error parsing with no errors, single errors, multiple errors
+        - Error summary generation with various scenarios
+        - Integration tests with realistic rclone output
+      
+      - **Functional Tests**: 10 tests in `tests/functional/test_backup_error_detection.py`
+        - BackupEngine error detector integration
+        - Sync operations with permission, network, and mixed errors
+        - Successful sync operations with no errors
+        - Timeout and exception error detection scenarios
+        - BackupStats integration with error information
+        - Error information preservation through sync workflows
+      
+      **Error Detection Examples:**
+      - Permission: "ERROR : /photos/IMG_001.jpg : permission denied" → Categorized with file path extraction
+      - Network: "ERROR: connection refused to endpoint" → Network error with connectivity suggestion
+      - Mixed errors: Multiple error types detected and categorized in single operation
+      - Timeout: subprocess timeout creates TIMEOUT_ERROR with appropriate suggestion
+      - Exception: Python exceptions create UNKNOWN_ERROR with retry suggestion
+      
+      **Files Modified:**
+      - `photo_backup/backup.py`: Added ErrorDetector, ErrorType, BackupError classes and integration
+      - Enhanced BackupStats with error fields and updated from_transfer_stats method
+      - Integrated error detection into sync_with_progress, timeout, and exception handling
+      - `tests/unit/test_error_detection.py`: Comprehensive unit test suite (24 tests)
+      - `tests/functional/test_backup_error_detection.py`: Functional integration tests (10 tests)
+      
+      **Error Handling Robustness:**
+      - Graceful handling of unparseable rclone output lines
+      - Error count tracking across multiple progress updates
+      - File path validation to ensure extracted paths are genuine file paths
+      - Regex pattern fallback for different rclone output formats
+      - Exception isolation in error parsing to prevent sync operation failure
+      - Comprehensive error information even during partial failures and timeouts
+      
+      **Production Benefits:**
+      - Detailed error categorization for better troubleshooting
+      - Actionable suggestions for each error type
+      - File-specific error tracking for targeted remediation
+      - Enhanced logging with structured error information
+      - Foundation for error-based alerting and notification systems
+      - Improved user experience with clear error explanations and next steps
+      
+      **Test Results:**
+      - All 34 new tests passing (24 unit + 10 functional)
+      - All 55 existing backup tests still passing
+      - Fixed Windows path extraction regex pattern
+      - Comprehensive coverage of error detection scenarios
+      - Integration verified with existing backup infrastructure
+      
+      **Performance:**
+      - Minimal overhead during successful operations (no errors to parse)
+      - Efficient regex matching with early termination
+      - Error parsing only occurs after subprocess completion
+      - No impact on real-time progress parsing performance
+      - Memory efficient with structured error storage
 
 # Current state summary
 current_state:

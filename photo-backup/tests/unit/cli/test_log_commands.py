@@ -34,9 +34,9 @@ class TestLogCommands:
         config = Mock()
         config.get.return_value = None
         config.is_test_mode.return_value = True
-        
+
         log_path = get_log_file_path(config)
-        
+
         assert log_path.name == "photo-backup.log"
         assert "/tmp/photo-backup-test/logs" in str(log_path)
 
@@ -45,9 +45,9 @@ class TestLogCommands:
         config = Mock()
         config.get.return_value = None
         config.is_test_mode.return_value = False
-        
+
         log_path = get_log_file_path(config)
-        
+
         assert log_path.name == "photo-backup.log"
         assert "Library/Logs/photo-backup" in str(log_path)
 

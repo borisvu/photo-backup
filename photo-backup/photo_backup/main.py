@@ -10,9 +10,9 @@ import logging
 import click
 
 from .__version__ import __version__
+from .cli.auth_commands import test_auth
 from .cli.config_commands import config, setup_config, validate
 from .cli.log_commands import logs
-from .cli.auth_commands import test_auth
 from .config.config import Config
 from .logger import generate_job_id, setup_logger_from_config
 

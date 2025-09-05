@@ -6,11 +6,12 @@ This module provides log file cleanup functionality based on age or count.
 
 import logging
 from datetime import datetime, timedelta
+from typing import Any
+
 from pathlib import Path
-from typing import Any, Optional
 
 
-def cleanup_old_logs(log_directory: str, config_obj: Optional[Any] = None, logger: Optional[logging.Logger] = None) -> int:
+def cleanup_old_logs(log_directory: str, config_obj: Any | None = None, logger: logging.Logger | None = None) -> int:
     """Clean up old log files based on configuration.
 
     Args:
@@ -103,4 +104,4 @@ def cleanup_old_logs(log_directory: str, config_obj: Optional[Any] = None, logge
     except Exception as e:
         if logger:
             logger.error(f"Error during log cleanup: {e}")
-        return 0 
+        return 0

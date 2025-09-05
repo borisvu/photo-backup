@@ -11,15 +11,265 @@ import re
 import subprocess
 import tempfile
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any
+from enum import Enum
+from typing import Any, ClassVar
 
 from pathlib import Path
 
 from .config.config import Config
 from .credentials.manager import CredentialManager
 from .progress_parser import RcloneProgressParser, TransferStats
+
+
+class ErrorType(Enum):
+    """Categories of backup errors for better error handling and reporting."""
+
+    PERMISSION_ERROR = "permission_error"
+    NETWORK_ERROR = "network_error"
+    AUTHENTICATION_ERROR = "authentication_error"
+    STORAGE_ERROR = "storage_error"
+    FILE_ERROR = "file_error"
+    CONFIGURATION_ERROR = "configuration_error"
+    TIMEOUT_ERROR = "timeout_error"
+    UNKNOWN_ERROR = "unknown_error"
+
+
+@dataclass
+class BackupError:
+    """Detailed backup error information."""
+
+    error_type: ErrorType
+    message: str
+    file_path: str = ""
+    line_number: int = 0
+    raw_output: str = ""
+    suggestion: str = ""
+
+
+class ErrorDetector:
+    """Parses rclone output to detect and categorize errors."""
+
+    # Error pattern matching rules
+    ERROR_PATTERNS: ClassVar = [
+        # Permission errors
+        (
+            re.compile(r"ERROR.*permission denied", re.IGNORECASE),
+            ErrorType.PERMISSION_ERROR,
+            "Check file permissions and ensure rclone has access",
+        ),
+        (
+            re.compile(r"ERROR.*access denied", re.IGNORECASE),
+            ErrorType.PERMISSION_ERROR,
+            "Access denied - check credentials and permissions",
+        ),
+        # Network errors
+        (
+            re.compile(r"ERROR.*connection refused", re.IGNORECASE),
+            ErrorType.NETWORK_ERROR,
+            "Connection refused - check network connectivity and endpoint",
+        ),
+        (
+            re.compile(r"ERROR.*network.*unreachable", re.IGNORECASE),
+            ErrorType.NETWORK_ERROR,
+            "Network unreachable - check internet connection",
+        ),
+        (
+            re.compile(r"ERROR.*timeout", re.IGNORECASE),
+            ErrorType.TIMEOUT_ERROR,
+            "Operation timed out - try again or increase timeout settings",
+        ),
+        # Authentication errors
+        (
+            re.compile(r"ERROR.*authentication.*fail", re.IGNORECASE),
+            ErrorType.AUTHENTICATION_ERROR,
+            "Authentication failed - check credentials",
+        ),
+        (
+            re.compile(r"ERROR.*invalid.*credentials", re.IGNORECASE),
+            ErrorType.AUTHENTICATION_ERROR,
+            "Invalid credentials - verify access key and secret key",
+        ),
+        (
+            re.compile(r"ERROR.*401.*unauthorized", re.IGNORECASE),
+            ErrorType.AUTHENTICATION_ERROR,
+            "Unauthorized - check credentials and permissions",
+        ),
+        # Storage errors
+        (
+            re.compile(r"ERROR.*bucket.*not.*found", re.IGNORECASE),
+            ErrorType.STORAGE_ERROR,
+            "Bucket not found - verify bucket name and region",
+        ),
+        (
+            re.compile(r"ERROR.*no space left", re.IGNORECASE),
+            ErrorType.STORAGE_ERROR,
+            "No space left on device - free up storage space",
+        ),
+        (
+            re.compile(r"ERROR.*quota.*exceeded", re.IGNORECASE),
+            ErrorType.STORAGE_ERROR,
+            "Storage quota exceeded - check account limits",
+        ),
+        # File errors
+        (
+            re.compile(r"ERROR.*no such file", re.IGNORECASE),
+            ErrorType.FILE_ERROR,
+            "File not found - ensure source path exists",
+        ),
+        (
+            re.compile(r"ERROR.*file.*corrupt", re.IGNORECASE),
+            ErrorType.FILE_ERROR,
+            "File corrupted - check file integrity",
+        ),
+        (
+            re.compile(r"ERROR.*checksum.*mismatch", re.IGNORECASE),
+            ErrorType.FILE_ERROR,
+            "Checksum mismatch - file may be corrupted during transfer",
+        ),
+        # Configuration errors
+        (
+            re.compile(r"ERROR.*config.*not.*found", re.IGNORECASE),
+            ErrorType.CONFIGURATION_ERROR,
+            "Configuration error - check rclone config",
+        ),
+        (
+            re.compile(r"ERROR.*unknown.*flag", re.IGNORECASE),
+            ErrorType.CONFIGURATION_ERROR,
+            "Invalid configuration - check rclone command options",
+        ),
+    ]
+
+    def __init__(self, logger: logging.Logger | None = None):
+        """Initialize error detector.
+
+        Args:
+            logger: Optional logger for error detection logging
+        """
+        self.logger = logger or logging.getLogger(__name__)
+
+    def parse_errors(self, output: str) -> list[BackupError]:
+        """Parse rclone output and extract categorized errors.
+
+        Args:
+            output: Complete rclone output text
+
+        Returns:
+            List of BackupError objects with categorized error information
+        """
+        errors = []
+        lines = output.split("\n")
+
+        for line_num, line in enumerate(lines, 1):
+            line = line.strip()
+            if not line or not self._is_error_line(line):
+                continue
+
+            # Extract file path from error line if present
+            file_path = self._extract_file_path(line)
+
+            # Categorize the error
+            error_type, suggestion = self._categorize_error(line)
+
+            # Create error object
+            error = BackupError(
+                error_type=error_type,
+                message=line,
+                file_path=file_path,
+                line_number=line_num,
+                raw_output=line,
+                suggestion=suggestion,
+            )
+
+            errors.append(error)
+            self.logger.debug(f"Detected {error_type.value} error: {line}")
+
+        return errors
+
+    def _is_error_line(self, line: str) -> bool:
+        """Check if a line contains an error message.
+
+        Args:
+            line: Text line to check
+
+        Returns:
+            True if line contains error indicators
+        """
+        error_indicators = ["ERROR", "CRITICAL", "FATAL", "Failed"]
+        return any(indicator in line for indicator in error_indicators)
+
+    def _extract_file_path(self, line: str) -> str:
+        """Extract file path from error line if present.
+
+        Args:
+            line: Error line text
+
+        Returns:
+            Extracted file path or empty string
+        """
+        # Common patterns for file paths in rclone errors
+        path_patterns = [
+            r"ERROR\s+:\s+([^:]+(?::[^:]+)?)\s*:",  # "ERROR : /path/file.jpg :" or "ERROR : C:\path\file.jpg :"
+            r'"([^"]+)"',  # "path/file.jpg" in quotes
+            r"'([^']+)'",  # 'path/file.jpg' in quotes
+        ]
+
+        for pattern in path_patterns:
+            match = re.search(pattern, line)
+            if match:
+                path = match.group(1).strip()
+                # Validate that it looks like a file path
+                if "/" in path or "\\" in path or "." in path:
+                    return path
+
+        return ""
+
+    def _categorize_error(self, line: str) -> tuple[ErrorType, str]:
+        """Categorize error based on message content.
+
+        Args:
+            line: Error message line
+
+        Returns:
+            Tuple of (ErrorType, suggestion_text)
+        """
+        for pattern, error_type, suggestion in self.ERROR_PATTERNS:
+            if pattern.search(line):
+                return error_type, suggestion
+
+        return ErrorType.UNKNOWN_ERROR, "Check rclone documentation for error details"
+
+    def get_error_summary(self, errors: list[BackupError]) -> dict[str, Any]:
+        """Generate summary statistics for detected errors.
+
+        Args:
+            errors: List of BackupError objects
+
+        Returns:
+            Dictionary with error summary statistics
+        """
+        if not errors:
+            return {"total_errors": 0, "error_types": {}}
+
+        # Count errors by type
+        error_counts: dict[str, int] = {}
+        for error in errors:
+            error_type = error.error_type.value
+            error_counts[error_type] = error_counts.get(error_type, 0) + 1
+
+        # Find most common error type
+        most_common_type = max(error_counts.keys(), key=lambda k: error_counts[k])
+
+        return {
+            "total_errors": len(errors),
+            "error_types": error_counts,
+            "most_common_type": most_common_type,
+            "has_permission_errors": ErrorType.PERMISSION_ERROR.value in error_counts,
+            "has_network_errors": ErrorType.NETWORK_ERROR.value in error_counts,
+            "has_authentication_errors": ErrorType.AUTHENTICATION_ERROR.value in error_counts,
+            "unique_files_with_errors": len({e.file_path for e in errors if e.file_path}),
+        }
 
 
 @dataclass
@@ -49,6 +299,8 @@ class BackupStats:
     test_mode: bool = False
     success: bool = False
     error_message: str | None = None
+    detailed_errors: list[BackupError] = field(default_factory=list)
+    error_summary: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def from_transfer_stats(
@@ -62,6 +314,8 @@ class BackupStats:
         test_mode: bool,
         success: bool,
         error_message: str | None = None,
+        detailed_errors: list[BackupError] | None = None,
+        error_summary: dict[str, Any] | None = None,
     ) -> "BackupStats":
         """Create BackupStats from TransferStats and additional metadata.
 
@@ -75,6 +329,8 @@ class BackupStats:
             test_mode: Whether this was run in test mode
             success: Whether the backup completed successfully
             error_message: Error message if backup failed
+            detailed_errors: List of detailed BackupError objects
+            error_summary: Summary statistics about errors
 
         Returns:
             BackupStats instance with calculated metrics
@@ -110,6 +366,8 @@ class BackupStats:
             test_mode=test_mode,
             success=success,
             error_message=error_message,
+            detailed_errors=detailed_errors or [],
+            error_summary=error_summary or {},
         )
 
     @property
@@ -324,6 +582,7 @@ class BackupEngine:
         self.test_mode = test_mode or self.config.is_test_mode()
         self.logger = logging.getLogger(__name__)
         self.credential_manager = CredentialManager(self.config)
+        self.error_detector = ErrorDetector(self.logger)
 
         # Load configuration
         self.config.load_config()
@@ -729,6 +988,20 @@ use_ssl = {str(credentials["use_ssl"]).lower()}
                 # Combine all output
                 complete_output = "\n".join(output_lines)
 
+                # Parse errors from output using ErrorDetector
+                detected_errors = self.error_detector.parse_errors(complete_output)
+                error_summary = self.error_detector.get_error_summary(detected_errors)
+
+                # Log detected errors
+                if detected_errors:
+                    self.logger.warning(f"Detected {len(detected_errors)} error(s) during sync")
+                    for error in detected_errors:
+                        self.logger.warning(f"{error.error_type.value}: {error.message}")
+                        if error.file_path:
+                            self.logger.warning(f"  File: {error.file_path}")
+                        if error.suggestion:
+                            self.logger.info(f"  Suggestion: {error.suggestion}")
+
                 # Get final transfer statistics
                 transfer_stats = progress_parser.get_final_stats()
 
@@ -791,6 +1064,8 @@ use_ssl = {str(credentials["use_ssl"]).lower()}
                     test_mode=self.test_mode,
                     success=success,
                     error_message=error_message,
+                    detailed_errors=detected_errors,
+                    error_summary=error_summary,
                 )
 
                 # Log backup statistics summary
@@ -809,6 +1084,15 @@ use_ssl = {str(credentials["use_ssl"]).lower()}
                 end_datetime = datetime.now()
                 transfer_stats = progress_parser.get_final_stats()
 
+                # Create timeout error
+                timeout_error = BackupError(
+                    error_type=ErrorType.TIMEOUT_ERROR,
+                    message="Sync operation timed out after 5 minutes",
+                    suggestion="Try again or increase timeout settings",
+                )
+                timeout_errors = [timeout_error]
+                timeout_error_summary = self.error_detector.get_error_summary(timeout_errors)
+
                 backup_stats = BackupStats.from_transfer_stats(
                     transfer_stats=transfer_stats,
                     start_time=start_datetime,
@@ -819,6 +1103,8 @@ use_ssl = {str(credentials["use_ssl"]).lower()}
                     test_mode=self.test_mode,
                     success=False,
                     error_message="Sync operation timed out",
+                    detailed_errors=timeout_errors,
+                    error_summary=timeout_error_summary,
                 )
 
                 sync_info = {
@@ -843,6 +1129,15 @@ use_ssl = {str(credentials["use_ssl"]).lower()}
                 end_datetime = datetime.now()
                 transfer_stats = progress_parser.get_final_stats()
 
+                # Create exception error
+                exception_error = BackupError(
+                    error_type=ErrorType.UNKNOWN_ERROR,
+                    message=f"Sync failed with exception: {e}",
+                    suggestion="Check logs for details and retry",
+                )
+                exception_errors = [exception_error]
+                exception_error_summary = self.error_detector.get_error_summary(exception_errors)
+
                 backup_stats = BackupStats.from_transfer_stats(
                     transfer_stats=transfer_stats,
                     start_time=start_datetime,
@@ -853,6 +1148,8 @@ use_ssl = {str(credentials["use_ssl"]).lower()}
                     test_mode=self.test_mode,
                     success=False,
                     error_message=str(e),
+                    detailed_errors=exception_errors,
+                    error_summary=exception_error_summary,
                 )
 
                 sync_info = {
