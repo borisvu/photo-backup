@@ -43,7 +43,7 @@ phases:
   phase_6_backup_core:
     name: "Backup Engine Core"
     tasks_total: 10
-    tasks_completed: 8
+    tasks_completed: 9
     status: "in_progress"
     
   phase_7_monitoring:
@@ -1060,6 +1060,63 @@ tasks:
       - Troubleshooting support with error history and failure tracking
       - Ready for integration with notification systems based on consecutive failures
 
+  task_061:
+    name: "Add Sync Command"
+    status: "completed"
+    notes: |
+      **Goal**: Manual sync trigger via photo-backup sync command
+      
+      **Implementation Status**: ✅ **COMPLETED**
+      
+      **Key Features Implemented:**
+      - ✅ Added `photo-backup sync` command for manual backup synchronization
+      - ✅ Support for --test-mode, --dry-run, and --verbose flags
+      - ✅ Comprehensive error handling and user-friendly output
+      - ✅ Integration with existing BackupEngine and credential management
+      - ✅ Real-time progress monitoring and backup statistics display
+      - ✅ Detailed error reporting with troubleshooting suggestions
+      - ✅ Proper exit codes and status reporting
+      
+      **Command Features:**
+      - Manual backup trigger: `photo-backup sync`
+      - Test mode support: `photo-backup --test-mode sync`
+      - Dry run support: `photo-backup --dry-run sync`
+      - Verbose output: `photo-backup sync --verbose`
+      - Environment validation before sync execution
+      - Real-time progress updates during backup operations
+      - Comprehensive backup statistics and error reporting
+      - Integration with existing logging and credential systems
+      
+      **Implementation Details:**
+      - Created `photo_backup/cli/sync_commands.py` with sync command implementation
+      - Registered sync command in `photo_backup/main.py`
+      - Leverages existing BackupEngine.sync_with_progress() method
+      - Handles both BackupError objects and dict objects for error display
+      - Comprehensive error handling with user-friendly messages
+      - Integration with existing CLI architecture and patterns
+      
+      **Test Coverage:**
+      - 8 comprehensive functional tests covering all scenarios
+      - Tests help output, dry run mode, verbose mode, error handling
+      - Tests with and without Minio container running
+      - Tests production mode validation and error scenarios
+      - Tests keyboard interrupt handling and cleanup
+      - Fixed existing backup error detection tests for dict object compatibility
+      
+      **Error Handling:**
+      - Environment validation before sync execution
+      - Clear error messages with actionable suggestions
+      - Proper handling of missing Minio container in test mode
+      - Graceful handling of credential validation failures
+      - Comprehensive error reporting with file paths and suggestions
+      
+      **Benefits:**
+      - Easy manual backup triggering for users
+      - Complete integration with existing backup infrastructure
+      - User-friendly progress monitoring and error reporting
+      - Foundation for automated backup scheduling
+      - Seamless integration with test and production modes
+
 # Current state summary
 current_state:
   working_directory: "/Users/you/git/backup-to-s3"
@@ -1130,6 +1187,8 @@ current_state:
     - "tests/functional/test_backup_sync.py"
     - "photo_backup/progress_parser.py"
     - "tests/unit/test_progress_parser.py"
+    - "photo_backup/cli/sync_commands.py"
+    - "tests/functional/test_sync_command.py"
     
   foundation_complete:
     - "CLI entry point with click framework"
@@ -1160,12 +1219,12 @@ current_state:
 # Next steps
 next_steps:
   immediate:
-    - "Phase 6: Backup Engine Core progressing excellently (60% complete)"
-    - "Task 58: Create Backup Statistics completed"
-    - "Ready to continue with Task 59: Add Error Detection"
+    - "Phase 6: Backup Engine Core progressing excellently (90% complete)"
+    - "Task 61: Add Sync Command completed"
+    - "Ready to continue with Task 62: Add Backup Status Command"
     
   upcoming:
-    - "Continue Phase 6: Backup Engine Core (Tasks 58-62)"
+    - "Complete Phase 6: Backup Engine Core (Task 62 remaining)"
     - "Return to Task 42: Logging Functional Test after backup implementation"
 
 # Phase 1 Achievements

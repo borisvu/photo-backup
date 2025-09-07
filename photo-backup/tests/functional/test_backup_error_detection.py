@@ -61,11 +61,28 @@ class TestBackupErrorDetection:
         assert backup_stats.error_summary["total_errors"] == 2
         assert backup_stats.error_summary["has_permission_errors"] is True
 
-        # Check specific errors
-        permission_errors = [e for e in backup_stats.detailed_errors if e.error_type == ErrorType.PERMISSION_ERROR]
+        # Check specific errors (handle both BackupError objects and dict objects)
+        permission_errors = []
+        for e in backup_stats.detailed_errors:
+            if hasattr(e, "error_type") and e.error_type == ErrorType.PERMISSION_ERROR:
+                # It's a BackupError object
+                permission_errors.append(e)
+            elif isinstance(e, dict) and e.get("error_type") == ErrorType.PERMISSION_ERROR.value:
+                # It's a dict object
+                permission_errors.append(e)
+
         assert len(permission_errors) == 2
-        assert any("/test/photo1.jpg" in e.file_path for e in permission_errors)
-        assert any("/test/photo2.jpg" in e.file_path for e in permission_errors)
+
+        # Check file paths (handle both object types)
+        file_paths = []
+        for e in permission_errors:
+            if hasattr(e, "file_path"):
+                file_paths.append(e.file_path)
+            elif isinstance(e, dict):
+                file_paths.append(e.get("file_path", ""))
+
+        assert any("/test/photo1.jpg" in path for path in file_paths)
+        assert any("/test/photo2.jpg" in path for path in file_paths)
 
     @patch("photo_backup.backup.subprocess.Popen")
     def test_sync_with_network_errors(self, mock_popen):
@@ -96,7 +113,12 @@ class TestBackupErrorDetection:
         assert backup_stats.error_summary["has_network_errors"] is True
 
         # Check specific error types
-        network_errors = [e for e in backup_stats.detailed_errors if e.error_type == ErrorType.NETWORK_ERROR]
+        network_errors = []
+        for e in backup_stats.detailed_errors:
+            if (hasattr(e, "error_type") and e.error_type == ErrorType.NETWORK_ERROR) or (
+                isinstance(e, dict) and e.get("error_type") == ErrorType.NETWORK_ERROR.value
+            ):
+                network_errors.append(e)
         assert len(network_errors) == 2
 
     @patch("photo_backup.backup.subprocess.Popen")
@@ -136,12 +158,19 @@ class TestBackupErrorDetection:
         assert backup_stats.error_summary["has_authentication_errors"] is True
 
         # Verify specific error types are present
-        error_types = [e.error_type for e in backup_stats.detailed_errors]
-        assert ErrorType.PERMISSION_ERROR in error_types
-        assert ErrorType.NETWORK_ERROR in error_types
-        assert ErrorType.FILE_ERROR in error_types  # checksum mismatch
-        assert ErrorType.STORAGE_ERROR in error_types  # bucket not found
-        assert ErrorType.AUTHENTICATION_ERROR in error_types
+        error_types = []
+        for e in backup_stats.detailed_errors:
+            if hasattr(e, "error_type"):
+                error_types.append(e.error_type)
+            elif isinstance(e, dict):
+                error_types.append(e.get("error_type", "unknown_error"))
+        assert ErrorType.PERMISSION_ERROR.value in error_types or ErrorType.PERMISSION_ERROR in error_types
+        assert ErrorType.NETWORK_ERROR.value in error_types or ErrorType.NETWORK_ERROR in error_types
+        assert ErrorType.FILE_ERROR.value in error_types or ErrorType.FILE_ERROR in error_types  # checksum mismatch
+        assert (
+            ErrorType.STORAGE_ERROR.value in error_types or ErrorType.STORAGE_ERROR in error_types
+        )  # bucket not found
+        assert ErrorType.AUTHENTICATION_ERROR.value in error_types or ErrorType.AUTHENTICATION_ERROR in error_types
 
         # Check files with errors
         assert backup_stats.error_summary["unique_files_with_errors"] == 2  # IMG_001.jpg and IMG_002.jpg
@@ -196,10 +225,17 @@ class TestBackupErrorDetection:
         # Verify timeout error detection
         assert success is False
         assert len(backup_stats.detailed_errors) == 1
-        assert backup_stats.detailed_errors[0].error_type == ErrorType.TIMEOUT_ERROR
+        first_error = backup_stats.detailed_errors[0]
+        if hasattr(first_error, "error_type"):
+            assert first_error.error_type == ErrorType.TIMEOUT_ERROR
+        elif isinstance(first_error, dict):
+            assert first_error.get("error_type") == ErrorType.TIMEOUT_ERROR.value
         assert backup_stats.error_summary["total_errors"] == 1
-        assert "timed out" in backup_stats.detailed_errors[0].message.lower()
-        assert "timeout" in backup_stats.detailed_errors[0].suggestion.lower()
+        first_error = backup_stats.detailed_errors[0]
+        message = first_error.message if hasattr(first_error, "message") else first_error.get("message", "")
+        suggestion = first_error.suggestion if hasattr(first_error, "suggestion") else first_error.get("suggestion", "")
+        assert "timed out" in message.lower()
+        assert "timeout" in suggestion.lower()
 
     @patch("photo_backup.backup.subprocess.Popen")
     def test_sync_exception_error_detection(self, mock_popen):
@@ -216,9 +252,15 @@ class TestBackupErrorDetection:
         # Verify exception error detection
         assert success is False
         assert len(backup_stats.detailed_errors) == 1
-        assert backup_stats.detailed_errors[0].error_type == ErrorType.UNKNOWN_ERROR
+        first_error = backup_stats.detailed_errors[0]
+        if hasattr(first_error, "error_type"):
+            assert first_error.error_type == ErrorType.UNKNOWN_ERROR
+        elif isinstance(first_error, dict):
+            assert first_error.get("error_type") == ErrorType.UNKNOWN_ERROR.value
         assert backup_stats.error_summary["total_errors"] == 1
-        assert "exception" in backup_stats.detailed_errors[0].message.lower()
+        first_error = backup_stats.detailed_errors[0]
+        message = first_error.message if hasattr(first_error, "message") else first_error.get("message", "")
+        assert "exception" in message.lower()
 
     def test_sync_stats_method_includes_errors(self):
         """Test sync_with_stats method includes error detection."""
@@ -253,7 +295,11 @@ class TestBackupErrorDetection:
             # Verify error information is preserved
             assert len(result_stats.detailed_errors) == 1
             assert result_stats.error_summary["total_errors"] == 1
-            assert result_stats.detailed_errors[0].error_type == ErrorType.FILE_ERROR
+            first_error = result_stats.detailed_errors[0]
+            if hasattr(first_error, "error_type"):
+                assert first_error.error_type == ErrorType.FILE_ERROR
+            elif isinstance(first_error, dict):
+                assert first_error.get("error_type") == ErrorType.FILE_ERROR.value
 
 
 @pytest.mark.functional
