@@ -135,7 +135,7 @@ def sync(ctx: click.Context, verbose: bool) -> None:
 
             if backup_stats.detailed_errors:
                 click.echo(f"  Errors detected: {len(backup_stats.detailed_errors)}")
-                for error in backup_stats.detailed_errors:
+                for error in backup_stats.detailed_errors:  # type: ignore
                     # Handle both BackupError objects and dict objects
                     if hasattr(error, "error_type"):
                         # It's a BackupError object
