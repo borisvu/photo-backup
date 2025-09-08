@@ -646,6 +646,15 @@ This document contains small, testable tasks for building the Photo Backup MVP. 
 - Save state
   **Test**: Complete backup to Minio succeeds
 
+### Task 62_1 : Enable the test from Task 62 to run in a temporary Minio and a permanent one.
+
+Modify the test to run if a permanent exist with it, otherwise start a temporary test container on a random port.
+
+### Task 62_2 : Refactor the backup.py
+
+The file is 1577 lines long and need refactoring.
+Split the file into several filed under a folder module.
+
 ### Return to Task 42: Logging Functional Test
 
 **Goal**: Complete logging system integration testing
