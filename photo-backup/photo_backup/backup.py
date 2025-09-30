@@ -1269,7 +1269,7 @@ class BackupState:
         data = {
             "last_sync_time": self.last_sync_time.isoformat() if self.last_sync_time else None,
             "last_successful_sync": self.last_successful_sync.isoformat() if self.last_successful_sync else None,
-            "last_stats": self.last_stats.__dict__ if self.last_stats else None,
+            "last_stats": self.last_stats.to_dict() if self.last_stats else None,
             "total_syncs": self.total_syncs,
             "successful_syncs": self.successful_syncs,
             "failed_syncs": self.failed_syncs,
