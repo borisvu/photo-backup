@@ -70,14 +70,17 @@ graph TB
 
 ### Project Structure
 
-```
+````text
 photo-backup/
 ├── setup.py                    # Package installation configuration
-├── install.py                  # System setup script (launchd, directories)
+├── pyproject.toml              # Modern Python project configuration
+├── pytest.ini                 # pytest configuration
+├── Makefile                    # Build and development commands
 ├── requirements.txt            # Python dependencies
+├── requirements-dev.txt        # Development dependencies
 ├── config.yaml.example         # Configuration template
 ├── README.md                   # User documentation
-├── LICENSE                     # License file
+├── test_basic.py              # Basic functionality test
 ├── .gitignore                 # Git ignore rules
 │
 ├── photo_backup/              # Main package directory
@@ -92,7 +95,9 @@ photo-backup/
 │   │   ├── __init__.py
 │   │   ├── auth_commands.py  # Authentication commands
 │   │   ├── config_commands.py # Configuration commands
-│   │   └── log_commands.py   # Log viewing commands
+│   │   ├── log_commands.py   # Log viewing commands
+│   │   ├── status_commands.py # Status and health commands
+│   │   └── sync_commands.py  # Manual sync commands
 │   │
 │   ├── config/               # Configuration system
 │   │   ├── __init__.py
@@ -166,11 +171,26 @@ photo-backup/
 └── scripts/                   # Utility scripts (future)
     ├── uninstall.py          # Clean removal script
     └── debug.py              # Diagnostic tool
-```
+
+# Project Management Files (Root Level)
+
+```text
+backup-to-s3/                  # Project root directory
+├── architecture.md           # This architecture document
+├── CLAUDE.md                 # Development progress tracking
+├── instructions.md           # Project instructions
+├── tasks.md                  # Task definitions and requirements
+├── Progress/                 # Progress tracking directory
+│   ├── progress.yaml         # Current progress status
+│   └── Tasks 001 - 062.yaml # Detailed task tracking
+└── tests/                    # Additional test directory
+    └── unit/
+        └── logger/           # Logger-specific unit tests
+````
 
 ### System Directories (Created by installer)
 
-```
+```text
 ~/Library/Application Support/photo-backup/
 ├── state/                     # Persistent state files
 │   ├── last_sync.json        # Last successful sync metadata
@@ -219,6 +239,8 @@ photo-backup/
 - **`cli/auth_commands.py`**: Authentication and credential testing
 - **`cli/config_commands.py`**: Configuration display and validation
 - **`cli/log_commands.py`**: Log viewing and filtering
+- **`cli/status_commands.py`**: System status and health monitoring
+- **`cli/sync_commands.py`**: Manual backup synchronization
 
 **Key Commands**:
 
@@ -226,7 +248,26 @@ photo-backup/
 - `photo-backup validate`: Validate configuration and dependencies
 - `photo-backup test-auth`: Test credential authentication
 - `photo-backup logs`: View and filter log files
+- `photo-backup status`: Show system status and health information
+- `photo-backup sync`: Run manual backup synchronization
 - `photo-backup setup-config`: Initialize user configuration
+
+**Status Command Features**:
+
+- System health monitoring and diagnostics
+- Backup state and statistics display
+- Credential status verification
+- Configuration validation
+- JSON output support for programmatic access
+- Comprehensive recommendations for issue resolution
+
+**Sync Command Features**:
+
+- Manual backup synchronization with progress tracking
+- Support for both test mode (Minio) and production mode (Wasabi)
+- Dry-run mode for testing without actual transfers
+- Detailed error reporting and troubleshooting guidance
+- Real-time progress monitoring and statistics
 
 ### 3. Configuration System (`config/`)
 
@@ -339,7 +380,17 @@ photo-backup/
 - Auto-repair mismatches
 - Generate verification reports
 
-### 10. Utility Modules (`*_utils.py`)
+### 10. Constants (`consts.py`)
+
+**Purpose**: Application-wide constants and configuration values
+
+- **`consts.py`**: Centralized constants for the application
+  - Test directory paths for development and testing
+  - Production mode base directory configuration
+  - Default lock file naming
+  - Magic values used throughout the application
+
+### 11. Utility Modules (`*_utils.py`)
 
 **Purpose**: Specialized utility functions
 
@@ -454,7 +505,7 @@ The system integrates with macOS launchd for automatic startup:
 
 ### 1. Startup Flow
 
-```
+```text
 launchd detects drive mount
     ↓
 Starts photo-backup service
@@ -472,7 +523,7 @@ Enters monitoring loop
 
 ### 2. Backup Flow
 
-```
+```text
 Change detected / Timer elapsed
     ↓
 Retrieve Wasabi credentials from 1Password
@@ -490,7 +541,7 @@ Log results and statistics
 
 ### 3. Verification Flow
 
-```
+```text
 Monthly timer triggers
     ↓
 Load cached hashes
@@ -532,6 +583,28 @@ Generate verification report
 3. **Permission Errors**: Fail gracefully with clear message
 4. **Credential Errors**: Prompt for re-authentication
 5. **Drive Disconnection**: Clean shutdown, resume on reconnect
+
+## Development and Testing Infrastructure
+
+### Build System
+
+- **`pyproject.toml`**: Modern Python project configuration with build system
+- **`setup.py`**: Legacy package installation configuration
+- **`Makefile`**: Build and development commands for common tasks
+- **`pytest.ini`**: pytest configuration for test execution
+
+### Testing Framework
+
+- **Comprehensive Test Suite**: Unit, functional, and integration tests
+- **Test Fixtures**: Reusable test data and photo generation utilities
+- **Minio Integration**: Local S3-compatible storage for testing
+- **Test Mode**: Hardcoded credentials for isolated testing environment
+
+### Development Tools
+
+- **`test_basic.py`**: Basic functionality verification script
+- **`requirements-dev.txt`**: Development-specific dependencies
+- **Progress Tracking**: Detailed task and progress management system
 
 ## Future Extension Points
 

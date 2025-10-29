@@ -44,7 +44,6 @@ This is a personal photo backup system that:
 
 ### Testing Approach
 
-- For testing: create functional tests that execute via main.py
 - Use Minio (S3-compatible) to simulate Wasabi for backup tests
 - Test code should live alongside implementation (not separate test files)
 - Use pytest for testing (prefer `pytest` command over `python -m pytest`)
@@ -106,9 +105,13 @@ The system has a built-in test mode that:
 ### Completing a Task
 
 1. Verify the test passes
-2. Check you haven't broken previous functionality
-3. Ensure code follows the protocol
-4. Wait for my confirmation before proceeding
+2. Verify that all test suite passes.
+3. Check you haven't broken previous functionality
+4. Ensure code follows the protocol
+5. Wait for my confirmation before proceeding
+6. Update the progress in `./Progress/progress.yaml`, write specific task note in a dedicated MD file for that note, example: `./Progress/task_64_details.md`.
+7. Commit to git.
+8. Check that pre-commit hooks passed, otherwise fix and try again.
 
 ## Special Considerations
 
