@@ -66,6 +66,14 @@ class RcloneProgressParser:
                 r"([\d.]+)\s*([KMGT]?)i?B\s*/\s*([\d.]+)\s*([KMGT]?)i?B,?\s*"
                 r"(\d+)%\s*complete(?:,\s*([\d.]+)\s*([KMGT]?)i?B/s)?(?:,\s*ETA\s*(\d+[smhd]?))?"
             ),
+            # Pattern for --progress output with file counts
+            # "Transferred:            3 / 3, 100%"
+            "progress_files": re.compile(r"Transferred:\s+(\d+)\s*/\s*(\d+),\s*(\d+)%"),
+            # Pattern for --progress output with bytes
+            # "Transferred:   	    5.121 MiB / 5.121 MiB, 100%, 0 B/s, ETA -"
+            "progress_bytes": re.compile(
+                r"Transferred:\s+([\d.]+)\s*([KMGT]?)i?B\s*/\s*([\d.]+)\s*([KMGT]?)i?B,\s*(\d+)%"
+            ),
             # Pattern for errors: "ERROR : file.jpg: error message"
             "error": re.compile(r"ERROR\s*:\s*(.+)"),
             # Pattern for "Transferred: X files (Y MiB)" summary
@@ -115,6 +123,30 @@ class RcloneProgressParser:
         if stats:
             # Preserve error count from previous stats
             stats.errors = self.last_stats.errors
+            self.last_stats = stats
+            self._emit_progress(stats)
+            return stats
+
+        # Try to parse progress format with file counts
+        stats = self._parse_progress_files(line)
+        if stats:
+            # Preserve error count and bytes from previous stats
+            stats.errors = self.last_stats.errors
+            if stats.bytes_transferred == 0 and self.last_stats.bytes_transferred > 0:
+                stats.bytes_transferred = self.last_stats.bytes_transferred
+                stats.bytes_total = self.last_stats.bytes_total
+            self.last_stats = stats
+            self._emit_progress(stats)
+            return stats
+
+        # Try to parse progress format with bytes
+        stats = self._parse_progress_bytes(line)
+        if stats:
+            # Preserve error count and file counts from previous stats
+            stats.errors = self.last_stats.errors
+            if stats.files_transferred == 0 and self.last_stats.files_transferred > 0:
+                stats.files_transferred = self.last_stats.files_transferred
+                stats.files_total = self.last_stats.files_total
             self.last_stats = stats
             self._emit_progress(stats)
             return stats
@@ -171,6 +203,52 @@ class RcloneProgressParser:
             )
         except (ValueError, AttributeError) as e:
             self.logger.debug(f"Failed to parse stats line: {line} - {e}")
+            return None
+
+    def _parse_progress_files(self, line: str) -> TransferStats | None:
+        """Parse --progress format output with file counts.
+
+        Example: "Transferred:            3 / 3, 100%"
+        """
+        match = self.patterns["progress_files"].search(line)
+        if not match:
+            return None
+
+        try:
+            files_transferred = int(match.group(1))
+            files_total = int(match.group(2))
+            percentage = float(match.group(3))
+
+            return TransferStats(
+                files_transferred=files_transferred,
+                files_total=files_total,
+                percentage=percentage,
+            )
+        except (ValueError, AttributeError) as e:
+            self.logger.debug(f"Failed to parse progress files line: {line} - {e}")
+            return None
+
+    def _parse_progress_bytes(self, line: str) -> TransferStats | None:
+        """Parse --progress format output with bytes.
+
+        Example: "Transferred:   	    5.121 MiB / 5.121 MiB, 100%, 0 B/s, ETA -"
+        """
+        match = self.patterns["progress_bytes"].search(line)
+        if not match:
+            return None
+
+        try:
+            bytes_transferred = self._parse_size(match.group(1), match.group(2))
+            bytes_total = self._parse_size(match.group(3), match.group(4))
+            percentage = float(match.group(5))
+
+            return TransferStats(
+                bytes_transferred=bytes_transferred,
+                bytes_total=bytes_total,
+                percentage=percentage,
+            )
+        except (ValueError, AttributeError) as e:
+            self.logger.debug(f"Failed to parse progress bytes line: {line} - {e}")
             return None
 
     def _parse_final_summary(self, line: str) -> TransferStats | None:
