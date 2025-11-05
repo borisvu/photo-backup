@@ -65,13 +65,13 @@ class MinioTestUtils:
     @staticmethod
     def start_or_reuse_minio(client: docker.DockerClient, container_name: str):
         """Start the test minio container or reuse an existing suitable one.
-        Returns (container, started_by_fixture: bool).
+        Returns container object.
         """
         # Try existing named container
         try:
             existing = client.containers.get(container_name)
             if existing.status == "running":
-                return existing, False
+                return existing
             else:
                 # remove stopped container to avoid conflicts
                 with contextlib.suppress(Exception):
@@ -89,4 +89,4 @@ class MinioTestUtils:
             detach=True,
             remove=True,
         )
-        return container, True
+        return container
