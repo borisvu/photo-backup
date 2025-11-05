@@ -40,23 +40,18 @@ class TestBackupFunctionalTest:
             pytest.skip("Docker not available or not running")
 
         container_name = "photo-backup-functional-test"
-        started_by_fixture = False
 
         # Start or reuse container
         try:
-            container, started_by_fixture = MinioTestUtils.start_or_reuse_minio(client, container_name)
+            container = MinioTestUtils.start_or_reuse_minio(client, container_name)
             # Wait for Minio to be ready
             MinioTestUtils.wait_for_minio_ready(container.name)
 
             yield container
 
-        except docker.errors.DockerException as e:
-            pytest.skip(f"Docker not available or Minio image not found: {e}")
         finally:
-            # Cleanup only if we started the named test container
-            if started_by_fixture and container is not None and container.name == container_name:
-                with contextlib.suppress(docker.errors.NotFound, docker.errors.APIError):
-                    container.stop(timeout=5)
+            with contextlib.suppress(docker.errors.NotFound, docker.errors.APIError):
+                container.stop(timeout=5)
 
     def test_complete_backup_cycle(self, minio_container_management, tmp_path):  # noqa: ARG002
         """Test complete backup cycle from start to finish."""
