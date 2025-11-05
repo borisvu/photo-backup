@@ -79,25 +79,14 @@ class MinioTestUtils:
         except docker.errors.NotFound:
             pass
 
-        # Try generic "minio" container if ports busy
-        try:
-            container = client.containers.run(
-                "minio/minio:latest",
-                command="server /data --console-address :9001",
-                ports={"9000/tcp": 9000, "9001/tcp": 9001},
-                environment={"MINIO_ROOT_USER": "minioadmin", "MINIO_ROOT_PASSWORD": "minioadmin"},
-                name=container_name,
-                detach=True,
-                remove=True,
-            )
-            return container, True
-        except docker.errors.APIError as e:
-            msg = str(e)
-            if "port is already allocated" in msg or "Bind for" in msg:
-                try:
-                    reuse = client.containers.get("minio")
-                    if reuse.status == "running":
-                        return reuse, False
-                except docker.errors.NotFound:
-                    pass
-            raise
+        # Start new container - no fallback to avoid test isolation issues
+        container = client.containers.run(
+            "minio/minio:latest",
+            command="server /data --console-address :9001",
+            ports={"9000/tcp": 9000, "9001/tcp": 9001},
+            environment={"MINIO_ROOT_USER": "minioadmin", "MINIO_ROOT_PASSWORD": "minioadmin"},
+            name=container_name,
+            detach=True,
+            remove=True,
+        )
+        return container, True
