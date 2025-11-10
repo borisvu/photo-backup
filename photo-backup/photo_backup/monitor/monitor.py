@@ -65,6 +65,38 @@ class DriveMonitor:
         """Check if monitor is running in test mode."""
         return self.config.test_mode
 
+    def is_drive_mounted(self) -> bool:
+        """
+        Check if the monitored drive/directory is mounted and accessible.
+
+        In test mode, checks if the test directory exists.
+        In production mode, checks if the source drive is mounted.
+
+        Returns:
+            bool: True if the path exists and is accessible, False otherwise
+        """
+        if self.watch_path is None:
+            self.logger.debug("No watch path configured, cannot check mount status")
+            return False
+
+        try:
+            # Check if path exists and is a directory
+            is_mounted = self.watch_path.exists() and self.watch_path.is_dir()
+
+            if is_mounted:
+                self.logger.debug(f"Drive mounted: {self.watch_path}")
+            else:
+                self.logger.debug(f"Drive not mounted: {self.watch_path}")
+
+            return is_mounted
+
+        except PermissionError:
+            self.logger.warning(f"Permission denied accessing path: {self.watch_path}")
+            return False
+        except OSError as e:
+            self.logger.warning(f"Error checking mount status for {self.watch_path}: {e}")
+            return False
+
     def start(self) -> None:
         """
         Start monitoring for changes.
@@ -99,12 +131,14 @@ class DriveMonitor:
                 - watch_path: Path being monitored
                 - test_mode: Whether in test mode
                 - event_count: Number of events recorded
+                - drive_mounted: Whether the drive is currently mounted
         """
         return {
             "state": self.state.value,
             "watch_path": str(self.watch_path) if self.watch_path else None,
             "test_mode": self.is_test_mode,
             "event_count": len(self._event_history),
+            "drive_mounted": self.is_drive_mounted(),
         }
 
     def _record_event(self, event: MonitorEvent, details: str = "") -> None:

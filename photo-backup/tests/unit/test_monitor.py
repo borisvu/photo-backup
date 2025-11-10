@@ -101,10 +101,13 @@ class TestDriveMonitor:
         assert "watch_path" in status
         assert "test_mode" in status
         assert "event_count" in status
+        assert "drive_mounted" in status
 
         assert status["state"] == "idle"
         assert status["test_mode"] is True
         assert status["event_count"] == 0
+        # drive_mounted depends on whether test directory exists
+        assert isinstance(status["drive_mounted"], bool)
 
     def test_start_monitor(self):
         """Test starting the monitor."""
@@ -189,6 +192,115 @@ class TestDriveMonitor:
         # Modifying one shouldn't affect the other
         history1.append((MonitorEvent.FILE_ADDED, "test"))
         assert len(history1) != len(history2)
+
+
+class TestDriveDetection:
+    """Test drive detection functionality."""
+
+    def test_drive_mounted_in_test_mode(self, tmp_path):
+        """Test that drive detection works in test mode with existing directory."""
+        # Create a test directory
+        test_dir = tmp_path / "test-photos"
+        test_dir.mkdir()
+
+        # Create config pointing to this directory
+        config = Config(test_mode=True)
+        config.load_config()  # Load config to initialize _config
+        # Override the source path to point to our test directory
+        config._config["backup"]["source_path"] = str(test_dir)
+
+        monitor = DriveMonitor(config=config)
+
+        # Drive should be mounted (directory exists)
+        assert monitor.is_drive_mounted() is True
+
+    def test_drive_not_mounted_nonexistent_path(self):
+        """Test drive detection with non-existent path."""
+        config = Config(test_mode=True)
+        config.load_config()  # Load config to initialize _config
+        # Override to point to non-existent path
+        config._config["backup"]["source_path"] = "/nonexistent/path/to/photos"
+
+        monitor = DriveMonitor(config=config)
+
+        # Drive should not be mounted
+        assert monitor.is_drive_mounted() is False
+
+    def test_drive_mounted_with_file_not_directory(self, tmp_path):
+        """Test drive detection when path is a file, not a directory."""
+        # Create a file instead of directory
+        test_file = tmp_path / "test-file.txt"
+        test_file.write_text("test")
+
+        config = Config(test_mode=True)
+        config.load_config()  # Load config to initialize _config
+        config._config["backup"]["source_path"] = str(test_file)
+
+        monitor = DriveMonitor(config=config)
+
+        # Should return False because it's not a directory
+        assert monitor.is_drive_mounted() is False
+
+    def test_drive_mounted_with_none_path(self):
+        """Test drive detection when watch path is None."""
+        config = Config(test_mode=True)
+        config.load_config()  # Load config to initialize _config
+        config._config["backup"]["source_path"] = None
+
+        monitor = DriveMonitor(config=config)
+
+        # Should handle None gracefully
+        assert monitor.watch_path is None
+        assert monitor.is_drive_mounted() is False
+
+    def test_status_includes_drive_mounted(self, tmp_path):
+        """Test that status includes drive_mounted information."""
+        # Create test directory
+        test_dir = tmp_path / "test-photos"
+        test_dir.mkdir()
+
+        config = Config(test_mode=True)
+        config.load_config()  # Load config to initialize _config
+        config._config["backup"]["source_path"] = str(test_dir)
+
+        monitor = DriveMonitor(config=config)
+        status = monitor.get_status()
+
+        assert "drive_mounted" in status
+        assert status["drive_mounted"] is True
+
+    def test_status_drive_not_mounted(self):
+        """Test status when drive is not mounted."""
+        config = Config(test_mode=True)
+        config.load_config()  # Load config to initialize _config
+        config._config["backup"]["source_path"] = "/nonexistent/path"
+
+        monitor = DriveMonitor(config=config)
+        status = monitor.get_status()
+
+        assert "drive_mounted" in status
+        assert status["drive_mounted"] is False
+
+    def test_drive_detection_state_changes(self, tmp_path):
+        """Test drive detection across directory creation and deletion."""
+        test_dir = tmp_path / "test-photos"
+
+        config = Config(test_mode=True)
+        config.load_config()  # Load config to initialize _config
+        config._config["backup"]["source_path"] = str(test_dir)
+
+        monitor = DriveMonitor(config=config)
+
+        # Initially not mounted
+        assert monitor.is_drive_mounted() is False
+
+        # Create directory - now mounted
+        test_dir.mkdir()
+        assert monitor.is_drive_mounted() is True
+
+        # Remove directory - no longer mounted
+        test_dir.rmdir()
+        assert monitor.is_drive_mounted() is False
 
 
 class TestDriveMonitorIntegration:
