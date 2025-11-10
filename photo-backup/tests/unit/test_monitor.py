@@ -102,10 +102,14 @@ class TestDriveMonitor:
         assert "test_mode" in status
         assert "event_count" in status
         assert "drive_mounted" in status
+        assert "files_tracked" in status
+        assert "changes_pending" in status
 
         assert status["state"] == "idle"
         assert status["test_mode"] is True
         assert status["event_count"] == 0
+        assert status["files_tracked"] == 0
+        assert status["changes_pending"] == 0
         # drive_mounted depends on whether test directory exists
         assert isinstance(status["drive_mounted"], bool)
 
@@ -301,6 +305,285 @@ class TestDriveDetection:
         # Remove directory - no longer mounted
         test_dir.rmdir()
         assert monitor.is_drive_mounted() is False
+
+
+class TestPathWatching:
+    """Test path watching and change detection functionality."""
+
+    def test_detect_new_files(self, tmp_path):
+        """Test detection of newly added files."""
+        test_dir = tmp_path / "test-photos"
+        test_dir.mkdir()
+
+        config = Config(test_mode=True)
+        config.load_config()
+        config._config["backup"]["source_path"] = str(test_dir)
+
+        monitor = DriveMonitor(config=config)
+        monitor.start()
+
+        # Initially no files
+        assert monitor.check_for_changes() is False
+        assert len(monitor.get_changes()) == 0
+
+        # Add a new file
+        test_file = test_dir / "photo1.jpg"
+        test_file.write_text("test photo")
+
+        # Check for changes
+        assert monitor.check_for_changes() is True
+        changes = monitor.get_changes()
+        assert len(changes) == 1
+        assert changes[0][0] == "photo1.jpg"
+        assert changes[0][1] == MonitorEvent.FILE_ADDED
+
+    def test_detect_modified_files(self, tmp_path):
+        """Test detection of modified files."""
+        test_dir = tmp_path / "test-photos"
+        test_dir.mkdir()
+
+        # Create initial file
+        test_file = test_dir / "photo1.jpg"
+        test_file.write_text("original content")
+
+        config = Config(test_mode=True)
+        config.load_config()
+        config._config["backup"]["source_path"] = str(test_dir)
+
+        monitor = DriveMonitor(config=config)
+        monitor.start()
+
+        # No changes initially (snapshot just taken)
+        assert monitor.check_for_changes() is False
+
+        # Modify the file
+        import time
+
+        time.sleep(0.01)  # Ensure mtime changes
+        test_file.write_text("modified content")
+
+        # Check for changes
+        assert monitor.check_for_changes() is True
+        changes = monitor.get_changes()
+        assert len(changes) == 1
+        assert changes[0][0] == "photo1.jpg"
+        assert changes[0][1] == MonitorEvent.FILE_MODIFIED
+
+    def test_detect_deleted_files(self, tmp_path):
+        """Test detection of deleted files."""
+        test_dir = tmp_path / "test-photos"
+        test_dir.mkdir()
+
+        # Create initial file
+        test_file = test_dir / "photo1.jpg"
+        test_file.write_text("test photo")
+
+        config = Config(test_mode=True)
+        config.load_config()
+        config._config["backup"]["source_path"] = str(test_dir)
+
+        monitor = DriveMonitor(config=config)
+        monitor.start()
+
+        # Delete the file
+        test_file.unlink()
+
+        # Check for changes
+        assert monitor.check_for_changes() is True
+        changes = monitor.get_changes()
+        assert len(changes) == 1
+        assert changes[0][0] == "photo1.jpg"
+        assert changes[0][1] == MonitorEvent.FILE_DELETED
+
+    def test_detect_multiple_changes(self, tmp_path):
+        """Test detection of multiple file changes at once."""
+        test_dir = tmp_path / "test-photos"
+        test_dir.mkdir()
+
+        # Create initial files
+        (test_dir / "photo1.jpg").write_text("photo 1")
+        (test_dir / "photo2.jpg").write_text("photo 2")
+
+        config = Config(test_mode=True)
+        config.load_config()
+        config._config["backup"]["source_path"] = str(test_dir)
+
+        monitor = DriveMonitor(config=config)
+        monitor.start()
+
+        # Add, modify, delete
+        import time
+
+        time.sleep(0.01)
+        (test_dir / "photo3.jpg").write_text("photo 3")  # New
+        (test_dir / "photo1.jpg").write_text("modified photo 1")  # Modified
+        (test_dir / "photo2.jpg").unlink()  # Deleted
+
+        # Check for changes
+        assert monitor.check_for_changes() is True
+        changes = monitor.get_changes()
+        assert len(changes) == 3
+
+        # Verify each type of change is detected
+        event_types = {change[1] for change in changes}
+        assert MonitorEvent.FILE_ADDED in event_types
+        assert MonitorEvent.FILE_MODIFIED in event_types
+        assert MonitorEvent.FILE_DELETED in event_types
+
+    def test_detect_nested_directory_files(self, tmp_path):
+        """Test detection of files in nested directories."""
+        test_dir = tmp_path / "test-photos"
+        test_dir.mkdir()
+        subdir = test_dir / "2024" / "January"
+        subdir.mkdir(parents=True)
+
+        config = Config(test_mode=True)
+        config.load_config()
+        config._config["backup"]["source_path"] = str(test_dir)
+
+        monitor = DriveMonitor(config=config)
+        monitor.start()
+
+        # Add file in nested directory
+        nested_file = subdir / "photo1.jpg"
+        nested_file.write_text("nested photo")
+
+        # Check for changes
+        assert monitor.check_for_changes() is True
+        changes = monitor.get_changes()
+        assert len(changes) == 1
+        # Path should be relative to watch_path
+        assert "2024" in changes[0][0]
+        assert "January" in changes[0][0]
+        assert "photo1.jpg" in changes[0][0]
+
+    def test_snapshot_taken_on_start(self, tmp_path):
+        """Test that snapshot is taken when monitor starts."""
+        test_dir = tmp_path / "test-photos"
+        test_dir.mkdir()
+
+        # Create some initial files
+        (test_dir / "photo1.jpg").write_text("photo 1")
+        (test_dir / "photo2.jpg").write_text("photo 2")
+
+        config = Config(test_mode=True)
+        config.load_config()
+        config._config["backup"]["source_path"] = str(test_dir)
+
+        monitor = DriveMonitor(config=config)
+
+        # Before start, snapshot is empty
+        status = monitor.get_status()
+        assert status["files_tracked"] == 0
+
+        # Start monitoring
+        monitor.start()
+
+        # After start, snapshot should have files
+        status = monitor.get_status()
+        assert status["files_tracked"] == 2
+
+    def test_status_includes_files_tracked(self, tmp_path):
+        """Test that status includes files_tracked information."""
+        test_dir = tmp_path / "test-photos"
+        test_dir.mkdir()
+        (test_dir / "photo1.jpg").write_text("photo 1")
+        (test_dir / "photo2.jpg").write_text("photo 2")
+
+        config = Config(test_mode=True)
+        config.load_config()
+        config._config["backup"]["source_path"] = str(test_dir)
+
+        monitor = DriveMonitor(config=config)
+        monitor.start()
+
+        status = monitor.get_status()
+        assert "files_tracked" in status
+        assert status["files_tracked"] == 2
+
+    def test_status_includes_changes_pending(self, tmp_path):
+        """Test that status includes changes_pending information."""
+        test_dir = tmp_path / "test-photos"
+        test_dir.mkdir()
+
+        config = Config(test_mode=True)
+        config.load_config()
+        config._config["backup"]["source_path"] = str(test_dir)
+
+        monitor = DriveMonitor(config=config)
+        monitor.start()
+
+        # Add some files
+        (test_dir / "photo1.jpg").write_text("photo 1")
+        (test_dir / "photo2.jpg").write_text("photo 2")
+
+        # Detect changes
+        monitor.check_for_changes()
+
+        status = monitor.get_status()
+        assert "changes_pending" in status
+        assert status["changes_pending"] == 2
+
+    def test_clear_changes(self, tmp_path):
+        """Test clearing detected changes."""
+        test_dir = tmp_path / "test-photos"
+        test_dir.mkdir()
+
+        config = Config(test_mode=True)
+        config.load_config()
+        config._config["backup"]["source_path"] = str(test_dir)
+
+        monitor = DriveMonitor(config=config)
+        monitor.start()
+
+        # Add files
+        (test_dir / "photo1.jpg").write_text("photo 1")
+        monitor.check_for_changes()
+
+        assert len(monitor.get_changes()) == 1
+
+        # Clear changes
+        monitor.clear_changes()
+        assert len(monitor.get_changes()) == 0
+
+    def test_check_for_changes_when_drive_not_mounted(self):
+        """Test that check_for_changes handles unmounted drive gracefully."""
+        config = Config(test_mode=True)
+        config.load_config()
+        config._config["backup"]["source_path"] = "/nonexistent/path"
+
+        monitor = DriveMonitor(config=config)
+        monitor.start()
+
+        # Should return False and not crash
+        assert monitor.check_for_changes() is False
+
+    def test_get_changes_returns_copy(self, tmp_path):
+        """Test that get_changes returns a copy of the changes list."""
+        test_dir = tmp_path / "test-photos"
+        test_dir.mkdir()
+
+        config = Config(test_mode=True)
+        config.load_config()
+        config._config["backup"]["source_path"] = str(test_dir)
+
+        monitor = DriveMonitor(config=config)
+        monitor.start()
+
+        # Add file
+        (test_dir / "photo1.jpg").write_text("photo 1")
+        monitor.check_for_changes()
+
+        changes1 = monitor.get_changes()
+        changes2 = monitor.get_changes()
+
+        # Should be equal but not the same object
+        assert changes1 == changes2
+        assert changes1 is not changes2
+
+        # Modifying one shouldn't affect the other
+        changes1.append(("test.jpg", MonitorEvent.FILE_ADDED))
+        assert len(changes1) != len(changes2)
 
 
 class TestDriveMonitorIntegration:

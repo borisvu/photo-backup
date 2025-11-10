@@ -390,6 +390,11 @@ backup-to-s3/                  # Project root directory
 - Event history tracking for debugging and reporting
 - Test mode support with test directory monitoring
 - Integration with config and logger systems
+- Drive detection and mount status checking
+- Polling-based file watching with snapshot comparison
+- Detects new, modified, and deleted files
+- Recursive directory scanning with relative path tracking
+- Change tracking with detailed event recording
 
 **Monitoring Events**:
 
@@ -399,14 +404,26 @@ backup-to-s3/                  # Project root directory
 - Timer: timer_elapsed, check_interval
 - State: monitor_started, monitor_stopped, changes_detected, no_changes
 
-**Future Enhancements** (Tasks 64-72):
+**Path Watching**:
 
-- Drive detection and mount status checking
-- File watching with polling or native APIs
+- Polling-based change detection using file snapshots
+- Tracks modification times (mtime) for each file
+- Detects three types of changes:
+  - New files: Not in previous snapshot
+  - Modified files: Different mtime from snapshot
+  - Deleted files: In snapshot but not on disk
+- Recursive scanning of all subdirectories
+- Relative path tracking from watch root
+- Robust error handling for permission and I/O errors
+- Automatic snapshot updates after change detection
+
+**Future Enhancements** (Tasks 66-72):
+
 - Change debouncing to batch rapid changes
 - 4-hour check interval timer (configurable in test mode)
 - Monitor state persistence
 - Status reporting and change summaries
+- Timer-based periodic checking
 
 ### 9. Verification Module (`verify.py`) - Future
 
