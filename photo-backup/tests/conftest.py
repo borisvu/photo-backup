@@ -188,11 +188,16 @@ def cli_runner():
     return run_command
 
 
-def cleanup_orphaned_containers():
+def cleanup_orphaned_containers() -> list[str]:
     """Clean up any orphaned test containers.
 
     This function is called after test session to ensure no containers are left running.
+
+    Returns:
+        List of container names that were cleaned up (orphaned).
     """
+    cleaned_containers = []
+
     try:
         result = subprocess.run(
             ["docker", "ps", "-a", "--format", "{{.Names}}"],
@@ -221,17 +226,38 @@ def cleanup_orphaned_containers():
                             timeout=10,
                         )
                         print(f"✓ Cleaned up: {container}")
+                        cleaned_containers.append(container)
     except Exception as e:
         print(f"\n⚠️  Warning: Failed to cleanup orphaned containers: {e}")
+
+    return cleaned_containers
 
 
 def pytest_sessionfinish(session, exitstatus):  # noqa: ARG001
     """Pytest hook called after whole test run finished, right before returning exit status.
 
     This ensures all test containers are cleaned up even if tests fail or are interrupted.
+    If orphaned containers are found, the test run will fail after cleanup.
     """
     print("\n" + "=" * 70)
     print("Cleaning up test containers...")
     print("=" * 70)
-    cleanup_orphaned_containers()
+    orphaned = cleanup_orphaned_containers()
     print("=" * 70)
+
+    if orphaned:
+        error_msg = (
+            f"\n❌ CONTAINER LEAK DETECTED!\n"
+            f"Found {len(orphaned)} orphaned test container(s): {', '.join(orphaned)}\n\n"
+            f"This indicates a test fixture failed to clean up properly.\n"
+            f"Please investigate the test(s) that use these containers:\n"
+        )
+        for container_name in orphaned:
+            error_msg += f"  - {container_name}\n"
+
+        error_msg += (
+            "\nContainers have been cleaned up, but the test run is marked as FAILED\n"
+            "to prevent this issue from being ignored.\n"
+        )
+
+        pytest.fail(error_msg, pytrace=False)
