@@ -145,7 +145,11 @@ photo-backup/
 │   │   ├── cleanup.py        # Log cleanup functionality
 │   │   └── utils.py          # Logger utilities
 │   │
-│   ├── monitor.py            # File system monitoring (future)
+│   ├── monitor/              # File system monitoring
+│   │   ├── __init__.py       # Public API exports
+│   │   ├── monitor.py        # Main DriveMonitor class
+│   │   └── events.py         # Monitoring events and states
+│   │
 │   ├── verify.py             # Integrity verification (future)
 │   │
 │   └── *_utils.py            # Utility modules
@@ -370,14 +374,39 @@ backup-to-s3/                  # Project root directory
 - Automatic log cleanup and rotation
 - Comprehensive log viewing commands
 
-### 8. File Monitor (`monitor.py`) - Future
+### 8. File Monitor (`monitor/`)
 
-**Purpose**: Detect changes in photo directory
+**Purpose**: Detect changes in photo directory and trigger backups
 
-- Watches for file system events
-- Implements 4-hour check interval
-- Detects drive mount/unmount
-- Triggers backups on changes
+- **`monitor/monitor.py`**: Main DriveMonitor class for file system monitoring
+- **`monitor/events.py`**: Monitoring event and state definitions
+  - `MonitorEvent`: Enum of file, directory, drive, timer, and state events
+  - `MonitorState`: Enum of monitor states (idle, watching, processing, stopped, error)
+
+**Key Features**:
+
+- Configuration-based path monitoring (test vs production mode)
+- State tracking and lifecycle management (start/stop)
+- Event history tracking for debugging and reporting
+- Test mode support with test directory monitoring
+- Integration with config and logger systems
+
+**Monitoring Events**:
+
+- File system: file_added, file_modified, file_deleted
+- Directory: directory_added, directory_deleted
+- Drive: drive_mounted, drive_unmounted
+- Timer: timer_elapsed, check_interval
+- State: monitor_started, monitor_stopped, changes_detected, no_changes
+
+**Future Enhancements** (Tasks 64-72):
+
+- Drive detection and mount status checking
+- File watching with polling or native APIs
+- Change debouncing to batch rapid changes
+- 4-hour check interval timer (configurable in test mode)
+- Monitor state persistence
+- Status reporting and change summaries
 
 ### 9. Verification Module (`verify.py`) - Future
 
