@@ -17,6 +17,7 @@ from pathlib import Path
 
 from ..config.config import Config
 from ..credentials.manager import CredentialManager
+from ..logger.context import OperationContext
 from ..progress_parser import RcloneProgressParser
 from .errors import BackupError, ErrorDetector, ErrorType
 from .job import BackupJob
@@ -365,27 +366,63 @@ use_ssl = {str(credentials["use_ssl"]).lower()}
             - sync_info: Dictionary with sync statistics and metadata including transfer_stats
             - backup_stats: BackupStats object with comprehensive metrics and analysis
         """
-        self.logger.info(f"Starting sync with progress: {job.source_path} -> {job.destination}")
+        # Create operation context for this sync operation
+        operation_description = f"Sync {job.source_path} -> {job.destination}"
+        if job.dry_run:
+            operation_description += " (dry-run)"
 
-        # Initialize progress parser
-        progress_parser = RcloneProgressParser(self.logger)
+        with OperationContext("backup", operation_description, self.logger) as operation_ctx:
+            operation_ctx.log_progress(f"Starting sync: {job.source_path} -> {job.destination}")
 
-        # Estimate total files for progress tracking
-        total_files = 0
-        try:
-            source_path = Path(job.source_path)
-            if source_path.exists():
-                total_files = len([f for f in source_path.rglob("*") if f.is_file()])
-                if total_files > 0:
-                    progress_parser.init_progress_logger(total_files, "backup")
-                    self.logger.info(f"Estimated {total_files} files to sync")
-        except Exception as e:
-            self.logger.debug(f"Could not estimate file count: {e}")
+            # Initialize progress parser
+            progress_parser = RcloneProgressParser(self.logger)
 
-        # Build the sync command
-        cmd = self.build_sync_command(job)
+            # Estimate total files for progress tracking
+            total_files = 0
+            try:
+                source_path = Path(job.source_path)
+                if source_path.exists():
+                    total_files = len([f for f in source_path.rglob("*") if f.is_file()])
+                    if total_files > 0:
+                        # Initialize progress logger with operation context
+                        from ..logger.progress import ProgressLogger
 
-        # Create temporary config file
+                        progress_logger = ProgressLogger(
+                            total_items=total_files,
+                            operation_type="files",
+                            update_interval=2.0,
+                            logger=self.logger,
+                            operation_context=operation_ctx,
+                        )
+                        progress_parser.progress_logger = progress_logger
+                        operation_ctx.log_progress(f"Estimated {total_files} files to sync")
+            except Exception as e:
+                self.logger.debug(f"Could not estimate file count: {e}")
+
+            # Build the sync command
+            cmd = self.build_sync_command(job)
+
+            # Create temporary config file
+            return self._execute_sync_with_context(job, cmd, progress_parser, operation_ctx)
+
+    def _execute_sync_with_context(
+        self,
+        job: BackupJob,
+        cmd: list[str],
+        progress_parser: RcloneProgressParser,
+        operation_ctx: OperationContext,
+    ) -> tuple[bool, str, dict[str, Any], BackupStats]:
+        """Execute sync with operation context tracking.
+
+        Args:
+            job: BackupJob containing sync parameters
+            cmd: rclone command to execute
+            progress_parser: Progress parser instance
+            operation_ctx: Operation context for logging
+
+        Returns:
+            Tuple of (success, output, sync_info, backup_stats)
+        """
         with tempfile.NamedTemporaryFile(mode="w", suffix=".conf", delete=False) as config_file:
             config_content = self._build_rclone_config()
             config_file.write(config_content)
@@ -403,7 +440,7 @@ use_ssl = {str(credentials["use_ssl"]).lower()}
                 start_datetime = datetime.now()
 
                 # Execute rclone command with real-time output parsing
-                self.logger.info(f"Executing: {' '.join(cmd[:3])} ... (config file: {config_file.name})")
+                operation_ctx.log_progress(f"Executing rclone sync (config: {config_file.name})")
 
                 # Use Popen for real-time output processing
                 process = subprocess.Popen(
@@ -450,15 +487,17 @@ use_ssl = {str(credentials["use_ssl"]).lower()}
                 detected_errors = self.error_detector.parse_errors(complete_output)
                 error_summary = self.error_detector.get_error_summary(detected_errors)
 
-                # Log detected errors
+                # Log detected errors and add to operation context
                 if detected_errors:
-                    self.logger.warning(f"Detected {len(detected_errors)} error(s) during sync")
+                    operation_ctx.log_warning(f"Detected {len(detected_errors)} error(s) during sync")
                     for error in detected_errors:
-                        self.logger.warning(f"{error.error_type.value}: {error.message}")
+                        error_msg = f"{error.error_type.value}: {error.message}"
                         if error.file_path:
-                            self.logger.warning(f"  File: {error.file_path}")
+                            error_msg += f" (File: {error.file_path})"
+                        operation_ctx.log_warning(error_msg)
+                        operation_ctx.add_error(error.message)
                         if error.suggestion:
-                            self.logger.info(f"  Suggestion: {error.suggestion}")
+                            operation_ctx.log_progress(f"Suggestion: {error.suggestion}")
 
                 # Get final transfer statistics
                 transfer_stats = progress_parser.get_final_stats()
@@ -490,19 +529,30 @@ use_ssl = {str(credentials["use_ssl"]).lower()}
                 success = return_code == 0
 
                 if success:
-                    self.logger.info(f"Sync completed successfully in {duration:.2f}s")
-                    self.logger.info(
+                    operation_ctx.log_progress(f"Sync completed successfully in {duration:.2f}s")
+                    operation_ctx.log_progress(
                         f"Transferred {transfer_stats.files_transferred} files ({transfer_stats.bytes_transferred / (1024 * 1024):.1f} MB)"
                     )
                     if transfer_stats.transfer_rate_mbps > 0:
-                        self.logger.info(f"Average transfer rate: {transfer_stats.transfer_rate_mbps:.1f} MB/s")
+                        operation_ctx.log_progress(
+                            f"Average transfer rate: {transfer_stats.transfer_rate_mbps:.1f} MB/s"
+                        )
                     if job.dry_run:
-                        self.logger.info("Dry run completed - no files were actually transferred")
+                        operation_ctx.log_progress("Dry run completed - no files were actually transferred")
+
+                    # Add files to operation context summary
+                    for _ in range(transfer_stats.files_transferred):
+                        operation_ctx.add_file_processed(
+                            size_bytes=transfer_stats.bytes_transferred // max(transfer_stats.files_transferred, 1),
+                            success=True,
+                        )
                 else:
-                    self.logger.error(f"Sync failed with return code {return_code}")
+                    operation_ctx.log_error(f"Sync failed with return code {return_code}")
                     # Log last few lines of output as error details
                     error_lines = output_lines[-5:] if output_lines else ["No output captured"]
-                    self.logger.error(f"Error details: {'; '.join(error_lines)}")
+                    error_detail = "; ".join(error_lines)
+                    operation_ctx.log_error(f"Error details: {error_detail}")
+                    operation_ctx.add_error(error_detail)
 
                 # Update job status
                 job.status = "completed" if success else "error"
@@ -527,9 +577,19 @@ use_ssl = {str(credentials["use_ssl"]).lower()}
                 )
 
                 # Log backup statistics summary
-                self.logger.info("Backup Statistics:")
+                operation_ctx.log_progress("Backup Statistics:")
                 for line in backup_stats.get_summary().split("\n"):
-                    self.logger.info(f"  {line}")
+                    if line.strip():
+                        operation_ctx.log_progress(f"  {line}")
+
+                # Log operation context summary
+                op_summary = operation_ctx.get_summary()
+                summary_text = op_summary.format_summary()
+                if summary_text:
+                    operation_ctx.log_progress("Operation Summary:")
+                    for line in summary_text.split("\n"):
+                        if line.strip():
+                            operation_ctx.log_progress(f"  {line}")
 
                 # Save backup state
                 try:
@@ -544,7 +604,8 @@ use_ssl = {str(credentials["use_ssl"]).lower()}
                 return success, complete_output, sync_info, backup_stats
 
             except subprocess.TimeoutExpired:
-                self.logger.error("Sync operation timed out after 5 minutes")
+                operation_ctx.log_error("Sync operation timed out after 5 minutes")
+                operation_ctx.add_error("Sync operation timed out after 5 minutes")
                 job.status = "error"
                 job.error = "Sync operation timed out"
 
@@ -599,7 +660,8 @@ use_ssl = {str(credentials["use_ssl"]).lower()}
                 return False, "ERROR: Sync operation timed out after 5 minutes", sync_info, backup_stats
 
             except Exception as e:
-                self.logger.error(f"Sync failed with exception: {e}")
+                operation_ctx.log_error(f"Sync failed with exception: {e}")
+                operation_ctx.add_error(str(e))
                 job.status = "error"
                 job.error = str(e)
 
