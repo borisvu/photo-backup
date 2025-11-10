@@ -369,7 +369,7 @@ class TestBackupEngineStateIntegration:
 
                 yield temp_dir
 
-    @patch("photo_backup.backup.check_rclone")
+    @patch("photo_backup.backup.engine.check_rclone")
     def test_backup_engine_state_initialization(self, mock_check_rclone, mock_config, temp_state_dir):
         """Test that BackupEngine properly initializes StateManager."""
         mock_check_rclone.return_value = (True, "rclone available", "1.55.0")
@@ -380,7 +380,7 @@ class TestBackupEngineStateIntegration:
         assert isinstance(engine.state_manager, StateManager)
         assert engine.state_manager.test_mode is True
 
-    @patch("photo_backup.backup.check_rclone")
+    @patch("photo_backup.backup.engine.check_rclone")
     def test_backup_engine_get_state_methods(self, mock_check_rclone, mock_config, temp_state_dir):
         """Test BackupEngine state access methods."""
         mock_check_rclone.return_value = (True, "rclone available", "1.55.0")
@@ -398,7 +398,7 @@ class TestBackupEngineStateIntegration:
         assert isinstance(state, BackupState)
         assert state.total_syncs == 0
 
-    @patch("photo_backup.backup.check_rclone")
+    @patch("photo_backup.backup.engine.check_rclone")
     def test_sync_with_progress_saves_state(self, mock_check_rclone, mock_config, temp_state_dir):
         """Test that sync_with_progress saves state after completion."""
         mock_check_rclone.return_value = (True, "rclone available", "1.55.0")
@@ -455,7 +455,7 @@ class TestBackupEngineStateIntegration:
                     assert summary["success_rate"] == 0.0
                     assert summary["consecutive_failures"] == 1
 
-    @patch("photo_backup.backup.check_rclone")
+    @patch("photo_backup.backup.engine.check_rclone")
     def test_failed_sync_saves_state(self, mock_check_rclone, mock_config, temp_state_dir):
         """Test that failed sync operations also save state."""
         mock_check_rclone.return_value = (True, "rclone available", "1.55.0")
@@ -498,7 +498,7 @@ class TestBackupEngineStateIntegration:
             assert summary["consecutive_failures"] == 1
             assert summary["last_error"] is not None
 
-    @patch("photo_backup.backup.check_rclone")
+    @patch("photo_backup.backup.engine.check_rclone")
     def test_state_persistence_between_engine_instances(self, mock_check_rclone, mock_config, temp_state_dir):
         """Test that state persists between different BackupEngine instances."""
         mock_check_rclone.return_value = (True, "rclone available", "1.55.0")

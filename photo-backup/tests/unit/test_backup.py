@@ -6,7 +6,8 @@ import subprocess
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
 
-from photo_backup.backup import BackupEngine, BackupJob, BackupStats, _is_version_sufficient, check_rclone
+from photo_backup.backup import BackupEngine, BackupJob, BackupStats, check_rclone
+from photo_backup.backup.rclone_utils import _is_version_sufficient
 from photo_backup.progress_parser import TransferStats
 
 
@@ -99,7 +100,7 @@ class TestBackupEngine:
 class TestRcloneDetection:
     """Test rclone detection functionality."""
 
-    @patch("photo_backup.backup.subprocess.run")
+    @patch("photo_backup.backup.engine.subprocess.run")
     def test_check_rclone_success(self, mock_run):
         """Test successful rclone detection with valid version."""
         # Mock successful rclone version output
@@ -115,7 +116,7 @@ class TestRcloneDetection:
         assert version == "1.64.2"
         mock_run.assert_called_once_with(["rclone", "version"], capture_output=True, text=True, timeout=10.0)
 
-    @patch("photo_backup.backup.subprocess.run")
+    @patch("photo_backup.backup.engine.subprocess.run")
     def test_check_rclone_old_version(self, mock_run):
         """Test rclone detection with version too old."""
         # Mock old version output
@@ -130,7 +131,7 @@ class TestRcloneDetection:
         assert "v1.40.2 found but is too old" in message
         assert version == "1.40.2"
 
-    @patch("photo_backup.backup.subprocess.run")
+    @patch("photo_backup.backup.engine.subprocess.run")
     def test_check_rclone_not_found(self, mock_run):
         """Test rclone not installed."""
         mock_run.side_effect = FileNotFoundError()
@@ -142,7 +143,7 @@ class TestRcloneDetection:
         assert "https://rclone.org/install/" in message
         assert version is None
 
-    @patch("photo_backup.backup.subprocess.run")
+    @patch("photo_backup.backup.engine.subprocess.run")
     def test_check_rclone_timeout(self, mock_run):
         """Test rclone command timeout."""
         mock_run.side_effect = subprocess.TimeoutExpired("rclone", 10.0)
@@ -153,7 +154,7 @@ class TestRcloneDetection:
         assert "rclone version check timed out" in message
         assert version is None
 
-    @patch("photo_backup.backup.subprocess.run")
+    @patch("photo_backup.backup.engine.subprocess.run")
     def test_check_rclone_command_failed(self, mock_run):
         """Test rclone command returns error."""
         mock_result = MagicMock()
@@ -167,7 +168,7 @@ class TestRcloneDetection:
         assert "rclone command failed" in message
         assert version is None
 
-    @patch("photo_backup.backup.subprocess.run")
+    @patch("photo_backup.backup.engine.subprocess.run")
     def test_check_rclone_version_unparseable(self, mock_run):
         """Test rclone with unparseable version output."""
         mock_result = MagicMock()
@@ -227,7 +228,7 @@ class TestBackupEngineWithRclone:
         assert "message" in info["rclone_status"]
         assert "version" in info["rclone_status"]
 
-    @patch("photo_backup.backup.check_rclone")
+    @patch("photo_backup.backup.engine.check_rclone")
     def test_backup_info_with_rclone_unavailable(self, mock_check_rclone):
         """Test backup info when rclone is not available."""
         mock_check_rclone.return_value = (False, "rclone not found", None)
@@ -239,7 +240,7 @@ class TestBackupEngineWithRclone:
         assert info["rclone_status"]["message"] == "rclone not found"
         assert info["rclone_status"]["version"] is None
 
-    @patch("photo_backup.backup.check_rclone")
+    @patch("photo_backup.backup.engine.check_rclone")
     def test_validate_environment_with_rclone_failure(self, mock_check_rclone):
         """Test environment validation when rclone check fails."""
         mock_check_rclone.return_value = (False, "rclone not found", None)
@@ -291,7 +292,7 @@ class TestRcloneCommandBuilding:
         # Verify dry-run flag is present
         assert "--dry-run" in cmd
 
-    @patch("photo_backup.backup.CredentialManager")
+    @patch("photo_backup.backup.engine.CredentialManager")
     def test_build_sync_command_production_mode(self, _mock_credential_manager):
         """Test building rclone sync command in production mode."""
         # Mock credential manager to avoid real credential lookup
@@ -422,7 +423,7 @@ class TestRcloneCommandBuilding:
 class TestSyncExecution:
     """Test sync execution functionality."""
 
-    @patch("photo_backup.backup.subprocess.run")
+    @patch("photo_backup.backup.engine.subprocess.run")
     def test_sync_success(self, mock_run):
         """Test successful sync operation."""
         # Mock successful subprocess result
@@ -453,7 +454,7 @@ class TestSyncExecution:
         assert job.status == "completed"
         assert job.error is None
 
-    @patch("photo_backup.backup.subprocess.run")
+    @patch("photo_backup.backup.engine.subprocess.run")
     def test_sync_failure(self, mock_run):
         """Test failed sync operation."""
         # Mock failed subprocess result
@@ -481,7 +482,7 @@ class TestSyncExecution:
         assert job.status == "error"
         assert job.error == "ERROR: Failed to connect to bucket"
 
-    @patch("photo_backup.backup.subprocess.run")
+    @patch("photo_backup.backup.engine.subprocess.run")
     def test_sync_timeout(self, mock_run):
         """Test sync operation timeout."""
         # Mock timeout exception
@@ -505,7 +506,7 @@ class TestSyncExecution:
         assert job.status == "error"
         assert job.error == "Sync operation timed out"
 
-    @patch("photo_backup.backup.subprocess.run")
+    @patch("photo_backup.backup.engine.subprocess.run")
     def test_sync_dry_run(self, mock_run):
         """Test sync operation in dry run mode."""
         # Mock successful dry run result
@@ -531,8 +532,8 @@ class TestSyncExecution:
         command = sync_info["command"]
         assert "--dry-run" in command
 
-    @patch("photo_backup.backup.subprocess.run")
-    @patch("photo_backup.backup.os.unlink")
+    @patch("photo_backup.backup.engine.subprocess.run")
+    @patch("photo_backup.backup.engine.os.unlink")
     def test_sync_config_cleanup(self, mock_unlink, mock_run):
         """Test that temporary config files are cleaned up."""
         # Mock successful subprocess result
@@ -554,7 +555,7 @@ class TestSyncExecution:
         assert "config_file" in sync_info
         assert sync_info["config_file"].endswith(".conf")
 
-    @patch("photo_backup.backup.subprocess.run")
+    @patch("photo_backup.backup.engine.subprocess.run")
     def test_sync_with_exception(self, mock_run):
         """Test sync operation with unexpected exception."""
         # Mock exception during subprocess
@@ -577,7 +578,7 @@ class TestSyncExecution:
         assert job.status == "error"
         assert job.error == "Unexpected error"
 
-    @patch("photo_backup.backup.subprocess.run")
+    @patch("photo_backup.backup.engine.subprocess.run")
     def test_sync_command_execution(self, mock_run):
         """Test that sync executes the correct command."""
         # Mock successful subprocess result
@@ -613,7 +614,7 @@ class TestSyncExecution:
 class TestSyncWithProgress:
     """Test sync with progress parsing functionality."""
 
-    @patch("photo_backup.backup.subprocess.Popen")
+    @patch("photo_backup.backup.engine.subprocess.Popen")
     def test_sync_with_progress_success(self, mock_popen):
         """Test successful sync with progress parsing."""
         # Mock process and output
@@ -642,7 +643,7 @@ class TestSyncWithProgress:
         assert transfer_stats["files_total"] == 5
         assert transfer_stats["percentage"] == 100.0
 
-    @patch("photo_backup.backup.subprocess.Popen")
+    @patch("photo_backup.backup.engine.subprocess.Popen")
     def test_sync_with_progress_real_time_parsing(self, mock_popen):
         """Test that progress is parsed in real-time."""
         # Mock process with progressive output
@@ -678,7 +679,7 @@ class TestSyncWithProgress:
         assert transfer_stats["files_transferred"] == 5
         assert transfer_stats["percentage"] == 100.0
 
-    @patch("photo_backup.backup.subprocess.Popen")
+    @patch("photo_backup.backup.engine.subprocess.Popen")
     def test_sync_with_progress_timeout(self, mock_popen):
         """Test sync with progress handling timeout."""
         # Mock process that times out
@@ -706,8 +707,8 @@ class TestSyncWithProgress:
         # Verify process was killed
         mock_process.kill.assert_called_once()
 
-    @patch("photo_backup.backup.Path")
-    @patch("photo_backup.backup.subprocess.Popen")
+    @patch("photo_backup.backup.engine.Path")
+    @patch("photo_backup.backup.engine.subprocess.Popen")
     def test_sync_with_progress_file_estimation(self, mock_popen, mock_path):
         """Test file count estimation for progress tracking."""
         # Mock file system
@@ -737,7 +738,7 @@ class TestSyncWithProgress:
         # Verify file estimation was attempted
         mock_source_path.rglob.assert_called_with("*")
 
-    @patch("photo_backup.backup.subprocess.Popen")
+    @patch("photo_backup.backup.engine.subprocess.Popen")
     def test_sync_with_progress_error_parsing(self, mock_popen):
         """Test parsing of error messages in progress output."""
         # Mock process with errors
@@ -1068,8 +1069,8 @@ class TestBackupStats:
 class TestSyncWithStats:
     """Test BackupEngine sync_with_stats method."""
 
-    @patch("photo_backup.backup.subprocess.Popen")
-    @patch("photo_backup.backup.Path")
+    @patch("photo_backup.backup.engine.subprocess.Popen")
+    @patch("photo_backup.backup.engine.Path")
     def test_sync_with_stats_success(self, mock_path, mock_popen):
         """Test sync_with_stats returns BackupStats."""
         # Setup mocks

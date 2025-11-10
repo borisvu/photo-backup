@@ -87,9 +87,17 @@ photo-backup/
 │   ├── __init__.py           # Package initialization
 │   ├── __version__.py        # Version information
 │   ├── main.py               # Entry point and CLI interface
-│   ├── backup.py             # Core backup orchestration logic
 │   ├── progress_parser.py    # rclone progress parsing
 │   ├── consts.py             # Application constants
+│   │
+│   ├── backup/               # Backup engine module
+│   │   ├── __init__.py       # Public API exports
+│   │   ├── engine.py         # Main BackupEngine orchestration
+│   │   ├── job.py            # BackupJob representation
+│   │   ├── stats.py          # Backup statistics and metrics
+│   │   ├── errors.py         # Error detection and categorization
+│   │   ├── state.py          # State management and persistence
+│   │   └── rclone_utils.py   # rclone utilities and version checking
 │   │
 │   ├── cli/                  # CLI command modules
 │   │   ├── __init__.py

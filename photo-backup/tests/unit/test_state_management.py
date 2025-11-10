@@ -353,7 +353,7 @@ class TestStateManager:
 
     def test_load_state_nonexistent(self):
         """Test loading state when no state file exists."""
-        with patch("photo_backup.backup.load_json_state") as mock_load:
+        with patch("photo_backup.backup.state.load_json_state") as mock_load:
             mock_load.return_value = (None, "State file does not exist")
 
             manager = StateManager(test_mode=True)
@@ -368,7 +368,7 @@ class TestStateManager:
         now = datetime.now()
         state_data = {"last_sync_time": now.isoformat(), "total_syncs": 3, "successful_syncs": 2, "failed_syncs": 1}
 
-        with patch("photo_backup.backup.load_json_state") as mock_load:
+        with patch("photo_backup.backup.state.load_json_state") as mock_load:
             mock_load.return_value = (state_data, None)
 
             manager = StateManager(test_mode=True)
@@ -383,7 +383,7 @@ class TestStateManager:
         """Test loading state when file is corrupted."""
         corrupted_data = {"invalid": "data structure"}
 
-        with patch("photo_backup.backup.load_json_state") as mock_load:
+        with patch("photo_backup.backup.state.load_json_state") as mock_load:
             mock_load.return_value = (corrupted_data, None)
 
             manager = StateManager(test_mode=True)
@@ -398,7 +398,7 @@ class TestStateManager:
         state = BackupState()
         state.total_syncs = 5
 
-        with patch("photo_backup.backup.save_json_state") as mock_save:
+        with patch("photo_backup.backup.state.save_json_state") as mock_save:
             mock_save.return_value = (True, None)
 
             manager = StateManager(test_mode=True)
@@ -422,7 +422,7 @@ class TestStateManager:
         """Test saving state when file operation fails."""
         state = BackupState()
 
-        with patch("photo_backup.backup.save_json_state") as mock_save:
+        with patch("photo_backup.backup.state.save_json_state") as mock_save:
             mock_save.return_value = (False, "Permission denied")
 
             manager = StateManager(test_mode=True)
@@ -460,8 +460,8 @@ class TestStateManager:
 
         # Mock load and save operations
         with (
-            patch("photo_backup.backup.load_json_state") as mock_load,
-            patch("photo_backup.backup.save_json_state") as mock_save,
+            patch("photo_backup.backup.state.load_json_state") as mock_load,
+            patch("photo_backup.backup.state.save_json_state") as mock_save,
         ):
             # Mock existing state
             existing_data = {"total_syncs": 2, "successful_syncs": 1}
@@ -499,7 +499,7 @@ class TestStateManager:
             "destination": "wasabi:backup",
         }
 
-        with patch("photo_backup.backup.load_json_state") as mock_load:
+        with patch("photo_backup.backup.state.load_json_state") as mock_load:
             mock_load.return_value = (state_data, None)
 
             manager = StateManager(test_mode=True)
@@ -519,7 +519,7 @@ class TestStateManager:
 
     def test_get_state_summary_empty(self):
         """Test getting state summary with no previous backups."""
-        with patch("photo_backup.backup.load_json_state") as mock_load:
+        with patch("photo_backup.backup.state.load_json_state") as mock_load:
             mock_load.return_value = (None, "No state file")
 
             manager = StateManager(test_mode=True)
@@ -534,7 +534,7 @@ class TestStateManager:
         # Test production mode
         manager_prod = StateManager(test_mode=False)
 
-        with patch("photo_backup.backup.load_json_state") as mock_load:
+        with patch("photo_backup.backup.state.load_json_state") as mock_load:
             mock_load.return_value = (None, "No state")
             manager_prod.load_state()
             mock_load.assert_called_with("backup_state.json", test_mode=False)
@@ -542,7 +542,7 @@ class TestStateManager:
         # Test test mode
         manager_test = StateManager(test_mode=True)
 
-        with patch("photo_backup.backup.load_json_state") as mock_load:
+        with patch("photo_backup.backup.state.load_json_state") as mock_load:
             mock_load.return_value = (None, "No state")
             manager_test.load_state()
             mock_load.assert_called_with("backup_state.json", test_mode=True)

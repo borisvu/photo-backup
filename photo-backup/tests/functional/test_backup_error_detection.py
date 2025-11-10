@@ -29,7 +29,7 @@ class TestBackupErrorDetection:
         assert hasattr(self.engine.error_detector, "parse_errors")
         assert hasattr(self.engine.error_detector, "get_error_summary")
 
-    @patch("photo_backup.backup.subprocess.Popen")
+    @patch("photo_backup.backup.engine.subprocess.Popen")
     def test_sync_with_permission_errors(self, mock_popen):
         """Test sync operation with permission errors in output."""
         # Mock rclone output with permission errors
@@ -84,7 +84,7 @@ class TestBackupErrorDetection:
         assert any("/test/photo1.jpg" in path for path in file_paths)
         assert any("/test/photo2.jpg" in path for path in file_paths)
 
-    @patch("photo_backup.backup.subprocess.Popen")
+    @patch("photo_backup.backup.engine.subprocess.Popen")
     def test_sync_with_network_errors(self, mock_popen):
         """Test sync operation with network errors in output."""
         # Mock rclone output with network errors
@@ -121,7 +121,7 @@ class TestBackupErrorDetection:
                 network_errors.append(e)
         assert len(network_errors) == 2
 
-    @patch("photo_backup.backup.subprocess.Popen")
+    @patch("photo_backup.backup.engine.subprocess.Popen")
     def test_sync_with_mixed_errors(self, mock_popen):
         """Test sync operation with multiple different error types."""
         # Mock rclone output with various errors
@@ -175,7 +175,7 @@ class TestBackupErrorDetection:
         # Check files with errors
         assert backup_stats.error_summary["unique_files_with_errors"] == 2  # IMG_001.jpg and IMG_002.jpg
 
-    @patch("photo_backup.backup.subprocess.Popen")
+    @patch("photo_backup.backup.engine.subprocess.Popen")
     def test_sync_successful_no_errors(self, mock_popen):
         """Test successful sync operation with no errors."""
         # Mock successful rclone output
@@ -205,7 +205,7 @@ class TestBackupErrorDetection:
         assert backup_stats.error_summary["total_errors"] == 0
         assert backup_stats.error_summary["error_types"] == {}
 
-    @patch("photo_backup.backup.subprocess.Popen")
+    @patch("photo_backup.backup.engine.subprocess.Popen")
     def test_sync_timeout_error_detection(self, mock_popen):
         """Test timeout scenario creates proper error detection."""
         # Mock timeout scenario
@@ -237,7 +237,7 @@ class TestBackupErrorDetection:
         assert "timed out" in message.lower()
         assert "timeout" in suggestion.lower()
 
-    @patch("photo_backup.backup.subprocess.Popen")
+    @patch("photo_backup.backup.engine.subprocess.Popen")
     def test_sync_exception_error_detection(self, mock_popen):
         """Test exception scenario creates proper error detection."""
         # Mock exception scenario
