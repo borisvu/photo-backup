@@ -14,6 +14,14 @@ from pathlib import Path
 MINIO_CONTAINER_NAME = "photo-backup-minio-test"
 TEST_PHOTO_DIR = Path("/tmp/photo-backup-test-photos")
 
+# Known test container patterns
+TEST_CONTAINER_PATTERNS = [
+    "photo-backup-minio-test",
+    "photo-backup-functional-test",
+    "photo-backup-credential-test",
+    "photo-backup-backup-sync-test",
+]
+
 
 def run_docker_command(cmd, capture_output=True, timeout=30):
     """Run a docker command and return the result."""
@@ -178,3 +186,52 @@ def cli_runner():
             pytest.fail(f"CLI command timed out: {' '.join(cmd)}")
 
     return run_command
+
+
+def cleanup_orphaned_containers():
+    """Clean up any orphaned test containers.
+
+    This function is called after test session to ensure no containers are left running.
+    """
+    try:
+        result = subprocess.run(
+            ["docker", "ps", "-a", "--format", "{{.Names}}"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+
+        if result.returncode == 0:
+            running_containers = result.stdout.strip().split("\n")
+
+            for pattern in TEST_CONTAINER_PATTERNS:
+                for container in running_containers:
+                    if pattern in container:
+                        print(f"\n⚠️  Cleaning up orphaned container: {container}")
+                        # Stop the container
+                        subprocess.run(
+                            ["docker", "stop", container],
+                            capture_output=True,
+                            timeout=10,
+                        )
+                        # Remove the container
+                        subprocess.run(
+                            ["docker", "rm", container],
+                            capture_output=True,
+                            timeout=10,
+                        )
+                        print(f"✓ Cleaned up: {container}")
+    except Exception as e:
+        print(f"\n⚠️  Warning: Failed to cleanup orphaned containers: {e}")
+
+
+def pytest_sessionfinish(session, exitstatus):  # noqa: ARG001
+    """Pytest hook called after whole test run finished, right before returning exit status.
+
+    This ensures all test containers are cleaned up even if tests fail or are interrupted.
+    """
+    print("\n" + "=" * 70)
+    print("Cleaning up test containers...")
+    print("=" * 70)
+    cleanup_orphaned_containers()
+    print("=" * 70)

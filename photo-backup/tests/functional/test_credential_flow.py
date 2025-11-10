@@ -6,10 +6,10 @@ Task 52: Credential Functional Test
 Tests the complete credential flow with Minio container.
 """
 
+import contextlib
 import os
 import shutil
 import subprocess
-import time
 from collections.abc import Generator
 
 import docker
@@ -25,85 +25,33 @@ class TestCredentialFlow:
 
     @pytest.fixture
     def minio_container(self) -> Generator[str]:
-        """Start Minio container and yield container ID."""
-        client = None
-        try:
-            # Try to get the Docker Desktop socket path programmatically
-            result = subprocess.run(["docker", "context", "ls"], capture_output=True, text=True)
-            if result.returncode == 0:
-                lines = result.stdout.split("\n")
-                socket_path = None
+        """Manage Minio container lifecycle for credential testing."""
+        # Use shared utilities for Docker/Minio management
+        from tests.functional.minio_test_utils import MinioTestUtils
 
-                # Find the active context (marked with *)
-                for line in lines:
-                    if "*" in line and "desktop" in line.lower():
-                        parts = line.split()
-                        for part in parts:
-                            if part.startswith("unix://"):
-                                socket_path = part.replace("unix://", "")
-                                break
-                        if socket_path:
-                            break
-
-                if socket_path:
-                    client = docker.DockerClient(base_url=f"unix://{socket_path}") if socket_path else docker.from_env()
-                else:
-                    client = docker.from_env()
-            else:
-                client = docker.from_env()
-
-        except Exception as e:
-            print(f"Error connecting to Docker: {e}")
-            pytest.skip("Docker not available or not running")
-
+        client = MinioTestUtils.get_docker_client()
         if client is None:
             pytest.skip("Docker not available or not running")
 
-        # Start Minio container
-        assert client is not None  # Type guard for mypy
-        container = client.containers.run(
-            "minio/minio:latest",
-            command="server /data --console-address :9001",
-            ports={"9000/tcp": 9000, "9001/tcp": 9001},
-            environment={"MINIO_ROOT_USER": "minioadmin", "MINIO_ROOT_PASSWORD": "minioadmin"},
-            detach=True,
-            remove=True,
-        )
+        container_name = "photo-backup-credential-test"
 
-        container_id = container.id
-
-        # Wait for Minio to be ready
-        max_attempts = 30
-        for _attempt in range(max_attempts):
-            try:
-                result = subprocess.run(
-                    ["curl", "-f", "http://localhost:9000/minio/health/live"], capture_output=True, text=True, timeout=5
-                )
-                if result.returncode == 0:
-                    break
-            except (subprocess.TimeoutExpired, FileNotFoundError):
-                pass
-
-            time.sleep(1)
-        else:
-            # Clean up on failure
-            try:
-                container.stop(timeout=5)
-                container.remove()
-            except Exception:
-                pass
-            pytest.fail("Minio container failed to start within 30 seconds")
-
-        yield container_id
-
-        # Cleanup
+        # Start or reuse container
         try:
-            if client is not None:  # Type guard for mypy
-                container = client.containers.get(container_id)
-                container.stop(timeout=5)
-                container.remove()
-        except Exception:
-            pass
+            container = MinioTestUtils.start_or_reuse_minio(client, container_name)
+            # Wait for Minio to be ready
+            MinioTestUtils.wait_for_minio_ready(container.name)
+
+            yield container.id
+
+        finally:
+            # Cleanup
+            if client is not None:
+                with contextlib.suppress(docker.errors.NotFound, docker.errors.APIError):
+                    try:
+                        container = client.containers.get(container_name)
+                        container.stop(timeout=5)
+                    except Exception:
+                        pass
 
     @pytest.fixture
     def test_config(self) -> Config:
