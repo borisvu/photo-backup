@@ -20,6 +20,32 @@ You're an engineer building a photo backup system. You've been given architectur
 - Follow tasks.md and complete one task at a time
 - After each task, stop. I'll test it. If it works, commit to GitHub and move to the next
 
+## Reading Strategy
+
+### Always Read First (Required Context)
+
+At the start of any session or task, always read these files to understand the project:
+
+1. **instructions.md** (this file) - Implementation protocol and rules
+2. **architecture.md** - System design and structure
+3. **tasks.md** - Complete task breakdown and requirements
+
+### Read On-Demand Only
+
+All other files should be read **only when needed** for the specific task:
+
+- Source code files - Read only the modules you need to modify or understand
+- Test files - Read only when working on related functionality
+- Configuration files - Read only when task requires configuration changes
+- Progress files - Read only when updating task completion status
+
+### Benefits of This Approach
+
+- Reduces token usage and response time
+- Focuses attention on relevant code
+- Prevents information overload
+- Ensures you always have the latest project context
+
 ## Project Context
 
 This is a personal photo backup system that:
@@ -109,9 +135,46 @@ The system has a built-in test mode that:
 3. Check you haven't broken previous functionality
 4. Ensure code follows the protocol
 5. Wait for my confirmation before proceeding
-6. Update the progress in `./Progress/progress.yaml`, write specific task note in a dedicated MD file for that note, example: `./Progress/task_64_details.md`.
+6. Update the progress:
+   - Update overall progress in `./Progress/progress.yaml`
+   - Create task-specific report in `./Progress/task_<task_number>.yaml` with:
+     - Task ID and title
+     - Implementation details
+     - Changes made
+     - Test results
+     - Any notes or issues encountered
 7. Commit to git.
 8. Check that pre-commit hooks passed, otherwise fix and try again.
+
+### Task Report Format Example
+
+```yaml
+# ./Progress/task_64.yaml
+task_id: "64"
+title: "Implement Docker Container Cleanup"
+status: "completed"
+completion_date: "2025-11-10"
+
+implementation_details: |
+  - Refactored minio_container fixture to use MinioTestUtils
+  - Added explicit container naming for better tracking
+  - Implemented pytest_sessionfinish hook for orphaned container cleanup
+  - Made cleanup fail tests if containers are leaked
+
+changes_made:
+  - photo-backup/tests/conftest.py: Added cleanup_orphaned_containers() and pytest_sessionfinish hook
+  - photo-backup/tests/functional/test_credential_flow.py: Updated minio_container fixture
+
+test_results: |
+  All 4 credential flow tests passing
+  Container leak detection working correctly
+  No orphaned containers after test runs
+
+notes: |
+  Container cleanup now uses TEST_CONTAINER_PATTERNS to target only project containers.
+  Cleanup runs after every test session and fails the test run if leaks are detected.
+  This prevents accumulation of orphaned containers and port conflicts.
+```
 
 ## Special Considerations
 
