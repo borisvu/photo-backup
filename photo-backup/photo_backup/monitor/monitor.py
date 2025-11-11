@@ -6,12 +6,15 @@ in the photo directory and triggering backups accordingly.
 """
 
 import time
+from datetime import datetime
 
 from pathlib import Path
 
 from ..config import Config
 from ..logger import get_logger
+from ..state_utils import load_json_state, save_json_state
 from .events import ChangeSummary, MonitorEvent, MonitorState
+from .state import MonitorState as MonitorStateData
 
 
 class DriveMonitor:
@@ -52,6 +55,11 @@ class DriveMonitor:
         self._last_check_time: float | None = None
         check_interval_hours = self.config.get("monitoring.check_interval_hours", 4.0)
         self._check_interval_seconds: float = check_interval_hours * 3600
+
+        # State persistence
+        self._monitor_state: MonitorStateData = MonitorStateData()
+        self._state_file: str = "monitor_state.json"
+        self._auto_save_state: bool = True
 
         # Initialize watch path based on mode
         self._initialize_watch_path()
@@ -293,10 +301,16 @@ class DriveMonitor:
             self._last_change_time = time.time()
             self.logger.info(f"Detected {len(self._changes_detected)} file changes")
             self._record_event(MonitorEvent.CHANGES_DETECTED, f"{len(self._changes_detected)} changes")
+
+            # Update persistent state
+            self._update_state_from_check(len(self._changes_detected))
             return True
         else:
             self.logger.debug("No changes detected")
             self._record_event(MonitorEvent.NO_CHANGES, "")
+
+            # Update persistent state (no changes)
+            self._update_state_from_check(0)
             return False
 
     def get_changes(self) -> list[tuple[str, MonitorEvent]]:
@@ -449,3 +463,76 @@ class DriveMonitor:
         )
 
         return summary
+
+    def load_state(self) -> bool:
+        """
+        Load monitor state from disk.
+
+        Attempts to load previously saved state from the state file.
+        If the file doesn't exist or is invalid, starts with fresh state.
+
+        Returns:
+            bool: True if state was loaded successfully, False otherwise
+        """
+        try:
+            data, error = load_json_state(self._state_file, test_mode=self.config.test_mode)
+            if data:
+                self._monitor_state = MonitorStateData.from_dict(data)
+                self.logger.info(f"Loaded monitor state: {self._monitor_state.total_checks} checks recorded")
+                return True
+            else:
+                self.logger.debug(f"No previous state found: {error}")
+                return False
+        except Exception as e:
+            self.logger.warning(f"Failed to load monitor state: {e}")
+            return False
+
+    def save_state(self) -> bool:
+        """
+        Save monitor state to disk.
+
+        Persists current monitoring state including check times, change history,
+        and statistics for continuity across restarts.
+
+        Returns:
+            bool: True if state was saved successfully, False otherwise
+        """
+        try:
+            # Update state with current watch path
+            if self.watch_path:
+                self._monitor_state.watch_path = str(self.watch_path)
+
+            # Save to disk
+            save_json_state(
+                self._monitor_state.to_dict(),
+                self._state_file,
+                test_mode=self.config.test_mode,
+            )
+            self.logger.debug("Monitor state saved successfully")
+            return True
+        except Exception as e:
+            self.logger.error(f"Failed to save monitor state: {e}")
+            return False
+
+    def _update_state_from_check(self, changes_detected: int) -> None:
+        """
+        Update persistent state after a check.
+
+        Args:
+            changes_detected: Number of changes detected in the check
+        """
+        # Update check time
+        check_time = datetime.now()
+        self._monitor_state.update_check(check_time)
+
+        # Update changes if any detected
+        if changes_detected > 0:
+            self._monitor_state.update_changes(changes_detected, check_time)
+
+            # Add change events to history
+            for file_path, event_type in self._changes_detected[:10]:  # Limit to first 10
+                self._monitor_state.add_change_event(event_type.value, file_path, check_time)
+
+        # Auto-save if enabled
+        if self._auto_save_state:
+            self.save_state()

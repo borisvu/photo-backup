@@ -7,7 +7,7 @@ Tests the DriveMonitor class and monitoring events.
 from pathlib import Path
 
 from photo_backup.config import Config
-from photo_backup.monitor import ChangeSummary, DriveMonitor, MonitorEvent, MonitorState
+from photo_backup.monitor import ChangeSummary, DriveMonitor, MonitorEvent, MonitorState, MonitorStateData
 
 
 class TestMonitorEvents:
@@ -1308,3 +1308,222 @@ class TestTimer:
 
         # Timer should still reset
         assert monitor.should_check() is False
+
+
+class TestMonitorState:
+    """Tests for monitor state persistence functionality."""
+
+    def test_state_saves_correctly(self, tmp_path):
+        """Test that state saves to disk correctly."""
+        test_dir = tmp_path / "test-photos"
+        test_dir.mkdir()
+
+        config = Config(test_mode=True)
+        config.load_config()
+        config._config["backup"]["source_path"] = str(test_dir)
+
+        monitor = DriveMonitor(config=config)
+        monitor.start()
+
+        # Perform a check
+        monitor.check_for_changes()
+
+        # Save state
+        assert monitor.save_state() is True
+
+        # Verify state object was updated
+        assert monitor._monitor_state.total_checks == 1
+        assert monitor._monitor_state.watch_path == str(test_dir)
+
+    def test_state_loads_correctly(self, tmp_path):
+        """Test that state loads from disk correctly."""
+        test_dir = tmp_path / "test-photos"
+        test_dir.mkdir()
+
+        config = Config(test_mode=True)
+        config.load_config()
+        config._config["backup"]["source_path"] = str(test_dir)
+
+        # Create first monitor and save state
+        monitor1 = DriveMonitor(config=config)
+        monitor1.start()
+        monitor1.check_for_changes()
+        monitor1.save_state()
+
+        # Create second monitor and load state
+        monitor2 = DriveMonitor(config=config)
+        assert monitor2.load_state() is True
+
+        # Verify state was loaded
+        assert monitor2._monitor_state.total_checks == 1
+        assert monitor2._monitor_state.watch_path == str(test_dir)
+
+    def test_state_persists_across_instances(self, tmp_path):
+        """Test that state persists across multiple monitor instances."""
+        test_dir = tmp_path / "test-photos"
+        test_dir.mkdir()
+
+        config = Config(test_mode=True)
+        config.load_config()
+        config._config["backup"]["source_path"] = str(test_dir)
+
+        # First instance - perform 3 checks
+        monitor1 = DriveMonitor(config=config)
+        monitor1.start()
+        for _ in range(3):
+            monitor1.check_for_changes()
+
+        # Second instance - load and perform 2 more checks
+        monitor2 = DriveMonitor(config=config)
+        monitor2.load_state()
+        monitor2.start()
+        for _ in range(2):
+            monitor2.check_for_changes()
+
+        # Third instance - verify cumulative state
+        monitor3 = DriveMonitor(config=config)
+        monitor3.load_state()
+
+        # Should have 5 total checks
+        assert monitor3._monitor_state.total_checks == 5
+
+    def test_state_updates_after_checks(self, tmp_path):
+        """Test that state updates correctly after checks."""
+        test_dir = tmp_path / "test-photos"
+        test_dir.mkdir()
+
+        config = Config(test_mode=True)
+        config.load_config()
+        config._config["backup"]["source_path"] = str(test_dir)
+
+        monitor = DriveMonitor(config=config)
+        monitor.start()
+
+        # Initial state
+        assert monitor._monitor_state.total_checks == 0
+        assert monitor._monitor_state.total_changes_detected == 0
+
+        # Perform check with no changes
+        monitor.check_for_changes()
+        assert monitor._monitor_state.total_checks == 1
+        assert monitor._monitor_state.total_changes_detected == 0
+
+        # Add files and check
+        (test_dir / "photo1.jpg").write_text("test 1")
+        (test_dir / "photo2.jpg").write_text("test 2")
+        monitor.check_for_changes()
+
+        assert monitor._monitor_state.total_checks == 2
+        assert monitor._monitor_state.total_changes_detected == 2
+
+    def test_state_handles_missing_file(self, tmp_path):
+        """Test that loading state handles missing file gracefully."""
+        test_dir = tmp_path / "test-photos"
+        test_dir.mkdir()
+
+        config = Config(test_mode=True)
+        config.load_config()
+        config._config["backup"]["source_path"] = str(test_dir)
+
+        monitor = DriveMonitor(config=config)
+
+        # Turn off auto-save to ensure no state file is created
+        monitor._auto_save_state = False
+
+        # Use a unique state file name to avoid conflicts with other tests
+        monitor._state_file = "test_missing_monitor_state.json"
+
+        # Try to load non-existent state
+        assert monitor.load_state() is False
+
+        # Should start with fresh state
+        assert monitor._monitor_state.total_checks == 0
+
+    def test_change_history_limited_to_max_size(self, tmp_path):
+        """Test that change history is limited to maximum size."""
+        test_dir = tmp_path / "test-photos"
+        test_dir.mkdir()
+
+        config = Config(test_mode=True)
+        config.load_config()
+        config._config["backup"]["source_path"] = str(test_dir)
+
+        monitor = DriveMonitor(config=config)
+        monitor.start()
+
+        # Add many files to trigger history
+        for i in range(15):
+            (test_dir / f"photo{i}.jpg").write_text(f"test {i}")
+
+        monitor.check_for_changes()
+
+        # History should be limited (only first 10 from _update_state_from_check)
+        assert len(monitor._monitor_state.change_history) == 10
+
+    def test_state_uses_test_directory(self, tmp_path):
+        """Test that state files use test directory in test mode."""
+        test_dir = tmp_path / "test-photos"
+        test_dir.mkdir()
+
+        config = Config(test_mode=True)
+        config.load_config()
+        config._config["backup"]["source_path"] = str(test_dir)
+
+        monitor = DriveMonitor(config=config)
+        monitor.start()
+        monitor.check_for_changes()
+        monitor.save_state()
+
+        # State file should be in test state directory
+        from photo_backup.state_utils import get_state_directories
+
+        dirs = get_state_directories(test_mode=True)
+        state_file = Path(dirs["state"]) / monitor._state_file
+        assert state_file.exists()
+
+    def test_state_no_previous_state(self, tmp_path):
+        """Test starting with no previous state (fresh start)."""
+        test_dir = tmp_path / "test-photos"
+        test_dir.mkdir()
+
+        config = Config(test_mode=True)
+        config.load_config()
+        config._config["backup"]["source_path"] = str(test_dir)
+
+        monitor = DriveMonitor(config=config)
+
+        # Fresh state
+        assert monitor._monitor_state.total_checks == 0
+        assert monitor._monitor_state.total_changes_detected == 0
+        assert monitor._monitor_state.last_check_time is None
+        assert monitor._monitor_state.last_change_time is None
+        assert len(monitor._monitor_state.change_history) == 0
+
+    def test_state_serialization(self):
+        """Test MonitorStateData serialization and deserialization."""
+        from datetime import datetime
+
+        # Create state with data
+        state1 = MonitorStateData(
+            total_checks=5,
+            total_changes_detected=10,
+            watch_path="/test/path",
+        )
+        state1.update_check(datetime(2025, 1, 1, 12, 0, 0))
+        state1.update_changes(3, datetime(2025, 1, 1, 12, 0, 0))
+
+        # Serialize
+        data = state1.to_dict()
+        # total_checks should be 6 now (5 + 1 from update_check)
+        assert data["total_checks"] == 6
+        # total_changes_detected should be 13 (10 + 3 from update_changes)
+        assert data["total_changes_detected"] == 13
+        assert data["watch_path"] == "/test/path"
+        assert data["last_check_time"] is not None
+
+        # Deserialize
+        state2 = MonitorStateData.from_dict(data)
+        assert state2.total_checks == 6
+        assert state2.total_changes_detected == 13
+        assert state2.watch_path == "/test/path"
+        assert state2.last_check_time == datetime(2025, 1, 1, 12, 0, 0)

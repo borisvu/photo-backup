@@ -383,6 +383,8 @@ backup-to-s3/                  # Project root directory
   - `MonitorEvent`: Enum of file, directory, drive, timer, and state events
   - `MonitorState`: Enum of monitor states (idle, watching, processing, stopped, error)
   - `ChangeSummary`: Dataclass for aggregated change statistics
+- **`monitor/state.py`**: Persistent state management
+  - `MonitorStateData`: Dataclass for monitor state persistence
 
 **Key Features**:
 
@@ -397,6 +399,7 @@ backup-to-s3/                  # Project root directory
 - Recursive directory scanning with relative path tracking
 - Change tracking with detailed event recording
 - Change debouncing to batch rapid file operations
+- Persistent state management with automatic saves
 
 **Monitoring Events**:
 
@@ -465,11 +468,31 @@ backup-to-s3/                  # Project root directory
 - Independent of file changes: Timer tracks checks regardless of results
 - Backstop for missed file system events (sleep, unmount, etc.)
 
-**Future Enhancements** (Tasks 69-72):
+**State Persistence**:
 
-- Monitor state persistence
-- Status reporting
+- Persistent state tracking via `MonitorStateData` dataclass
+- Automatic state saves after each check (configurable)
+- State file locations:
+  - Production: `~/Library/Application Support/photo-backup/monitor_state.json`
+  - Test mode: `/tmp/photo-backup-test/state/monitor_state.json`
+- Persisted data:
+  - Check timestamps (`last_check_time`, `last_change_time`)
+  - Cumulative statistics (`total_checks`, `total_changes_detected`)
+  - Change history (last 100 events, limited size)
+  - Watch path configuration
+- API methods:
+  - `load_state()`: Load previously saved state from disk
+  - `save_state()`: Persist current state to disk
+- Automatic state updates: `_update_state_from_check()` called after each check
+- Enables continuity across monitor restarts
+- State survives system reboots and service restarts
+- Uses existing `state_utils` infrastructure
+
+**Future Enhancements** (Tasks 70-72):
+
+- Status reporting with historical data
 - Change reset after backup
+- Monitor module complete
 
 ### 9. Verification Module (`verify.py`) - Future
 
