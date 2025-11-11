@@ -759,7 +759,69 @@ Split the file into several filed under a folder module.
 - Reset after backup
 - Clear change list
 - Update timestamps
-  **Test**: Reset works after test backup**Test**: Loop runs with test timing
+  **Test**: Reset works after test backup
+
+### Task 72: Monitor Module Complete
+
+**Goal**: Finalize monitor module
+
+- Review all monitor functionality
+- Ensure integration points documented
+- Verify all tests passing
+- Update architecture documentation
+  **Test**: All monitor tests pass, module ready for integration
+
+## Phase 8: Service Management (Tasks 73-82)
+
+### Task 73: Create Service Module
+
+**Goal**: Basic service structure
+
+- Create `photo_backup/service.py`
+- Add `ServiceManager` class
+- Define service lifecycle
+- Support test mode
+  **Test**: Can instantiate service manager
+
+### Task 74: Add Service Loop
+
+**Goal**: Main service loop
+
+- Implement run loop
+- Check monitor for changes
+- Trigger backup when needed
+- Handle interrupts
+  **Test**: Loop runs with test timing
+
+### Task 75: Implement Start Command
+
+**Goal**: Start service
+
+- Add `photo-backup start` command
+- Initialize monitor
+- Start service loop
+- Run in background
+  **Test**: Starts in test mode
+
+### Task 76: Add Status Command
+
+**Goal**: Check service status
+
+- Add `photo-backup status` command
+- Show running state
+- Display monitor status
+- Show last backup time
+  **Test**: Shows test service status
+
+### Task 77: Create Health Checks
+
+**Goal**: Monitor service health
+
+- Check process running
+- Verify monitor working
+- Test connectivity
+- Report issues
+  **Test**: Health checks work in test mode
 
 ### Task 78: Implement Stop Command
 
@@ -812,7 +874,7 @@ Split the file into several filed under a folder module.
 - Verify Minio has all files
   **Test**: Complete service works with Minio
 
-## Phase 8: Installation System (Tasks 83-92)
+## Phase 9: Installation System (Tasks 83-92)
 
 ### Task 83: Create Install Script
 
@@ -914,7 +976,7 @@ Split the file into several filed under a folder module.
 - Verify operation
   **Test**: Complete test install works
 
-## Phase 9: Verification System (Tasks 93-103)
+## Phase 10: Verification System (Tasks 93-103)
 
 ### Task 93: Create Verify Module
 
