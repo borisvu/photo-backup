@@ -8,9 +8,7 @@ This module provides CLI commands for managing the photo backup service:
 - status: Show service status
 """
 
-import logging
 import sys
-from pathlib import Path
 
 import click
 
@@ -62,7 +60,7 @@ def start(ctx, background, foreground):
     if foreground and background:
         click.echo("Error: Cannot specify both --foreground and --background")
         sys.exit(1)
-    
+
     if foreground:
         run_in_background = False
     elif background:
@@ -73,10 +71,10 @@ def start(ctx, background, foreground):
 
     mode_text = "TEST MODE" if test_mode else "PRODUCTION MODE"
     run_mode_text = "background" if run_in_background else "foreground"
-    
+
     logger.info(f"Starting photo backup service in {mode_text}")
     logger.info(f"Run mode: {run_mode_text}")
-    
+
     click.echo(f"Starting photo backup service ({mode_text}, {run_mode_text})...")
 
     if dry_run:
@@ -102,10 +100,10 @@ def start(ctx, background, foreground):
 
         click.echo("Service starting...")
         click.echo("Press Ctrl+C to stop the service")
-        
+
         # Start service (blocks until stopped)
         service.start()
-        
+
         click.echo("Service stopped.")
         logger.info("Service stopped normally")
 
@@ -131,10 +129,10 @@ def stop(ctx):
         photo-backup stop
     """
     test_mode = ctx.obj.get("test_mode", False)
-    
+
     config = Config(test_mode=test_mode)
     config.load_config()
-    
+
     job_id = generate_job_id("stop")
     logger = setup_logger_from_config(config, job_id, "photo_backup.service")
 
@@ -156,13 +154,12 @@ def restart(ctx):
         photo-backup restart
     """
     test_mode = ctx.obj.get("test_mode", False)
-    
+
     config = Config(test_mode=test_mode)
     config.load_config()
-    
+
     job_id = generate_job_id("restart")
     logger = setup_logger_from_config(config, job_id, "photo_backup.service")
 
     click.echo("Restart command not yet implemented")
     logger.info("Restart command called (not yet implemented)")
-

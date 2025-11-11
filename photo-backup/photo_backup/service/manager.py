@@ -7,13 +7,11 @@ operation of the photo backup system by coordinating the monitor and backup engi
 
 import logging
 import signal
-import sys
 import time
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from ..backup import BackupEngine
 from ..config.config import Config
@@ -89,12 +87,12 @@ class ServiceManager:
         self.backup_engine = backup_engine or BackupEngine(config, test_mode=config.test_mode)
 
         # Signal handlers for graceful shutdown
-        self._original_sigint_handler = None
-        self._original_sigterm_handler = None
+        # Type matches signal.signal() return: Callable | int (SIG_DFL/SIG_IGN) | None
+        self._original_sigint_handler: Any = None
+        self._original_sigterm_handler: Any = None
 
         self.logger.info(
-            f"ServiceManager initialized (test_mode={config.test_mode}, "
-            f"loop_interval={self._loop_interval}s)"
+            f"ServiceManager initialized (test_mode={config.test_mode}, loop_interval={self._loop_interval}s)"
         )
 
     @property
@@ -137,13 +135,13 @@ class ServiceManager:
             signal.signal(signal.SIGTERM, self._original_sigterm_handler)
         self.logger.debug("Original signal handlers restored")
 
-    def _handle_shutdown_signal(self, signum: int, frame: Any) -> None:
+    def _handle_shutdown_signal(self, signum: int, _frame: Any) -> None:
         """
         Handle shutdown signals (SIGINT, SIGTERM).
 
         Args:
             signum: Signal number
-            frame: Current stack frame
+            _frame: Current stack frame (unused)
         """
         signal_name = "SIGINT" if signum == signal.SIGINT else "SIGTERM"
         self.logger.info(f"Received {signal_name}, initiating graceful shutdown...")
@@ -214,27 +212,25 @@ class ServiceManager:
                 # Log periodic status
                 if self._status.loop_count % 10 == 1:
                     self.logger.debug(
-                        f"Service loop iteration {self._status.loop_count} "
-                        f"(running for {self._get_uptime()})"
+                        f"Service loop iteration {self._status.loop_count} (running for {self._get_uptime()})"
                     )
 
                 # Check if it's time to poll the monitor
                 if self.monitor.should_check():
                     self.logger.debug("Checking monitor for changes...")
-                    
+
                     # Check for changes
                     has_changes = self.monitor.check_for_changes()
-                    
+
                     if has_changes:
                         # Get change summary
                         summary = self.monitor.get_change_summary()
                         if summary:
                             self.logger.info(
-                                f"Changes detected: {summary.total_files} files, "
-                                f"{summary.get_formatted_size()}"
+                                f"Changes detected: {summary.total_files} files, {summary.get_formatted_size()}"
                             )
                             self.logger.debug(f"Change details: {summary}")
-                            
+
                             # Trigger backup
                             self._trigger_backup(summary)
                     else:
@@ -251,38 +247,38 @@ class ServiceManager:
 
         self.logger.info(f"Service loop exited after {self._status.loop_count} iterations")
 
-    def _trigger_backup(self, summary: Any) -> None:
+    def _trigger_backup(self, _summary: Any) -> None:
         """
         Trigger a backup operation.
 
         Args:
-            summary: ChangeSummary from monitor with details of detected changes
+            _summary: ChangeSummary from monitor with details of detected changes (logged already)
         """
         try:
             self.logger.info("Triggering backup operation...")
-            
+
             # Create backup job
             job = self.backup_engine.create_backup_job()
             self.logger.info(f"Created backup job: {job}")
-            
+
             # Execute backup
             stats = self.backup_engine.sync_with_stats(job)
-            
+
             if stats.success:
+                # Format size from bytes_transferred
+                total_mb = stats.bytes_transferred / (1024 * 1024)
+                size_display = f"{total_mb:.1f} MB" if total_mb < 1024 else f"{total_mb / 1024:.1f} GB"
+
                 self.logger.info(
-                    f"Backup completed successfully: "
-                    f"{stats.files_transferred} files transferred, "
-                    f"{stats.total_size_display}"
+                    f"Backup completed successfully: {stats.files_transferred} files transferred, {size_display}"
                 )
-                
+
                 # Reset monitor changes after successful backup
                 self.monitor.reset_changes()
                 self.logger.debug("Monitor changes reset after successful backup")
             else:
-                self.logger.error(
-                    f"Backup failed: {stats.error_message or 'Unknown error'}"
-                )
-                
+                self.logger.error(f"Backup failed: {stats.error_message or 'Unknown error'}")
+
         except Exception as e:
             self.logger.error(f"Error triggering backup: {e}", exc_info=True)
 
@@ -338,4 +334,3 @@ class ServiceManager:
             f"loop_count={self._status.loop_count}, "
             f"test_mode={self.config.test_mode})"
         )
-

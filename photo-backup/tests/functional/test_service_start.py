@@ -52,45 +52,45 @@ class TestStartCommandBasics:
         assert "--background" in result.output
         assert "--foreground" in result.output
 
-    def test_start_in_test_mode_foreground(self, cli_runner, mock_service_manager):
+    def test_start_in_test_mode_foreground(self, cli_runner, _mock_service_manager):
         """Test starting service in test mode (foreground by default)."""
         result = cli_runner.invoke(main, ["--test-mode", "start"])
-        
+
         assert result.exit_code == 0
         assert "Starting photo backup service" in result.output
         assert "TEST MODE" in result.output
         assert "foreground" in result.output
 
-    def test_start_shows_configuration(self, cli_runner, mock_service_manager):
+    def test_start_shows_configuration(self, cli_runner, _mock_service_manager):
         """Test that start command shows configuration."""
         result = cli_runner.invoke(main, ["--test-mode", "start"])
-        
+
         assert "Monitor path:" in result.output
         assert "Destination:" in result.output
         assert "Check interval:" in result.output
         assert "Loop interval:" in result.output
 
-    def test_start_with_dry_run(self, cli_runner, mock_service_manager):
+    def test_start_with_dry_run(self, cli_runner, _mock_service_manager):
         """Test starting service in dry-run mode."""
         result = cli_runner.invoke(main, ["--test-mode", "--dry-run", "start"])
-        
+
         assert "DRY RUN MODE" in result.output
 
 
 class TestStartCommandModes:
     """Test foreground/background mode selection."""
 
-    def test_start_with_foreground_flag(self, cli_runner, mock_service_manager):
+    def test_start_with_foreground_flag(self, cli_runner, _mock_service_manager):
         """Test starting with explicit foreground flag."""
         result = cli_runner.invoke(main, ["--test-mode", "start", "--foreground"])
-        
+
         assert result.exit_code == 0
         assert "foreground" in result.output.lower()
 
-    def test_start_with_background_flag(self, cli_runner, mock_service_manager):
+    def test_start_with_background_flag(self, cli_runner, _mock_service_manager):
         """Test starting with explicit background flag."""
         result = cli_runner.invoke(main, ["--test-mode", "start", "--background"])
-        
+
         assert result.exit_code == 0
         # Background mode not fully implemented yet, should show warning
         assert "background" in result.output.lower()
@@ -98,7 +98,7 @@ class TestStartCommandModes:
     def test_start_cannot_specify_both_modes(self, cli_runner):
         """Test that specifying both foreground and background fails."""
         result = cli_runner.invoke(main, ["--test-mode", "start", "--foreground", "--background"])
-        
+
         assert result.exit_code == 1
         assert "Cannot specify both" in result.output
 
@@ -109,7 +109,7 @@ class TestStartCommandIntegration:
     def test_start_creates_service_manager(self, cli_runner, mock_service_manager):
         """Test that start command creates ServiceManager."""
         result = cli_runner.invoke(main, ["--test-mode", "start"])
-        
+
         # Service should initialize
         assert result.exit_code == 0
         assert "Starting photo backup service" in result.output
@@ -119,12 +119,12 @@ class TestStartCommandIntegration:
     def test_start_calls_service_start_method(self, cli_runner, mock_service_manager):
         """Test that start command calls ServiceManager.start()."""
         result = cli_runner.invoke(main, ["--test-mode", "start"])
-        
+
         assert result.exit_code == 0
         # Verify start() was called on the service instance
         mock_service_manager.return_value.start.assert_called_once()
 
-    def test_start_shows_press_ctrl_c_message(self, cli_runner, mock_service_manager):
+    def test_start_shows_press_ctrl_c_message(self, cli_runner, _mock_service_manager):
         """Test that start shows Ctrl+C message."""
         result = cli_runner.invoke(main, ["--test-mode", "start"])
         assert "Press Ctrl+C" in result.output or "Service" in result.output
@@ -137,9 +137,9 @@ class TestStartCommandErrors:
         """Test that start handles service errors gracefully."""
         # Make service.start() raise an exception
         mock_service_manager.return_value.start.side_effect = Exception("Test error")
-        
+
         result = cli_runner.invoke(main, ["--test-mode", "start"])
-        
+
         assert result.exit_code == 1
         assert "Error starting service" in result.output
 
@@ -170,4 +170,3 @@ class TestRestartCommandPlaceholder:
         """Test that restart command shows not implemented message."""
         result = cli_runner.invoke(main, ["--test-mode", "restart"])
         assert "not yet implemented" in result.output
-
