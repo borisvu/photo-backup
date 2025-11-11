@@ -510,9 +510,33 @@ backup-to-s3/                  # Project root directory
 - Integrated with persistent state for historical context
 - Useful for debugging, monitoring, and user feedback
 
-**Future Enhancements** (Tasks 71-72):
+**Change Reset**:
 
-- Change reset after backup
+- Reset functionality for clearing changes after backup
+- Two reset methods with different scopes:
+  - `reset_changes()`: Clear pending changes after successful backup
+  - `clear_all_state()`: Full state reset for testing/debugging
+- `reset_changes()` behavior:
+  - Clears pending changes list
+  - Resets last change time
+  - Preserves file snapshot for continued monitoring
+  - Logs CHANGES_RESET event
+  - Allows detection of new changes immediately
+- `clear_all_state()` behavior:
+  - Clears all monitoring state (more aggressive)
+  - Resets pending changes, snapshot, times, history
+  - Logs STATE_CLEARED warning event
+  - Used for testing or complete resets
+- Typical workflow:
+  1. Monitor detects changes
+  2. Backup engine processes changes
+  3. After successful backup, calls `reset_changes()`
+  4. Monitor ready to detect next batch of changes
+- Preserves persistent state (cumulative statistics remain)
+- Enables continuous monitoring with discrete backup batches
+
+**Future Enhancements** (Task 72):
+
 - Monitor module complete
 
 ### 9. Verification Module (`verify.py`) - Future

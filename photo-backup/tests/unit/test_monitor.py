@@ -1765,3 +1765,252 @@ class TestMonitorStatus:
         # Should show "Never" for times
         assert "Time Since Last Check: Never" in status_str
         assert "Last Check: Never" in status_str
+
+
+class TestChangeReset:
+    """Tests for change reset functionality."""
+
+    def test_reset_changes_clears_pending_list(self, tmp_path):
+        """Test that reset_changes clears the pending changes list."""
+        test_dir = tmp_path / "test-photos"
+        test_dir.mkdir()
+
+        config = Config(test_mode=True)
+        config.load_config()
+        config._config["backup"]["source_path"] = str(test_dir)
+
+        monitor = DriveMonitor(config=config)
+        monitor.start()
+        monitor.check_for_changes()
+
+        # Add files and detect changes
+        (test_dir / "photo1.jpg").write_text("test 1")
+        (test_dir / "photo2.jpg").write_text("test 2")
+        monitor.check_for_changes()
+
+        # Should have pending changes
+        assert len(monitor._changes_detected) == 2
+
+        # Reset changes
+        monitor.reset_changes()
+
+        # Pending changes should be cleared
+        assert len(monitor._changes_detected) == 0
+
+    def test_reset_changes_clears_last_change_time(self, tmp_path):
+        """Test that reset_changes clears the last change time."""
+        test_dir = tmp_path / "test-photos"
+        test_dir.mkdir()
+
+        config = Config(test_mode=True)
+        config.load_config()
+        config._config["backup"]["source_path"] = str(test_dir)
+
+        monitor = DriveMonitor(config=config)
+        monitor.start()
+        monitor.check_for_changes()
+
+        # Add file and detect change
+        (test_dir / "photo.jpg").write_text("test")
+        monitor.check_for_changes()
+
+        # Should have last change time
+        assert monitor._last_change_time is not None
+
+        # Reset changes
+        monitor.reset_changes()
+
+        # Last change time should be cleared
+        assert monitor._last_change_time is None
+
+    def test_reset_changes_logs_event(self, tmp_path):
+        """Test that reset_changes logs an event."""
+        test_dir = tmp_path / "test-photos"
+        test_dir.mkdir()
+
+        config = Config(test_mode=True)
+        config.load_config()
+        config._config["backup"]["source_path"] = str(test_dir)
+
+        monitor = DriveMonitor(config=config)
+        monitor.start()
+        monitor.check_for_changes()
+
+        # Add files
+        (test_dir / "photo1.jpg").write_text("test 1")
+        (test_dir / "photo2.jpg").write_text("test 2")
+        (test_dir / "photo3.jpg").write_text("test 3")
+        monitor.check_for_changes()
+
+        initial_event_count = len(monitor._event_history)
+
+        # Reset changes
+        monitor.reset_changes()
+
+        # Should have new event
+        assert len(monitor._event_history) == initial_event_count + 1
+        last_event = monitor._event_history[-1]
+        assert last_event[0] == MonitorEvent.CHANGES_RESET
+        assert "3 changes cleared" in last_event[1]
+
+    def test_reset_changes_preserves_snapshot(self, tmp_path):
+        """Test that reset_changes preserves the file snapshot."""
+        test_dir = tmp_path / "test-photos"
+        test_dir.mkdir()
+
+        config = Config(test_mode=True)
+        config.load_config()
+        config._config["backup"]["source_path"] = str(test_dir)
+
+        monitor = DriveMonitor(config=config)
+        monitor.start()
+
+        # Add files
+        (test_dir / "photo1.jpg").write_text("test 1")
+        (test_dir / "photo2.jpg").write_text("test 2")
+        monitor.check_for_changes()
+
+        snapshot_size = len(monitor._file_snapshot)
+
+        # Reset changes
+        monitor.reset_changes()
+
+        # Snapshot should be preserved
+        assert len(monitor._file_snapshot) == snapshot_size
+
+    def test_reset_changes_with_no_pending(self, tmp_path):
+        """Test that reset_changes handles no pending changes gracefully."""
+        test_dir = tmp_path / "test-photos"
+        test_dir.mkdir()
+
+        config = Config(test_mode=True)
+        config.load_config()
+        config._config["backup"]["source_path"] = str(test_dir)
+
+        monitor = DriveMonitor(config=config)
+        monitor.start()
+        monitor.check_for_changes()
+
+        # No pending changes
+        assert len(monitor._changes_detected) == 0
+
+        # Reset should work without error
+        monitor.reset_changes()
+
+        # Still no pending changes
+        assert len(monitor._changes_detected) == 0
+
+    def test_reset_allows_new_changes_detection(self, tmp_path):
+        """Test that after reset, new changes are detected properly."""
+        test_dir = tmp_path / "test-photos"
+        test_dir.mkdir()
+
+        config = Config(test_mode=True)
+        config.load_config()
+        config._config["backup"]["source_path"] = str(test_dir)
+
+        monitor = DriveMonitor(config=config)
+        monitor.start()
+        monitor.check_for_changes()
+
+        # First batch of changes
+        (test_dir / "photo1.jpg").write_text("test 1")
+        monitor.check_for_changes()
+        assert len(monitor._changes_detected) == 1
+
+        # Reset
+        monitor.reset_changes()
+        assert len(monitor._changes_detected) == 0
+
+        # Second batch of changes
+        (test_dir / "photo2.jpg").write_text("test 2")
+        (test_dir / "photo3.jpg").write_text("test 3")
+        monitor.check_for_changes()
+
+        # Should detect new changes
+        assert len(monitor._changes_detected) == 2
+
+    def test_clear_all_state_comprehensive(self, tmp_path):
+        """Test that clear_all_state clears everything."""
+        test_dir = tmp_path / "test-photos"
+        test_dir.mkdir()
+
+        config = Config(test_mode=True)
+        config.load_config()
+        config._config["backup"]["source_path"] = str(test_dir)
+
+        monitor = DriveMonitor(config=config)
+        monitor.start()
+
+        # Add files and detect changes
+        (test_dir / "photo1.jpg").write_text("test 1")
+        (test_dir / "photo2.jpg").write_text("test 2")
+        monitor.check_for_changes()
+
+        # Verify state is populated
+        assert len(monitor._changes_detected) > 0
+        assert len(monitor._file_snapshot) > 0
+        assert len(monitor._event_history) > 0
+        assert monitor._last_check_time is not None
+
+        # Clear all state
+        monitor.clear_all_state()
+
+        # Everything should be cleared
+        assert len(monitor._changes_detected) == 0
+        assert len(monitor._file_snapshot) == 0
+        assert monitor._last_change_time is None
+        assert monitor._last_check_time is None
+        # Note: event_history will have 1 entry from STATE_CLEARED event itself
+        assert monitor._event_history[-1][0] == MonitorEvent.STATE_CLEARED
+
+    def test_clear_all_state_logs_warning(self, tmp_path):
+        """Test that clear_all_state logs a warning event."""
+        test_dir = tmp_path / "test-photos"
+        test_dir.mkdir()
+
+        config = Config(test_mode=True)
+        config.load_config()
+        config._config["backup"]["source_path"] = str(test_dir)
+
+        monitor = DriveMonitor(config=config)
+        monitor.start()
+
+        # Clear all state
+        monitor.clear_all_state()
+
+        # Should have STATE_CLEARED event
+        last_event = monitor._event_history[-1]
+        assert last_event[0] == MonitorEvent.STATE_CLEARED
+
+    def test_reset_after_backup_workflow(self, tmp_path):
+        """Test typical workflow: detect changes, backup, reset, detect new changes."""
+        test_dir = tmp_path / "test-photos"
+        test_dir.mkdir()
+
+        config = Config(test_mode=True)
+        config.load_config()
+        config._config["backup"]["source_path"] = str(test_dir)
+
+        monitor = DriveMonitor(config=config)
+        monitor.start()
+        monitor.check_for_changes()
+
+        # 1. Detect first batch of changes
+        (test_dir / "photo1.jpg").write_text("test 1")
+        (test_dir / "photo2.jpg").write_text("test 2")
+        monitor.check_for_changes()
+        assert len(monitor._changes_detected) == 2
+
+        # 2. Simulate successful backup and reset
+        # (In real workflow, backup engine would call this)
+        monitor.reset_changes()
+        assert len(monitor._changes_detected) == 0
+
+        # 3. Detect second batch of changes
+        (test_dir / "photo3.jpg").write_text("test 3")
+        monitor.check_for_changes()
+        assert len(monitor._changes_detected) == 1
+
+        # Verify snapshot still tracks all files
+        assert len(monitor._file_snapshot) == 3

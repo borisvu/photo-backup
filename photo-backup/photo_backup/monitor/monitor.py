@@ -284,6 +284,48 @@ class DriveMonitor:
 
         return "\n".join(lines)
 
+    def reset_changes(self) -> None:
+        """
+        Reset change tracking after backup.
+
+        Clears the list of pending changes and resets the last change time.
+        This should be called after a successful backup to prepare for
+        tracking the next batch of changes.
+
+        Note: Does not affect persistent state or file snapshot.
+        """
+        changes_count = len(self._changes_detected)
+        self._changes_detected = []
+        self._last_change_time = None
+
+        if changes_count > 0:
+            self.logger.info(f"Reset {changes_count} pending changes after backup")
+            self._record_event(MonitorEvent.CHANGES_RESET, f"{changes_count} changes cleared")
+        else:
+            self.logger.debug("Reset called with no pending changes")
+
+    def clear_all_state(self) -> None:
+        """
+        Clear all monitoring state (for testing or reset scenarios).
+
+        This is a more aggressive reset that clears:
+        - Pending changes
+        - File snapshot
+        - Change times
+        - Event history
+
+        Does not affect persistent state on disk.
+        Use with caution - typically only needed for testing or complete resets.
+        """
+        self._changes_detected = []
+        self._file_snapshot = {}
+        self._last_change_time = None
+        self._last_check_time = None
+        self._event_history = []
+
+        self.logger.warning("Cleared all monitoring state (snapshot, changes, history)")
+        self._record_event(MonitorEvent.STATE_CLEARED, "All state cleared")
+
     def _record_event(self, event: MonitorEvent, details: str = "") -> None:
         """
         Record a monitoring event.

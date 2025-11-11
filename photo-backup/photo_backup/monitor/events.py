@@ -34,6 +34,8 @@ class MonitorEvent(Enum):
     MONITOR_STOPPED = "monitor_stopped"
     CHANGES_DETECTED = "changes_detected"
     NO_CHANGES = "no_changes"
+    CHANGES_RESET = "changes_reset"
+    STATE_CLEARED = "state_cleared"
 
 
 class MonitorState(Enum):
