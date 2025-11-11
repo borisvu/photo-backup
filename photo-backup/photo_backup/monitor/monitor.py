@@ -5,6 +5,8 @@ This module provides the DriveMonitor class for detecting changes
 in the photo directory and triggering backups accordingly.
 """
 
+import time
+
 from pathlib import Path
 
 from ..config import Config
@@ -42,11 +44,16 @@ class DriveMonitor:
         self._file_snapshot: dict[str, float] = {}  # path -> mtime mapping
         self._changes_detected: list[tuple[str, MonitorEvent]] = []  # (path, event) list
 
+        # Debouncing state
+        self._last_change_time: float | None = None
+        self._debounce_delay: float = self.config.get("monitoring.debounce_delay_seconds", 30.0)
+
         # Initialize watch path based on mode
         self._initialize_watch_path()
 
         self.logger.info(f"DriveMonitor initialized in {'test' if self.config.test_mode else 'production'} mode")
         self.logger.debug(f"Monitoring path: {self.watch_path}")
+        self.logger.debug(f"Debounce delay: {self._debounce_delay}s")
 
     def _initialize_watch_path(self) -> None:
         """Initialize the path to watch based on configuration."""
@@ -142,6 +149,8 @@ class DriveMonitor:
                 - drive_mounted: Whether the drive is currently mounted
                 - files_tracked: Number of files in snapshot
                 - changes_pending: Number of changes detected
+                - debouncing: Whether currently in debounce window
+                - time_since_last_change: Seconds since last change (None if no changes)
         """
         return {
             "state": self.state.value,
@@ -151,6 +160,8 @@ class DriveMonitor:
             "drive_mounted": self.is_drive_mounted(),
             "files_tracked": len(self._file_snapshot),
             "changes_pending": len(self._changes_detected),
+            "debouncing": self.is_debouncing(),
+            "time_since_last_change": self.get_time_since_last_change(),
         }
 
     def _record_event(self, event: MonitorEvent, details: str = "") -> None:
@@ -261,6 +272,8 @@ class DriveMonitor:
 
         # Log summary
         if self._changes_detected:
+            # Update last change time for debouncing
+            self._last_change_time = time.time()
             self.logger.info(f"Detected {len(self._changes_detected)} file changes")
             self._record_event(MonitorEvent.CHANGES_DETECTED, f"{len(self._changes_detected)} changes")
             return True
@@ -282,3 +295,31 @@ class DriveMonitor:
         """Clear the list of detected changes."""
         self._changes_detected.clear()
         self.logger.debug("Cleared detected changes")
+
+    def is_debouncing(self) -> bool:
+        """
+        Check if monitor is currently in debounce window.
+
+        Returns True if changes were detected and we're still within the
+        debounce delay period (waiting for activity to settle).
+
+        Returns:
+            bool: True if in debounce window, False otherwise
+        """
+        if self._last_change_time is None:
+            return False
+
+        elapsed = time.time() - self._last_change_time
+        return elapsed < self._debounce_delay
+
+    def get_time_since_last_change(self) -> float | None:
+        """
+        Get the time elapsed since the last change was detected.
+
+        Returns:
+            float | None: Seconds since last change, or None if no changes detected
+        """
+        if self._last_change_time is None:
+            return None
+
+        return time.time() - self._last_change_time

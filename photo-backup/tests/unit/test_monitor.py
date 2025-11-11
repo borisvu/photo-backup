@@ -637,3 +637,203 @@ class TestDriveMonitorIntegration:
         # Event histories should be independent
         assert len(monitor1.get_event_history()) == 1
         assert len(monitor2.get_event_history()) == 0
+
+
+class TestDebouncing:
+    """Tests for change debouncing functionality."""
+
+    def test_no_debouncing_initially(self, tmp_path):
+        """Test that monitor is not debouncing before any changes."""
+        test_dir = tmp_path / "test-photos"
+        test_dir.mkdir()
+
+        config = Config(test_mode=True)
+        config.load_config()
+        config._config["backup"]["source_path"] = str(test_dir)
+
+        monitor = DriveMonitor(config=config)
+
+        # No changes yet, should not be debouncing
+        assert not monitor.is_debouncing()
+        assert monitor.get_time_since_last_change() is None
+
+        # Status should reflect no debouncing
+        status = monitor.get_status()
+        assert status["debouncing"] is False
+        assert status["time_since_last_change"] is None
+
+    def test_debouncing_after_changes(self, tmp_path):
+        """Test that monitor enters debounce mode after detecting changes."""
+        test_dir = tmp_path / "test-photos"
+        test_dir.mkdir()
+
+        config = Config(test_mode=True)
+        config.load_config()
+        config._config["backup"]["source_path"] = str(test_dir)
+
+        monitor = DriveMonitor(config=config)
+        monitor.start()
+
+        # Add a file
+        test_file = test_dir / "photo.jpg"
+        test_file.write_text("test photo")
+
+        # Check for changes
+        assert monitor.check_for_changes() is True
+
+        # Should be debouncing immediately after changes
+        assert monitor.is_debouncing() is True
+        time_since = monitor.get_time_since_last_change()
+        assert time_since is not None
+        assert time_since < 0.1  # Very recent
+
+        # Status should reflect debouncing
+        status = monitor.get_status()
+        assert status["debouncing"] is True
+        assert status["time_since_last_change"] is not None
+
+    def test_debounce_window_expires(self, tmp_path):
+        """Test that debounce window expires after configured delay."""
+        import time
+
+        test_dir = tmp_path / "test-photos"
+        test_dir.mkdir()
+
+        config = Config(test_mode=True)
+        config.load_config()
+        config._config["backup"]["source_path"] = str(test_dir)
+
+        monitor = DriveMonitor(config=config)
+        monitor.start()
+
+        # Add a file to trigger changes
+        test_file = test_dir / "photo.jpg"
+        test_file.write_text("test photo")
+        assert monitor.check_for_changes() is True
+
+        # Should be debouncing immediately
+        assert monitor.is_debouncing() is True
+
+        # Wait for debounce delay to expire (test mode is 0.5s)
+        time.sleep(0.6)
+
+        # Should no longer be debouncing
+        assert monitor.is_debouncing() is False
+        time_since = monitor.get_time_since_last_change()
+        assert time_since is not None
+        assert time_since >= 0.6  # At least 0.6 seconds have passed
+
+    def test_rapid_changes_stay_in_debounce(self, tmp_path):
+        """Test that rapid changes keep monitor in debounce window."""
+        import time
+
+        test_dir = tmp_path / "test-photos"
+        test_dir.mkdir()
+
+        config = Config(test_mode=True)
+        config.load_config()
+        config._config["backup"]["source_path"] = str(test_dir)
+
+        monitor = DriveMonitor(config=config)
+        monitor.start()
+
+        # Add first file
+        file1 = test_dir / "photo1.jpg"
+        file1.write_text("photo 1")
+        assert monitor.check_for_changes() is True
+        assert monitor.is_debouncing() is True
+
+        # Wait a bit but not enough for debounce to expire
+        time.sleep(0.2)
+
+        # Add second file - should reset debounce timer
+        file2 = test_dir / "photo2.jpg"
+        file2.write_text("photo 2")
+        assert monitor.check_for_changes() is True
+
+        # Should still be debouncing with fresh timer
+        assert monitor.is_debouncing() is True
+        time_since = monitor.get_time_since_last_change()
+        assert time_since is not None
+        assert time_since < 0.1  # Timer should be reset
+
+        # Wait another bit
+        time.sleep(0.2)
+
+        # Add third file - should reset debounce timer again
+        file3 = test_dir / "photo3.jpg"
+        file3.write_text("photo 3")
+        assert monitor.check_for_changes() is True
+
+        # Should still be debouncing with fresh timer
+        assert monitor.is_debouncing() is True
+        time_since = monitor.get_time_since_last_change()
+        assert time_since is not None
+        assert time_since < 0.1  # Timer should be reset again
+
+    def test_debounce_delay_from_config(self):
+        """Test that debounce delay is loaded from config."""
+        # Create config with custom debounce delay
+        config = Config(test_mode=True)
+        config.load_config()
+        custom_delay = config.get("monitoring.debounce_delay_seconds")
+
+        # Should be 0.5 in test mode
+        assert custom_delay == 0.5
+
+        # Create monitor and verify it uses the config value
+        monitor = DriveMonitor(config=config)
+        assert monitor._debounce_delay == 0.5
+
+    def test_no_debounce_when_no_changes(self, tmp_path):
+        """Test that monitor doesn't enter debounce when no changes detected."""
+        test_dir = tmp_path / "test-photos"
+        test_dir.mkdir()
+
+        config = Config(test_mode=True)
+        config.load_config()
+        config._config["backup"]["source_path"] = str(test_dir)
+
+        monitor = DriveMonitor(config=config)
+        monitor.start()
+
+        # Check for changes when there are none
+        assert monitor.check_for_changes() is False
+
+        # Should not be debouncing
+        assert monitor.is_debouncing() is False
+        assert monitor.get_time_since_last_change() is None
+
+        # Status should reflect no debouncing
+        status = monitor.get_status()
+        assert status["debouncing"] is False
+        assert status["time_since_last_change"] is None
+
+    def test_debounce_persists_across_checks(self, tmp_path):
+        """Test that debounce state persists across multiple check calls."""
+        import time
+
+        test_dir = tmp_path / "test-photos"
+        test_dir.mkdir()
+
+        config = Config(test_mode=True)
+        config.load_config()
+        config._config["backup"]["source_path"] = str(test_dir)
+
+        monitor = DriveMonitor(config=config)
+        monitor.start()
+
+        # Add a file to trigger changes
+        test_file = test_dir / "photo.jpg"
+        test_file.write_text("test photo")
+        assert monitor.check_for_changes() is True
+        assert monitor.is_debouncing() is True
+
+        # Check again without changes - should still be debouncing
+        time.sleep(0.1)
+        assert monitor.check_for_changes() is False
+        assert monitor.is_debouncing() is True  # Still within 0.5s window
+
+        # Wait for debounce to expire
+        time.sleep(0.5)
+        assert monitor.is_debouncing() is False

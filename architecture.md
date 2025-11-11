@@ -395,6 +395,7 @@ backup-to-s3/                  # Project root directory
 - Detects new, modified, and deleted files
 - Recursive directory scanning with relative path tracking
 - Change tracking with detailed event recording
+- Change debouncing to batch rapid file operations
 
 **Monitoring Events**:
 
@@ -417,12 +418,25 @@ backup-to-s3/                  # Project root directory
 - Robust error handling for permission and I/O errors
 - Automatic snapshot updates after change detection
 
-**Future Enhancements** (Tasks 66-72):
+**Change Debouncing**:
 
-- Change debouncing to batch rapid changes
+- Prevents premature backup triggers during batch file operations
+- Configurable delay period:
+  - Production: 120 seconds (2 minutes - allows large photo imports to complete)
+  - Test mode: 0.5 seconds (fast test execution)
+- Timer resets on each new change detected
+- API methods:
+  - `is_debouncing()`: Check if in debounce window
+  - `get_time_since_last_change()`: Time elapsed since last change
+- Status includes debouncing state and timing information
+- Enables efficient batching of rapid changes (e.g., copying 100+ photos)
+
+**Future Enhancements** (Tasks 67-72):
+
+- Change summaries with file counts and sizes
 - 4-hour check interval timer (configurable in test mode)
 - Monitor state persistence
-- Status reporting and change summaries
+- Status reporting
 - Timer-based periodic checking
 
 ### 9. Verification Module (`verify.py`) - Future

@@ -31,6 +31,7 @@ DEFAULT_CONFIG = {
         "check_interval_hours": 4,
         "mount_delay_minutes": 15,
         "change_delay_minutes": 30,
+        "debounce_delay_seconds": 120,
         "max_retries": 3,
         "retry_delay_minutes": 5,
         "health_check_enabled": True,
@@ -111,6 +112,7 @@ DEFAULT_CONFIG_DOCS = {
         "check_interval_hours": "Interval between backup checks in hours (0.1-24)",
         "mount_delay_minutes": "Delay after mount detection before backup (1-60)",
         "change_delay_minutes": "Delay after file changes before backup (1-120)",
+        "debounce_delay_seconds": "Wait time after last change before processing (0.5-300)",
         "max_retries": "Maximum number of retry attempts for failed operations",
         "retry_delay_minutes": "Delay between retry attempts in minutes",
         "health_check_enabled": "Enable periodic health checks of the backup system",
@@ -191,6 +193,7 @@ TEST_MODE_DEFAULTS = {
         "check_interval_hours": 0.1,  # 6 minutes for testing
         "mount_delay_minutes": 1,
         "change_delay_minutes": 1,
+        "debounce_delay_seconds": 0.5,  # Short delay for fast tests
         "max_retries": 1,
         "retry_delay_minutes": 1,
         "health_check_enabled": False,  # Disable for testing
