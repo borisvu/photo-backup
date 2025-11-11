@@ -48,12 +48,18 @@ class DriveMonitor:
         self._last_change_time: float | None = None
         self._debounce_delay: float = self.config.get("monitoring.debounce_delay_seconds", 30.0)
 
+        # Timer state
+        self._last_check_time: float | None = None
+        check_interval_hours = self.config.get("monitoring.check_interval_hours", 4.0)
+        self._check_interval_seconds: float = check_interval_hours * 3600
+
         # Initialize watch path based on mode
         self._initialize_watch_path()
 
         self.logger.info(f"DriveMonitor initialized in {'test' if self.config.test_mode else 'production'} mode")
         self.logger.debug(f"Monitoring path: {self.watch_path}")
         self.logger.debug(f"Debounce delay: {self._debounce_delay}s")
+        self.logger.debug(f"Check interval: {check_interval_hours}h ({self._check_interval_seconds}s)")
 
     def _initialize_watch_path(self) -> None:
         """Initialize the path to watch based on configuration."""
@@ -151,6 +157,9 @@ class DriveMonitor:
                 - changes_pending: Number of changes detected
                 - debouncing: Whether currently in debounce window
                 - time_since_last_change: Seconds since last change (None if no changes)
+                - time_since_last_check: Seconds since last check (None if never checked)
+                - should_check_now: Whether check interval has elapsed
+                - check_interval_seconds: Configured check interval
         """
         return {
             "state": self.state.value,
@@ -162,6 +171,9 @@ class DriveMonitor:
             "changes_pending": len(self._changes_detected),
             "debouncing": self.is_debouncing(),
             "time_since_last_change": self.get_time_since_last_change(),
+            "time_since_last_check": self.get_time_since_last_check(),
+            "should_check_now": self.should_check(),
+            "check_interval_seconds": self._check_interval_seconds,
         }
 
     def _record_event(self, event: MonitorEvent, details: str = "") -> None:
@@ -234,9 +246,14 @@ class DriveMonitor:
         - Modified files (FILE_MODIFIED)
         - Deleted files (FILE_DELETED)
 
+        Updates the last check time for timer tracking.
+
         Returns:
             bool: True if changes were detected, False otherwise
         """
+        # Update check time
+        self._last_check_time = time.time()
+
         if not self.is_drive_mounted():
             self.logger.debug("Drive not mounted, skipping change detection")
             return False
@@ -323,6 +340,39 @@ class DriveMonitor:
             return None
 
         return time.time() - self._last_change_time
+
+    def should_check(self) -> bool:
+        """
+        Determine if it's time to check for changes based on the configured interval.
+
+        Returns True if:
+        - Never checked before (initial check)
+        - Check interval has elapsed since last check
+
+        This provides a passive timer mechanism - the caller should query this
+        method to determine if a check is needed.
+
+        Returns:
+            bool: True if check interval has elapsed or never checked
+        """
+        if self._last_check_time is None:
+            # Never checked before - should check immediately
+            return True
+
+        elapsed = time.time() - self._last_check_time
+        return elapsed >= self._check_interval_seconds
+
+    def get_time_since_last_check(self) -> float | None:
+        """
+        Get the time elapsed since the last check was performed.
+
+        Returns:
+            float | None: Seconds since last check, or None if never checked
+        """
+        if self._last_check_time is None:
+            return None
+
+        return time.time() - self._last_check_time
 
     def _get_file_size(self, relative_path: str) -> int:
         """

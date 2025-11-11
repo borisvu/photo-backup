@@ -447,12 +447,29 @@ backup-to-s3/                  # Project root directory
   - Deleted files tracked but don't contribute to size
 - Enables informed backup decisions and detailed logging
 
-**Future Enhancements** (Tasks 68-72):
+**Periodic Check Timer**:
 
-- 4-hour check interval timer (configurable in test mode)
+- Passive timer design (no background threads) - caller polls `should_check()`
+- Configurable check intervals:
+  - Production: 4 hours (14,400 seconds)
+  - Test mode: 6 minutes (360 seconds)
+- Ensures regular checks even if file watching misses events
+- Timer tracking:
+  - `_last_check_time`: Timestamp of last check
+  - `_check_interval_seconds`: Loaded from config
+- API methods:
+  - `should_check()`: Returns True if interval elapsed or never checked
+  - `get_time_since_last_check()`: Seconds since last check
+- Automatic reset: Timer updates on every `check_for_changes()` call
+- Status includes: `time_since_last_check`, `should_check_now`, `check_interval_seconds`
+- Independent of file changes: Timer tracks checks regardless of results
+- Backstop for missed file system events (sleep, unmount, etc.)
+
+**Future Enhancements** (Tasks 69-72):
+
 - Monitor state persistence
 - Status reporting
-- Timer-based periodic checking
+- Change reset after backup
 
 ### 9. Verification Module (`verify.py`) - Future
 
