@@ -49,7 +49,7 @@ phases:
   phase_7_monitoring:
     name: "Drive Monitoring"
     tasks_total: 10
-    tasks_completed: 8
+    tasks_completed: 9
     status: "in_progress"
     
   phase_8_service:
@@ -181,14 +181,14 @@ current_state:
 # Next steps
 next_steps:
   immediate:
-    - "Phase 7: Drive Monitoring in progress (80% complete - 8/10 tasks)"
-    - "Task 70: Add Monitor Status completed"
-    - "Ready for Task 71: Implement Change Reset"
+    - "Phase 7: Drive Monitoring in progress (90% complete - 9/10 tasks)"
+    - "Task 71: Implement Change Reset completed"
+    - "Ready for Task 72: Monitor Module Complete"
     
   upcoming:
-    - "Continue Phase 7: Drive Monitoring (Tasks 71-72)"
-    - "Task 71: Implement Change Reset - Clear change tracking after backup"
+    - "Complete Phase 7: Drive Monitoring (Task 72)"
     - "Task 72: Monitor Module Complete - Finalize monitor module"
+    - "Begin Phase 8: Service Management (Tasks 73-82)"
 
 # Phase 1 Achievements
 phase_1_achievements:
@@ -238,3 +238,4 @@ notes:
   - "Task 68: Add Timer Implementation completed - Passive timer design (4-hour interval, 6 minutes in test mode) for regular backstop checks, ensures nothing missed by file watching, 8 new unit tests (56 total tests passing)."
   - "Task 69: Create Monitor State completed - MonitorStateData dataclass for persistent state tracking, automatic saves after each check, state persistence across restarts, tracks check times/change times/statistics/history, 9 new unit tests (65 total tests passing)."
   - "Task 70: Add Monitor Status completed - Enhanced status reporting with get_status(), get_detailed_status(), get_pending_changes(), format_status() methods, includes persistent state and historical data, human-readable formatted reports, 9 new unit tests (74 total tests passing)."
+  - "Task 71: Implement Change Reset completed - reset_changes() and clear_all_state() methods for clearing changes after backup, preserves snapshot for continued monitoring, supports typical backup workflow (detect, backup, reset, repeat), new CHANGES_RESET and STATE_CLEARED events, 9 new unit tests (83 total tests passing)."
