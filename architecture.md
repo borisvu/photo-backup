@@ -488,9 +488,30 @@ backup-to-s3/                  # Project root directory
 - State survives system reboots and service restarts
 - Uses existing `state_utils` infrastructure
 
-**Future Enhancements** (Tasks 70-72):
+**Status Reporting**:
 
-- Status reporting with historical data
+- Comprehensive status reporting with multiple detail levels
+- Status methods:
+  - `get_status()`: Basic runtime and persistent state information
+  - `get_detailed_status()`: Includes pending changes and recent history
+  - `get_pending_changes()`: List of files with pending changes
+  - `format_status()`: Human-readable formatted status report
+- Status includes:
+  - Runtime state: current state, drive mounted, files tracked
+  - Pending changes: count and detailed list
+  - Timing information: debouncing, last check/change times
+  - Persistent statistics: total checks, total changes detected
+  - Historical data: recent change events
+- Formatted reports with organized sections:
+  - Drive Monitor Status (state, path, mode)
+  - Current Session (mount status, tracked files, pending changes)
+  - Timing (debouncing, time since events, check intervals)
+  - Persistent State (cumulative statistics, history count)
+- Integrated with persistent state for historical context
+- Useful for debugging, monitoring, and user feedback
+
+**Future Enhancements** (Tasks 71-72):
+
 - Change reset after backup
 - Monitor module complete
 

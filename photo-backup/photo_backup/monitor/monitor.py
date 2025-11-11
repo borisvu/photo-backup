@@ -7,6 +7,7 @@ in the photo directory and triggering backups accordingly.
 
 import time
 from datetime import datetime
+from typing import Any
 
 from pathlib import Path
 
@@ -150,7 +151,7 @@ class DriveMonitor:
         self.state = MonitorState.STOPPED
         self._record_event(MonitorEvent.MONITOR_STOPPED, str(self.watch_path))
 
-    def get_status(self) -> dict:
+    def get_status(self) -> dict[str, Any]:
         """
         Get current monitor status.
 
@@ -168,8 +169,9 @@ class DriveMonitor:
                 - time_since_last_check: Seconds since last check (None if never checked)
                 - should_check_now: Whether check interval has elapsed
                 - check_interval_seconds: Configured check interval
+                - persistent_state: Persistent state data (total_checks, total_changes, etc.)
         """
-        return {
+        status: dict[str, Any] = {
             "state": self.state.value,
             "watch_path": str(self.watch_path) if self.watch_path else None,
             "test_mode": self.is_test_mode,
@@ -183,6 +185,104 @@ class DriveMonitor:
             "should_check_now": self.should_check(),
             "check_interval_seconds": self._check_interval_seconds,
         }
+
+        # Add persistent state information
+        status["persistent_state"] = {
+            "total_checks": self._monitor_state.total_checks,
+            "total_changes_detected": self._monitor_state.total_changes_detected,
+            "last_check_time": (
+                self._monitor_state.last_check_time.isoformat() if self._monitor_state.last_check_time else None
+            ),
+            "last_change_time": (
+                self._monitor_state.last_change_time.isoformat() if self._monitor_state.last_change_time else None
+            ),
+            "change_history_count": len(self._monitor_state.change_history),
+        }
+
+        return status
+
+    def get_detailed_status(self) -> dict[str, Any]:
+        """
+        Get detailed monitor status including change history.
+
+        Returns:
+            dict: Comprehensive status information including:
+                - All fields from get_status()
+                - pending_changes: List of pending change details
+                - recent_history: Recent change events from persistent state
+        """
+        status = self.get_status()
+
+        # Add detailed pending changes
+        status["pending_changes"] = [
+            {"file": file_path, "event": event.value} for file_path, event in self._changes_detected
+        ]
+
+        # Add recent change history (last 10 events)
+        status["recent_history"] = self._monitor_state.change_history[-10:]
+
+        return status
+
+    def get_pending_changes(self) -> list[dict]:
+        """
+        Get list of pending changes with details.
+
+        Returns:
+            list[dict]: List of pending changes with file path and event type
+        """
+        return [{"file": file_path, "event": event.value} for file_path, event in self._changes_detected]
+
+    def format_status(self) -> str:
+        """
+        Format monitor status as human-readable string.
+
+        Returns:
+            str: Formatted status report
+        """
+        status = self.get_status()
+        persistent = status["persistent_state"]
+
+        lines = [
+            "=== Drive Monitor Status ===",
+            f"State: {status['state']}",
+            f"Watch Path: {status['watch_path']}",
+            f"Mode: {'Test' if status['test_mode'] else 'Production'}",
+            "",
+            "=== Current Session ===",
+            f"Drive Mounted: {status['drive_mounted']}",
+            f"Files Tracked: {status['files_tracked']}",
+            f"Pending Changes: {status['changes_pending']}",
+            f"Event Count: {status['event_count']}",
+            "",
+            "=== Timing ===",
+            f"Debouncing: {status['debouncing']}",
+        ]
+
+        if status["time_since_last_change"] is not None:
+            lines.append(f"Time Since Last Change: {status['time_since_last_change']:.1f}s")
+        else:
+            lines.append("Time Since Last Change: Never")
+
+        if status["time_since_last_check"] is not None:
+            lines.append(f"Time Since Last Check: {status['time_since_last_check']:.1f}s")
+        else:
+            lines.append("Time Since Last Check: Never")
+
+        lines.extend(
+            [
+                f"Should Check Now: {status['should_check_now']}",
+                f"Check Interval: {status['check_interval_seconds']:.0f}s",
+                "",
+                "=== Persistent State ===",
+                f"Total Checks: {persistent['total_checks']}",
+                f"Total Changes Detected: {persistent['total_changes_detected']}",
+                f"Last Check: {persistent['last_check_time'] or 'Never'}",
+                f"Last Change: {persistent['last_change_time'] or 'Never'}",
+                f"History Events: {persistent['change_history_count']}",
+            ]
+        )
+
+        return "\n".join(lines)
 
     def _record_event(self, event: MonitorEvent, details: str = "") -> None:
         """
