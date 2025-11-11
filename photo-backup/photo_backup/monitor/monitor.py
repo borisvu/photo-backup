@@ -11,7 +11,7 @@ from pathlib import Path
 
 from ..config import Config
 from ..logger import get_logger
-from .events import MonitorEvent, MonitorState
+from .events import ChangeSummary, MonitorEvent, MonitorState
 
 
 class DriveMonitor:
@@ -323,3 +323,79 @@ class DriveMonitor:
             return None
 
         return time.time() - self._last_change_time
+
+    def _get_file_size(self, relative_path: str) -> int:
+        """
+        Get the size of a file in bytes.
+
+        Args:
+            relative_path: Path relative to watch_path
+
+        Returns:
+            int: File size in bytes, or 0 if file cannot be accessed
+        """
+        if not self.watch_path:
+            return 0
+
+        try:
+            full_path = self.watch_path / relative_path
+            return full_path.stat().st_size
+        except (OSError, FileNotFoundError) as e:
+            self.logger.debug(f"Could not get size for {relative_path}: {e}")
+            return 0
+
+    def get_change_summary(self) -> ChangeSummary | None:
+        """
+        Get a summary of detected changes with statistics.
+
+        Provides aggregated information about changes including:
+        - Counts by change type (added/modified/deleted)
+        - Total size of changed files
+        - Grouping by directory
+
+        Returns:
+            ChangeSummary | None: Summary object with statistics, or None if no changes
+        """
+        if not self._changes_detected:
+            return None
+
+        summary = ChangeSummary()
+        summary.total_files = len(self._changes_detected)
+
+        # Track by directory
+        for file_path, event_type in self._changes_detected:
+            # Count by event type
+            if event_type == MonitorEvent.FILE_ADDED:
+                summary.added_count += 1
+                file_size = self._get_file_size(file_path)
+                summary.total_size += file_size
+            elif event_type == MonitorEvent.FILE_MODIFIED:
+                summary.modified_count += 1
+                file_size = self._get_file_size(file_path)
+                summary.total_size += file_size
+            elif event_type == MonitorEvent.FILE_DELETED:
+                summary.deleted_count += 1
+                # Deleted files don't contribute to size
+
+            # Group by directory
+            dir_path = str(Path(file_path).parent)
+            if dir_path == ".":
+                dir_path = "/"  # Root of watch directory
+
+            # Update directory counts
+            summary.by_directory[dir_path] = summary.by_directory.get(dir_path, 0) + 1
+
+            # Update directory sizes (only for added/modified files)
+            if event_type in (MonitorEvent.FILE_ADDED, MonitorEvent.FILE_MODIFIED):
+                file_size = self._get_file_size(file_path)
+                summary.by_directory_size[dir_path] = summary.by_directory_size.get(dir_path, 0) + file_size
+
+        self.logger.debug(
+            f"Change summary: {summary.total_files} files, "
+            f"{summary.added_count} added, "
+            f"{summary.modified_count} modified, "
+            f"{summary.deleted_count} deleted, "
+            f"{summary.get_formatted_size()}"
+        )
+
+        return summary

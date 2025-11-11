@@ -7,7 +7,7 @@ Tests the DriveMonitor class and monitoring events.
 from pathlib import Path
 
 from photo_backup.config import Config
-from photo_backup.monitor import DriveMonitor, MonitorEvent, MonitorState
+from photo_backup.monitor import ChangeSummary, DriveMonitor, MonitorEvent, MonitorState
 
 
 class TestMonitorEvents:
@@ -837,3 +837,274 @@ class TestDebouncing:
         # Wait for debounce to expire
         time.sleep(0.5)
         assert monitor.is_debouncing() is False
+
+
+class TestChangeSummary:
+    """Tests for change summary functionality."""
+
+    def test_summary_with_new_files(self, tmp_path):
+        """Test summary generation with only new files."""
+        test_dir = tmp_path / "test-photos"
+        test_dir.mkdir()
+
+        config = Config(test_mode=True)
+        config.load_config()
+        config._config["backup"]["source_path"] = str(test_dir)
+
+        monitor = DriveMonitor(config=config)
+        monitor.start()
+
+        # Add files
+        file1 = test_dir / "photo1.jpg"
+        file1.write_text("photo 1 content")
+        file2 = test_dir / "photo2.jpg"
+        file2.write_text("photo 2 longer content")
+
+        monitor.check_for_changes()
+
+        # Get summary
+        summary = monitor.get_change_summary()
+        assert summary is not None
+        assert summary.total_files == 2
+        assert summary.added_count == 2
+        assert summary.modified_count == 0
+        assert summary.deleted_count == 0
+        assert summary.total_size > 0
+        assert "/" in summary.by_directory
+        assert summary.by_directory["/"] == 2
+
+    def test_summary_with_modified_files(self, tmp_path):
+        """Test summary generation with modified files."""
+        import time
+
+        test_dir = tmp_path / "test-photos"
+        test_dir.mkdir()
+
+        # Create initial file
+        test_file = test_dir / "photo.jpg"
+        test_file.write_text("original")
+
+        config = Config(test_mode=True)
+        config.load_config()
+        config._config["backup"]["source_path"] = str(test_dir)
+
+        monitor = DriveMonitor(config=config)
+        monitor.start()
+
+        # Modify file
+        time.sleep(0.01)
+        test_file.write_text("modified content")
+
+        monitor.check_for_changes()
+
+        # Get summary
+        summary = monitor.get_change_summary()
+        assert summary is not None
+        assert summary.total_files == 1
+        assert summary.added_count == 0
+        assert summary.modified_count == 1
+        assert summary.deleted_count == 0
+        assert summary.total_size > 0
+
+    def test_summary_with_deleted_files(self, tmp_path):
+        """Test summary generation with deleted files."""
+        test_dir = tmp_path / "test-photos"
+        test_dir.mkdir()
+
+        # Create initial file
+        test_file = test_dir / "photo.jpg"
+        test_file.write_text("test photo")
+
+        config = Config(test_mode=True)
+        config.load_config()
+        config._config["backup"]["source_path"] = str(test_dir)
+
+        monitor = DriveMonitor(config=config)
+        monitor.start()
+
+        # Delete file
+        test_file.unlink()
+
+        monitor.check_for_changes()
+
+        # Get summary
+        summary = monitor.get_change_summary()
+        assert summary is not None
+        assert summary.total_files == 1
+        assert summary.added_count == 0
+        assert summary.modified_count == 0
+        assert summary.deleted_count == 1
+        assert summary.total_size == 0  # Deleted files don't contribute to size
+
+    def test_summary_with_mixed_changes(self, tmp_path):
+        """Test summary generation with mixed change types."""
+        import time
+
+        test_dir = tmp_path / "test-photos"
+        test_dir.mkdir()
+
+        # Create initial files
+        existing_file = test_dir / "existing.jpg"
+        existing_file.write_text("existing")
+        to_delete = test_dir / "to_delete.jpg"
+        to_delete.write_text("will be deleted")
+
+        config = Config(test_mode=True)
+        config.load_config()
+        config._config["backup"]["source_path"] = str(test_dir)
+
+        monitor = DriveMonitor(config=config)
+        monitor.start()
+
+        # Make mixed changes
+        time.sleep(0.01)
+        new_file = test_dir / "new.jpg"
+        new_file.write_text("new content")
+        existing_file.write_text("modified")
+        to_delete.unlink()
+
+        monitor.check_for_changes()
+
+        # Get summary
+        summary = monitor.get_change_summary()
+        assert summary is not None
+        assert summary.total_files == 3
+        assert summary.added_count == 1
+        assert summary.modified_count == 1
+        assert summary.deleted_count == 1
+        assert summary.total_size > 0  # From new and modified files
+
+    def test_summary_directory_grouping(self, tmp_path):
+        """Test that summary groups files by directory."""
+        test_dir = tmp_path / "test-photos"
+        test_dir.mkdir()
+
+        # Create nested directory structure
+        dir1 = test_dir / "subdir1"
+        dir1.mkdir()
+        dir2 = test_dir / "subdir2"
+        dir2.mkdir()
+
+        config = Config(test_mode=True)
+        config.load_config()
+        config._config["backup"]["source_path"] = str(test_dir)
+
+        monitor = DriveMonitor(config=config)
+        monitor.start()
+
+        # Add files in different directories
+        (test_dir / "root1.jpg").write_text("root 1")
+        (test_dir / "root2.jpg").write_text("root 2")
+        (dir1 / "sub1.jpg").write_text("sub 1")
+        (dir1 / "sub2.jpg").write_text("sub 2")
+        (dir2 / "sub3.jpg").write_text("sub 3")
+
+        monitor.check_for_changes()
+
+        # Get summary
+        summary = monitor.get_change_summary()
+        assert summary is not None
+        assert summary.total_files == 5
+        assert len(summary.by_directory) == 3
+        assert summary.by_directory["/"] == 2
+        assert summary.by_directory["subdir1"] == 2
+        assert summary.by_directory["subdir2"] == 1
+
+    def test_summary_size_calculations(self, tmp_path):
+        """Test that summary calculates sizes correctly."""
+        test_dir = tmp_path / "test-photos"
+        test_dir.mkdir()
+
+        config = Config(test_mode=True)
+        config.load_config()
+        config._config["backup"]["source_path"] = str(test_dir)
+
+        monitor = DriveMonitor(config=config)
+        monitor.start()
+
+        # Add files with known sizes
+        file1 = test_dir / "small.jpg"
+        file1.write_text("x" * 100)  # 100 bytes
+        file2 = test_dir / "large.jpg"
+        file2.write_text("y" * 1000)  # 1000 bytes
+
+        monitor.check_for_changes()
+
+        # Get summary
+        summary = monitor.get_change_summary()
+        assert summary is not None
+        assert summary.total_size == 1100
+        assert summary.by_directory_size["/"] == 1100
+
+    def test_summary_none_when_no_changes(self, tmp_path):
+        """Test that summary returns None when no changes detected."""
+        test_dir = tmp_path / "test-photos"
+        test_dir.mkdir()
+
+        config = Config(test_mode=True)
+        config.load_config()
+        config._config["backup"]["source_path"] = str(test_dir)
+
+        monitor = DriveMonitor(config=config)
+        monitor.start()
+
+        # Check with no changes
+        monitor.check_for_changes()
+
+        # Get summary
+        summary = monitor.get_change_summary()
+        assert summary is None
+
+    def test_summary_formatted_size(self):
+        """Test formatted size output."""
+        summary = ChangeSummary()
+
+        # Test bytes
+        summary.total_size = 500
+        assert summary.get_formatted_size() == "500.0 B"
+
+        # Test kilobytes
+        summary.total_size = 2048
+        assert summary.get_formatted_size() == "2.0 KB"
+
+        # Test megabytes
+        summary.total_size = 1048576 * 5
+        assert summary.get_formatted_size() == "5.0 MB"
+
+        # Test gigabytes
+        summary.total_size = 1073741824 * 2
+        assert summary.get_formatted_size() == "2.0 GB"
+
+    def test_summary_handles_file_access_errors(self, tmp_path, monkeypatch):
+        """Test that summary handles file access errors gracefully."""
+        test_dir = tmp_path / "test-photos"
+        test_dir.mkdir()
+
+        config = Config(test_mode=True)
+        config.load_config()
+        config._config["backup"]["source_path"] = str(test_dir)
+
+        monitor = DriveMonitor(config=config)
+        monitor.start()
+
+        # Add a file
+        test_file = test_dir / "photo.jpg"
+        test_file.write_text("test")
+
+        monitor.check_for_changes()
+
+        # Mock _get_file_size to simulate access error
+        original_get_size = monitor._get_file_size
+
+        def mock_get_size(path):
+            if "photo.jpg" in path:
+                return 0  # Simulate error
+            return original_get_size(path)
+
+        monkeypatch.setattr(monitor, "_get_file_size", mock_get_size)
+
+        # Get summary - should handle error gracefully
+        summary = monitor.get_change_summary()
+        assert summary is not None
+        assert summary.total_files == 1
+        assert summary.total_size == 0  # Size is 0 due to error

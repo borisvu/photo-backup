@@ -8,12 +8,14 @@ Public API:
     - DriveMonitor: Main monitoring class for detecting changes
     - MonitorEvent: Enumeration of monitoring events
     - MonitorState: Enumeration of monitor states
+    - ChangeSummary: Summary of detected changes with statistics
 """
 
-from .events import MonitorEvent, MonitorState
+from .events import ChangeSummary, MonitorEvent, MonitorState
 from .monitor import DriveMonitor
 
 __all__ = [
+    "ChangeSummary",
     "DriveMonitor",
     "MonitorEvent",
     "MonitorState",

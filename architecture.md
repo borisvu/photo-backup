@@ -382,6 +382,7 @@ backup-to-s3/                  # Project root directory
 - **`monitor/events.py`**: Monitoring event and state definitions
   - `MonitorEvent`: Enum of file, directory, drive, timer, and state events
   - `MonitorState`: Enum of monitor states (idle, watching, processing, stopped, error)
+  - `ChangeSummary`: Dataclass for aggregated change statistics
 
 **Key Features**:
 
@@ -431,9 +432,23 @@ backup-to-s3/                  # Project root directory
 - Status includes debouncing state and timing information
 - Enables efficient batching of rapid changes (e.g., copying 100+ photos)
 
-**Future Enhancements** (Tasks 67-72):
+**Change Summaries**:
 
-- Change summaries with file counts and sizes
+- Aggregated statistics about detected changes via `get_change_summary()`
+- Returns `ChangeSummary` dataclass with:
+  - Total file count and size (in bytes and formatted)
+  - Counts by change type (added/modified/deleted)
+  - Grouping by directory with file counts
+  - Directory-level size totals
+- Size formatting: Human-readable output (B, KB, MB, GB, TB)
+- Smart handling:
+  - Returns `None` when no changes detected
+  - Gracefully handles file access errors
+  - Deleted files tracked but don't contribute to size
+- Enables informed backup decisions and detailed logging
+
+**Future Enhancements** (Tasks 68-72):
+
 - 4-hour check interval timer (configurable in test mode)
 - Monitor state persistence
 - Status reporting
