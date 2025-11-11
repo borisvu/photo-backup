@@ -148,7 +148,12 @@ photo-backup/
 │   ├── monitor/              # File system monitoring
 │   │   ├── __init__.py       # Public API exports
 │   │   ├── monitor.py        # Main DriveMonitor class
-│   │   └── events.py         # Monitoring events and states
+│   │   ├── events.py         # Monitoring events and states
+│   │   └── state.py          # Persistent state management
+│   │
+│   ├── service/              # Service management
+│   │   ├── __init__.py       # Public API exports
+│   │   └── manager.py        # ServiceManager for lifecycle control
 │   │
 │   ├── verify.py             # Integrity verification (future)
 │   │
@@ -172,6 +177,7 @@ photo-backup/
 │   │   ├── config/           # Configuration system tests
 │   │   ├── credentials/      # Credential management tests
 │   │   ├── logger/           # Logging system tests
+│   │   ├── service/          # Service management tests
 │   │   └── test_*.py         # Individual module tests
 │   │
 │   ├── functional/           # End-to-end functional tests
@@ -251,6 +257,7 @@ backup-to-s3/                  # Project root directory
 - **`cli/auth_commands.py`**: Authentication and credential testing
 - **`cli/config_commands.py`**: Configuration display and validation
 - **`cli/log_commands.py`**: Log viewing and filtering
+- **`cli/service_commands.py`**: Service lifecycle management (start/stop/restart)
 - **`cli/status_commands.py`**: System status and health monitoring
 - **`cli/sync_commands.py`**: Manual backup synchronization
 
@@ -263,11 +270,15 @@ backup-to-s3/                  # Project root directory
 - `photo-backup status`: Show system status and health information
 - `photo-backup sync`: Run manual backup synchronization
 - `photo-backup setup-config`: Initialize user configuration
+- `photo-backup start`: Start the backup service
+- `photo-backup stop`: Stop the backup service
+- `photo-backup restart`: Restart the backup service
 
 **Status Command Features**:
 
 - System health monitoring and diagnostics
 - Backup state and statistics display
+- Monitor status and change tracking
 - Credential status verification
 - Configuration validation
 - JSON output support for programmatic access
@@ -540,10 +551,76 @@ backup-to-s3/                  # Project root directory
 - All 10 tasks completed (Tasks 63-72)
 - 83 comprehensive unit tests - all passing
 - Full feature set implemented and tested
-- Integration guide available: `MONITOR_INTEGRATION.md`
 - Ready for service integration in Phase 8
 
-### 9. Verification Module (`verify.py`) - Future
+### 9. Service Management (`service/`)
+
+**Purpose**: Orchestrate continuous service operation with lifecycle management
+
+- **`service/manager.py`**: Main ServiceManager class for service orchestration
+- **`service/__init__.py`**: Public API exports (ServiceManager, ServiceState, ServiceStatus)
+
+**Key Features**:
+
+- Service lifecycle management (start, stop, shutdown)
+- State tracking and status reporting
+- Signal handling for graceful shutdown (SIGINT, SIGTERM)
+- Monitor and backup engine integration
+- Test mode support with accelerated timings
+- Error handling and recovery in service loop
+
+**Service States**:
+
+- `STOPPED`: Service not running
+- `STARTING`: Service initializing
+- `RUNNING`: Service actively running
+- `STOPPING`: Service shutting down
+- `ERROR`: Service encountered error
+
+**Service Loop**:
+
+- Polls monitor at configured intervals (60s production, 5s test mode)
+- Checks if monitor should check for changes via `monitor.should_check()`
+- Triggers backup when changes detected via `monitor.check_for_changes()`
+- Executes backup using `BackupEngine.sync_with_stats()`
+- Resets monitor changes after successful backup via `monitor.reset_changes()`
+- Continues running with error recovery until shutdown requested
+
+**Signal Handling**:
+
+- Installs handlers for SIGINT (Ctrl+C) and SIGTERM
+- Sets shutdown flag when signals received
+- Gracefully exits service loop
+- Restores original signal handlers on shutdown
+- Ensures clean resource cleanup
+
+**Status Reporting**:
+
+- `ServiceStatus` dataclass with:
+  - Current state and error message
+  - Start/stop timestamps
+  - Loop iteration count
+  - Last check timestamp
+- Uptime calculation in human-readable format
+- Integration with monitor and backup status
+
+**CLI Commands** (via `cli/service_commands.py`):
+
+- `photo-backup start`: Start the service
+  - `--foreground` / `--background` mode selection
+  - Configuration display on startup
+  - Test mode defaults to foreground
+- `photo-backup stop`: Stop the service (placeholder - requires PID management)
+- `photo-backup restart`: Restart the service (placeholder - requires PID management)
+
+**Module Status**: 🔄 **IN PROGRESS** (Phase 8 - 70% complete)
+
+- 7/10 tasks completed (Tasks 73-79)
+- 73 comprehensive tests passing (57 unit + 16 functional)
+- Core functionality complete: lifecycle, loop, CLI integration
+- Remaining: PID management (Task 80), service logging (Task 81), functional test (Task 82)
+
+### 10. Verification Module (`verify.py`) - Future
 
 **Purpose**: Ensure backup integrity
 
@@ -552,7 +629,7 @@ backup-to-s3/                  # Project root directory
 - Auto-repair mismatches
 - Generate verification reports
 
-### 10. Constants (`consts.py`)
+### 11. Constants (`consts.py`)
 
 **Purpose**: Application-wide constants and configuration values
 
@@ -562,7 +639,7 @@ backup-to-s3/                  # Project root directory
   - Default lock file naming
   - Magic values used throughout the application
 
-### 11. Utility Modules (`*_utils.py`)
+### 12. Utility Modules (`*_utils.py`)
 
 **Purpose**: Specialized utility functions
 

@@ -84,6 +84,15 @@ DEFAULT_CONFIG = {
         },
         "webhook": {"url": None, "timeout_seconds": 30},
     },
+    "service": {
+        "enabled": True,
+        "loop_interval_seconds": 60,  # How often to poll monitor
+        "pid_file": "photo-backup.pid",
+        "background_mode": True,
+        "auto_restart": False,
+        "restart_delay_seconds": 10,
+        "shutdown_timeout_seconds": 30,
+    },
 }
 
 # Documentation for all configuration options
@@ -165,6 +174,15 @@ DEFAULT_CONFIG_DOCS = {
         },
         "webhook": {"url": "Webhook URL for notifications", "timeout_seconds": "Webhook request timeout in seconds"},
     },
+    "service": {
+        "enabled": "Enable service manager for continuous operation",
+        "loop_interval_seconds": "Interval between monitor checks in service loop (seconds)",
+        "pid_file": "Name of PID file for tracking service process",
+        "background_mode": "Run service in background (daemon mode)",
+        "auto_restart": "Automatically restart service on failure",
+        "restart_delay_seconds": "Delay before automatic restart (seconds)",
+        "shutdown_timeout_seconds": "Maximum time to wait for graceful shutdown (seconds)",
+    },
 }
 
 # Test mode specific defaults
@@ -245,5 +263,14 @@ TEST_MODE_DEFAULTS = {
             "to_addresses": [],
         },
         "webhook": {"url": None, "timeout_seconds": 30},
+    },
+    "service": {
+        "enabled": True,
+        "loop_interval_seconds": 5,  # Fast polling for testing
+        "pid_file": "photo-backup-test.pid",
+        "background_mode": False,  # Foreground for testing
+        "auto_restart": False,
+        "restart_delay_seconds": 1,  # Short delay for testing
+        "shutdown_timeout_seconds": 5,  # Quick shutdown for testing
     },
 }

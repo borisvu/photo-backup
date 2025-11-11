@@ -16,6 +16,7 @@ from ..backup import BackupEngine, check_rclone
 from ..config.config import Config
 from ..credentials.manager import CredentialManager
 from ..logger import generate_job_id, setup_logger_from_config
+from ..monitor import DriveMonitor
 
 
 def _get_logger(config_obj: Config) -> logging.Logger:
@@ -226,6 +227,39 @@ def status(ctx: click.Context, verbose: bool, json: bool) -> None:
                             f"    - {error.get('error_type', 'unknown')}: {error.get('message', 'Unknown error')}"
                         )
 
+            click.echo()
+
+        # Monitor status
+        try:
+            monitor = DriveMonitor(config_obj)
+            monitor_status = monitor.get_status()
+            
+            click.echo("👁️  Monitor Status:")
+            click.echo(f"  State: {monitor_status.get('state', 'Unknown')}")
+            click.echo(f"  Watch Path: {monitor_status.get('watch_path', 'N/A')}")
+            
+            if monitor_status.get('drive_mounted'):
+                click.echo(f"  Drive: ✅ Mounted")
+            else:
+                click.echo(f"  Drive: ❌ Not Mounted")
+            
+            click.echo(f"  Files Tracked: {monitor_status.get('files_tracked', 0):,}")
+            click.echo(f"  Pending Changes: {monitor_status.get('pending_changes', 0)}")
+            
+            if verbose and monitor_status.get('last_check_time'):
+                click.echo(f"  Last Check: {monitor_status['last_check_time']}")
+            if verbose and monitor_status.get('last_change_time'):
+                click.echo(f"  Last Change: {monitor_status['last_change_time']}")
+            
+            # Show persistent state info if available
+            if verbose and monitor_status.get('total_checks') is not None:
+                click.echo(f"  Total Checks: {monitor_status['total_checks']:,}")
+                click.echo(f"  Total Changes Detected: {monitor_status['total_changes_detected']:,}")
+            
+            click.echo()
+        except Exception as e:
+            logger.debug(f"Could not get monitor status: {e}")
+            click.echo("👁️  Monitor Status: Not available")
             click.echo()
 
         # System health

@@ -13,6 +13,7 @@ from .__version__ import __version__
 from .cli.auth_commands import test_auth
 from .cli.config_commands import config, setup_config, validate
 from .cli.log_commands import logs
+from .cli.service_commands import restart, start, stop
 from .cli.status_commands import status
 from .cli.sync_commands import sync
 from .config.config import Config
@@ -102,6 +103,10 @@ main.add_command(logs)
 main.add_command(status)
 main.add_command(test_auth)
 main.add_command(sync)
+# Service management commands
+main.add_command(start)
+main.add_command(stop)
+main.add_command(restart)
 
 
 if __name__ == "__main__":
