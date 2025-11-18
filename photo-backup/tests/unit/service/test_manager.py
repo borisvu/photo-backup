@@ -329,7 +329,7 @@ class TestServiceManagerLoop:
         # Loop count should be 0 (exits before first iteration)
         assert service_manager._status.loop_count == 0
 
-    def test_run_loop_continues_on_error(self, service_manager, _caplog):
+    def test_run_loop_continues_on_error(self, service_manager, caplog):  # noqa: ARG002
         """Test that run loop continues after error in iteration."""
         iteration_count = [0]
 

@@ -211,6 +211,7 @@ class TestServiceLoopBackupTriggering:
         stats = MagicMock(spec=BackupStats)
         stats.success = True
         stats.files_transferred = 5
+        stats.bytes_transferred = 1024
         stats.total_size_display = "1 KB"
         stats.error_message = None
         mock_backup_engine.sync_with_stats.return_value = stats
@@ -369,6 +370,7 @@ class TestTriggerBackupMethod:
         stats = MagicMock(spec=BackupStats)
         stats.success = True
         stats.files_transferred = 5
+        stats.bytes_transferred = 1024
         stats.total_size_display = "1 KB"
         stats.error_message = None
         mock_backup_engine.sync_with_stats.return_value = stats

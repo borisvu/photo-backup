@@ -52,7 +52,7 @@ class TestStartCommandBasics:
         assert "--background" in result.output
         assert "--foreground" in result.output
 
-    def test_start_in_test_mode_foreground(self, cli_runner, _mock_service_manager):
+    def test_start_in_test_mode_foreground(self, cli_runner, mock_service_manager):  # noqa: ARG002
         """Test starting service in test mode (foreground by default)."""
         result = cli_runner.invoke(main, ["--test-mode", "start"])
 
@@ -61,7 +61,7 @@ class TestStartCommandBasics:
         assert "TEST MODE" in result.output
         assert "foreground" in result.output
 
-    def test_start_shows_configuration(self, cli_runner, _mock_service_manager):
+    def test_start_shows_configuration(self, cli_runner, mock_service_manager):  # noqa: ARG002
         """Test that start command shows configuration."""
         result = cli_runner.invoke(main, ["--test-mode", "start"])
 
@@ -70,7 +70,7 @@ class TestStartCommandBasics:
         assert "Check interval:" in result.output
         assert "Loop interval:" in result.output
 
-    def test_start_with_dry_run(self, cli_runner, _mock_service_manager):
+    def test_start_with_dry_run(self, cli_runner, mock_service_manager):  # noqa: ARG002
         """Test starting service in dry-run mode."""
         result = cli_runner.invoke(main, ["--test-mode", "--dry-run", "start"])
 
@@ -80,14 +80,14 @@ class TestStartCommandBasics:
 class TestStartCommandModes:
     """Test foreground/background mode selection."""
 
-    def test_start_with_foreground_flag(self, cli_runner, _mock_service_manager):
+    def test_start_with_foreground_flag(self, cli_runner, mock_service_manager):  # noqa: ARG002
         """Test starting with explicit foreground flag."""
         result = cli_runner.invoke(main, ["--test-mode", "start", "--foreground"])
 
         assert result.exit_code == 0
         assert "foreground" in result.output.lower()
 
-    def test_start_with_background_flag(self, cli_runner, _mock_service_manager):
+    def test_start_with_background_flag(self, cli_runner, mock_service_manager):  # noqa: ARG002
         """Test starting with explicit background flag."""
         result = cli_runner.invoke(main, ["--test-mode", "start", "--background"])
 
@@ -124,7 +124,7 @@ class TestStartCommandIntegration:
         # Verify start() was called on the service instance
         mock_service_manager.return_value.start.assert_called_once()
 
-    def test_start_shows_press_ctrl_c_message(self, cli_runner, _mock_service_manager):
+    def test_start_shows_press_ctrl_c_message(self, cli_runner, mock_service_manager):  # noqa: ARG002
         """Test that start shows Ctrl+C message."""
         result = cli_runner.invoke(main, ["--test-mode", "start"])
         assert "Press Ctrl+C" in result.output or "Service" in result.output
@@ -144,29 +144,36 @@ class TestStartCommandErrors:
         assert "Error starting service" in result.output
 
 
-class TestStopCommandPlaceholder:
-    """Test stop command placeholder."""
+class TestStopCommand:
+    """Test stop command."""
 
     def test_stop_command_exists(self, cli_runner):
         """Test that stop command is registered."""
         result = cli_runner.invoke(main, ["stop", "--help"])
         assert result.exit_code == 0
 
-    def test_stop_command_not_yet_implemented(self, cli_runner):
-        """Test that stop command shows not implemented message."""
+    def test_stop_command_when_not_running(self, cli_runner):
+        """Test that stop command handles no running service."""
         result = cli_runner.invoke(main, ["--test-mode", "stop"])
-        assert "not yet implemented" in result.output
+        assert result.exit_code == 0
+        assert "Service is not running" in result.output
+
+    def test_stop_command_shows_help_options(self, cli_runner):
+        """Test that stop command shows help with force and timeout options."""
+        result = cli_runner.invoke(main, ["stop", "--help"])
+        assert "--force" in result.output
+        assert "--timeout" in result.output
 
 
-class TestRestartCommandPlaceholder:
-    """Test restart command placeholder."""
+class TestRestartCommand:
+    """Test restart command."""
 
     def test_restart_command_exists(self, cli_runner):
         """Test that restart command is registered."""
         result = cli_runner.invoke(main, ["restart", "--help"])
         assert result.exit_code == 0
 
-    def test_restart_command_not_yet_implemented(self, cli_runner):
-        """Test that restart command shows not implemented message."""
-        result = cli_runner.invoke(main, ["--test-mode", "restart"])
-        assert "not yet implemented" in result.output
+    def test_restart_command_shows_help_options(self, cli_runner):
+        """Test that restart command shows help with force option."""
+        result = cli_runner.invoke(main, ["restart", "--help"])
+        assert "--force" in result.output

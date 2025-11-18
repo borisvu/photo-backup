@@ -5,8 +5,12 @@ This module provides the ServiceManager class that orchestrates the continuous
 operation of the photo backup system by coordinating the monitor and backup engine.
 """
 
+import errno
 import logging
+import os
+import platform
 import signal
+import sys
 import time
 from dataclasses import dataclass
 from datetime import datetime
@@ -15,7 +19,9 @@ from typing import Any
 
 from ..backup import BackupEngine
 from ..config.config import Config
+from ..consts import SERVICE_PID_FILENAME
 from ..monitor import DriveMonitor
+from ..state_utils import get_state_directories
 
 
 class ServiceState(Enum):
@@ -91,6 +97,12 @@ class ServiceManager:
         self._original_sigint_handler: Any = None
         self._original_sigterm_handler: Any = None
 
+        # PID file path
+        self._pid_file_path = self._get_pid_file_path()
+
+        # Track shutdown reason for logging
+        self._shutdown_reason: str | None = None
+
         self.logger.info(
             f"ServiceManager initialized (test_mode={config.test_mode}, loop_interval={self._loop_interval}s)"
         )
@@ -104,6 +116,125 @@ class ServiceManager:
     def is_running(self) -> bool:
         """Check if service is currently running."""
         return self._state == ServiceState.RUNNING
+
+    def _get_pid_file_path(self) -> str:
+        """Get the path to the service PID file."""
+        dirs = get_state_directories(test_mode=self.config.test_mode)
+        return os.path.join(dirs["temp"], SERVICE_PID_FILENAME)
+
+    def _write_pid_file(self) -> None:
+        """Write current process PID to file."""
+        try:
+            pid = os.getpid()
+            with open(self._pid_file_path, "w") as f:
+                f.write(str(pid))
+            self.logger.debug(f"Wrote PID {pid} to {self._pid_file_path}")
+        except Exception as e:
+            self.logger.error(f"Failed to write PID file: {e}")
+            raise
+
+    def _read_pid_file(self) -> int | None:
+        """
+        Read PID from file.
+
+        Returns:
+            Process ID if file exists and contains valid PID, None otherwise
+        """
+        try:
+            if not os.path.exists(self._pid_file_path):
+                return None
+            with open(self._pid_file_path) as f:
+                pid_str = f.read().strip()
+                if not pid_str:
+                    return None
+                return int(pid_str)
+        except (ValueError, OSError) as e:
+            self.logger.warning(f"Failed to read PID file: {e}")
+            return None
+
+    def _remove_pid_file(self) -> None:
+        """Remove PID file if it exists."""
+        try:
+            if os.path.exists(self._pid_file_path):
+                os.remove(self._pid_file_path)
+                self.logger.debug(f"Removed PID file {self._pid_file_path}")
+        except Exception as e:
+            self.logger.warning(f"Failed to remove PID file: {e}")
+
+    @staticmethod
+    def _is_process_running(pid: int) -> bool:
+        """
+        Check if a process is running.
+
+        Args:
+            pid: Process ID to check
+
+        Returns:
+            True if process is running, False otherwise
+        """
+        if pid <= 0:
+            return False
+        try:
+            # os.kill with signal 0 checks if process exists without killing it
+            os.kill(pid, 0)
+            return True
+        except OSError as e:
+            if e.errno == errno.ESRCH:
+                # Process does not exist
+                return False
+            # Process exists but we don't have permission (still running) or other error
+            return e.errno == errno.EPERM
+
+    def _check_existing_instance(self) -> None:
+        """
+        Check for existing service instance and handle stale PID files.
+
+        Raises:
+            RuntimeError: If another instance is already running
+        """
+        existing_pid = self._read_pid_file()
+        if existing_pid is None:
+            return
+
+        if self._is_process_running(existing_pid):
+            raise RuntimeError(
+                f"Service is already running (PID {existing_pid}). Use 'photo-backup stop' to stop it first."
+            )
+        else:
+            # Stale PID file, clean it up
+            self.logger.warning(f"Found stale PID file (PID {existing_pid} not running), cleaning up")
+            self._remove_pid_file()
+
+    @classmethod
+    def get_running_pid(cls, test_mode: bool = False) -> int | None:
+        """
+        Get the PID of a running service instance.
+
+        Args:
+            test_mode: Whether to check test mode PID file
+
+        Returns:
+            PID if service is running, None otherwise
+        """
+        try:
+            dirs = get_state_directories(test_mode=test_mode)
+            pid_file_path = os.path.join(dirs["temp"], SERVICE_PID_FILENAME)
+
+            if not os.path.exists(pid_file_path):
+                return None
+
+            with open(pid_file_path) as f:
+                pid = int(f.read().strip())
+
+            # Verify process is actually running
+            if cls._is_process_running(pid):
+                return pid
+            else:
+                # Stale PID file
+                return None
+
+        except (ValueError, OSError):
+            return None
 
     def get_status(self) -> ServiceStatus:
         """
@@ -144,6 +275,7 @@ class ServiceManager:
             _frame: Current stack frame (unused)
         """
         signal_name = "SIGINT" if signum == signal.SIGINT else "SIGTERM"
+        self._shutdown_reason = f"signal_{signal_name}"
         self.logger.info(f"Received {signal_name}, initiating graceful shutdown...")
         self._shutdown_requested = True
 
@@ -160,27 +292,39 @@ class ServiceManager:
         if self._state == ServiceState.RUNNING:
             raise RuntimeError("Service is already running")
 
-        self.logger.info("Starting photo backup service...")
+        # Check for existing instance (raises if running)
+        self._check_existing_instance()
+
+        self._log_service_start()
         self._state = ServiceState.STARTING
+        self._log_state_change(ServiceState.STOPPED, ServiceState.STARTING)
+
         self._status.started_at = datetime.now()
         self._status.stopped_at = None
         self._status.error_message = None
         self._status.loop_count = 0
         self._shutdown_requested = False
+        self._shutdown_reason = None
+
+        # Write PID file
+        self._write_pid_file()
 
         # Set up signal handlers
         self._setup_signal_handlers()
 
         try:
             self._state = ServiceState.RUNNING
+            self._log_state_change(ServiceState.STARTING, ServiceState.RUNNING)
             self.logger.info(f"Service started successfully (loop_interval={self._loop_interval}s)")
 
             # Main service loop will be implemented in Task 74
             self._run_loop()
 
         except KeyboardInterrupt:
+            self._shutdown_reason = "keyboard_interrupt"
             self.logger.info("Service interrupted by user")
         except Exception as e:
+            self._shutdown_reason = f"error_{type(e).__name__}"
             self._state = ServiceState.ERROR
             self._status.error_message = str(e)
             self.logger.error(f"Service error: {e}", exc_info=True)
@@ -292,13 +436,19 @@ class ServiceManager:
             self.logger.warning("Service is already stopped")
             return
 
+        self._shutdown_reason = "stop_requested"
         self.logger.info("Stopping service...")
         self._shutdown_requested = True
 
     def _shutdown(self) -> None:
         """Perform cleanup and shutdown tasks."""
         self.logger.info("Shutting down service...")
+        prev_state = self._state
         self._state = ServiceState.STOPPING
+        self._log_state_change(prev_state, ServiceState.STOPPING)
+
+        # Remove PID file
+        self._remove_pid_file()
 
         # Restore signal handlers
         self._restore_signal_handlers()
@@ -308,7 +458,8 @@ class ServiceManager:
         uptime = self._get_uptime()
 
         self._state = ServiceState.STOPPED
-        self.logger.info(f"Service stopped (ran for {uptime}, {self._status.loop_count} iterations)")
+        self._log_state_change(ServiceState.STOPPING, ServiceState.STOPPED)
+        self._log_service_stop(uptime)
 
     def _get_uptime(self) -> str:
         """Get service uptime as a formatted string."""
@@ -326,6 +477,61 @@ class ServiceManager:
             hours = int(uptime_seconds / 3600)
             minutes = int((uptime_seconds % 3600) / 60)
             return f"{hours}h {minutes}m"
+
+    def _log_service_start(self) -> None:
+        """Log service start event with comprehensive information."""
+        self.logger.info("=" * 70)
+        self.logger.info("SERVICE STARTING")
+        self.logger.info("=" * 70)
+        self.logger.info(f"Timestamp: {datetime.now().isoformat()}")
+        self.logger.info(f"PID: {os.getpid()}")
+        self.logger.info(f"Mode: {'TEST' if self.config.test_mode else 'PRODUCTION'}")
+        self.logger.info(f"Python: {sys.version.split()[0]}")
+        self.logger.info(f"Platform: {platform.system()} {platform.release()}")
+        self.logger.info(f"Monitor path: {self.config.get('backup.source_path')}")
+        self.logger.info(f"Destination: {self.config.get('backup.destination')}")
+        self.logger.info(f"Check interval: {self.config.get('monitoring.check_interval_hours')}h")
+        self.logger.info(f"Loop interval: {self._loop_interval}s")
+        self.logger.info("=" * 70)
+
+    def _log_state_change(self, from_state: ServiceState, to_state: ServiceState) -> None:
+        """
+        Log service state change.
+
+        Args:
+            from_state: Previous state
+            to_state: New state
+        """
+        self.logger.info(f"State transition: {from_state.value} -> {to_state.value}")
+        if self.config.test_mode:
+            # More verbose in test mode
+            self.logger.debug(f"State change details: from={from_state.name}, to={to_state.name}")
+
+    def _log_service_stop(self, uptime: str) -> None:
+        """
+        Log service stop event with summary statistics.
+
+        Args:
+            uptime: Formatted uptime string
+        """
+        self.logger.info("=" * 70)
+        self.logger.info("SERVICE STOPPED")
+        self.logger.info("=" * 70)
+        self.logger.info(f"Timestamp: {datetime.now().isoformat()}")
+        self.logger.info(f"Shutdown reason: {self._shutdown_reason or 'normal'}")
+        self.logger.info(f"Uptime: {uptime}")
+        self.logger.info(f"Loop iterations: {self._status.loop_count}")
+
+        if self._status.started_at and self._status.stopped_at:
+            duration = (self._status.stopped_at - self._status.started_at).total_seconds()
+            if duration > 0:
+                avg_loop_time = duration / max(self._status.loop_count, 1)
+                self.logger.info(f"Average loop time: {avg_loop_time:.2f}s")
+
+        if self._status.error_message:
+            self.logger.info(f"Final error: {self._status.error_message}")
+
+        self.logger.info("=" * 70)
 
     def __repr__(self) -> str:
         """String representation of service manager."""

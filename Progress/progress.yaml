@@ -55,7 +55,7 @@ phases:
   phase_8_service:
     name: "Service Management"
     tasks_total: 10
-    tasks_completed: 7
+    tasks_completed: 9
     status: "in_progress"
     
   phase_9_installation:
@@ -188,14 +188,13 @@ current_state:
 # Next steps
 next_steps:
   immediate:
-    - "Phase 8: Service Management (70% - 7/10 tasks) 🔄"
-    - "Tasks 73-79 completed: Service module, loop, start command, status integration, health checks"
-    - "Remaining: Tasks 80-82 (PID Management, Service Logging, Functional Test)"
+    - "Phase 8: Service Management (90% - 9/10 tasks) 🔄"
+    - "Tasks 73-81 completed: Service module, loop, start/stop/restart commands, status, health checks, PID management, service logging"
+    - "Remaining: Task 82 (Service Functional Test)"
     
   upcoming:
-    - "Task 80: Create PID Management - PID file tracking for daemon control"
-    - "Task 81: Add Service Logging - Service lifecycle event logging"
     - "Task 82: Service Functional Test - Full service lifecycle testing"
+    - "Phase 9: Installation System - 10 tasks pending"
 
 # Phase 1 Achievements
 phase_1_achievements:
@@ -253,4 +252,6 @@ notes:
   - "Task 75: Implement Start Command completed - CLI command for starting service with foreground/background mode selection, test mode defaults to foreground, configuration display on startup, dry-run mode support. 16 functional tests passing in 0.16s."
   - "Task 76: Add Status Command completed - Enhanced existing status command with monitor information (state, watch path, drive status, files tracked, pending changes, check history), verbose mode includes persistent state statistics, integrated seamlessly with existing status output."
   - "Tasks 77-79: Health Checks and Stop/Restart completed - Health checks implemented in status command (source directory, state directory, rclone, credentials, drive mount, monitor state). Stop and restart commands created as placeholders noting full implementation requires PID management (Task 80)."
-  - "Phase 8 Service Management: 7/10 tasks complete (70%). Service module fully functional with 73 passing tests (57 unit + 16 functional). Service can start, run monitoring loop, trigger backups, and shutdown gracefully. Remaining tasks: PID management, service logging, functional testing."
+  - "Task 80: PID Management completed - Full PID file tracking (create, read, remove, validate), duplicate instance prevention with stale PID cleanup, process existence checking (handles EPERM/ESRCH), stop/restart commands with SIGTERM/SIGKILL support, 25 comprehensive unit tests. ServiceManager now prevents duplicate instances and enables proper daemon control."
+  - "Task 81: Service Logging completed - Enhanced lifecycle event logging with comprehensive start/stop information (timestamp, PID, mode, platform, config), state transition logging, shutdown reason tracking (signal/error/request), statistics (uptime, loop count, average time), CLI command logging enhanced. Service events now fully observable for debugging and monitoring."
+  - "Phase 8 Service Management: 9/10 tasks complete (90%). Service module fully functional with 82 passing unit tests + 17 functional tests. Full daemon capabilities: start/stop/restart with PID tracking, signal handling, comprehensive logging. Remaining: Task 82 (Service Functional Test)."
