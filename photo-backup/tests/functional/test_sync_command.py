@@ -6,7 +6,6 @@ Functional tests for the sync CLI command.
 import subprocess
 import tempfile
 
-import pytest
 from pathlib import Path
 
 
@@ -62,46 +61,9 @@ class TestSyncCommandFunctional:
             or "directory not found" in combined_output
         )
 
-    def test_sync_test_mode_with_minio_running(self):
+    def test_sync_test_mode_with_minio_running(self, minio_container):  # noqa: ARG002
         """Test sync command in test mode when Minio is running."""
-        # Start Minio container if not running
-        try:
-            # Try to start existing container
-            start_result = subprocess.run(["docker", "start", "minio"], capture_output=True, text=True, timeout=10)
-            if start_result.returncode != 0:
-                # Container doesn't exist, create it
-                subprocess.run(
-                    [
-                        "docker",
-                        "run",
-                        "-d",
-                        "--name",
-                        "minio",
-                        "-p",
-                        "9000:9000",
-                        "-p",
-                        "9001:9001",
-                        "-e",
-                        "MINIO_ROOT_USER=minioadmin",
-                        "-e",
-                        "MINIO_ROOT_PASSWORD=minioadmin",
-                        "minio/minio:latest",
-                        "server",
-                        "/data",
-                        "--console-address",
-                        ":9001",
-                    ],
-                    capture_output=True,
-                    check=False,
-                )
-        except (FileNotFoundError, subprocess.TimeoutExpired):
-            pytest.skip("Docker not available or Minio container failed to start")
-
-        # Wait for Minio to be ready
-        import time
-
-        time.sleep(3)
-
+        # Minio container is managed by fixture
         # Create test photos directory and some test files
         from pathlib import Path
 
@@ -170,46 +132,9 @@ class TestSyncCommandFunctional:
         assert result.returncode == 1
         assert "Backup environment validation failed" in combined_output
 
-    def test_sync_with_test_photos(self):
+    def test_sync_with_test_photos(self, minio_container):  # noqa: ARG002
         """Test sync command with actual test photos when Minio is running."""
-        # Start Minio container
-        try:
-            # Try to start existing container
-            start_result = subprocess.run(["docker", "start", "minio"], capture_output=True, text=True, timeout=10)
-            if start_result.returncode != 0:
-                # Container doesn't exist, create it
-                subprocess.run(
-                    [
-                        "docker",
-                        "run",
-                        "-d",
-                        "--name",
-                        "minio",
-                        "-p",
-                        "9000:9000",
-                        "-p",
-                        "9001:9001",
-                        "-e",
-                        "MINIO_ROOT_USER=minioadmin",
-                        "-e",
-                        "MINIO_ROOT_PASSWORD=minioadmin",
-                        "minio/minio:latest",
-                        "server",
-                        "/data",
-                        "--console-address",
-                        ":9001",
-                    ],
-                    capture_output=True,
-                    check=False,
-                )
-        except (FileNotFoundError, subprocess.TimeoutExpired):
-            pytest.skip("Docker not available or Minio container failed to start")
-
-        # Wait for Minio to be ready
-        import time
-
-        time.sleep(3)
-
+        # Minio container is managed by fixture
         # Create test photos in a temporary directory
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)

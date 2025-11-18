@@ -7,7 +7,6 @@ import os
 import subprocess
 import tempfile
 
-import pytest
 from pathlib import Path
 
 
@@ -28,19 +27,9 @@ class TestAuthCommandFunctional:
         assert "Test credential setup and S3 access" in result.stdout
         assert "--verbose" in result.stdout
 
-    def test_test_auth_test_mode_success(self):
+    def test_test_auth_test_mode_success(self, minio_container):  # noqa: ARG002
         """Test test-auth command success in test mode with Minio running."""
-        # Start Minio container if not running
-        try:
-            subprocess.run(["docker", "start", "minio"], capture_output=True, check=False)
-        except FileNotFoundError:
-            pytest.skip("Docker not available")
-
-        # Wait a moment for Minio to start
-        import time
-
-        time.sleep(2)
-
+        # Minio container is managed by fixture
         result = subprocess.run(
             ["python3", "-m", "photo_backup.main", "--test-mode", "test-auth"],
             capture_output=True,
@@ -72,19 +61,9 @@ class TestAuthCommandFunctional:
                 ]
             )
 
-    def test_test_auth_test_mode_verbose(self):
+    def test_test_auth_test_mode_verbose(self, minio_container):  # noqa: ARG002
         """Test test-auth command with verbose flag in test mode."""
-        # Start Minio container if not running
-        try:
-            subprocess.run(["docker", "start", "minio"], capture_output=True, check=False)
-        except FileNotFoundError:
-            pytest.skip("Docker not available")
-
-        # Wait a moment for Minio to start
-        import time
-
-        time.sleep(2)
-
+        # Minio container is managed by fixture
         result = subprocess.run(
             ["python3", "-m", "photo_backup.main", "--test-mode", "test-auth", "--verbose"],
             capture_output=True,
