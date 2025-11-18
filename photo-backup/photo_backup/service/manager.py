@@ -254,17 +254,25 @@ class ServiceManager:
 
     def _setup_signal_handlers(self) -> None:
         """Set up signal handlers for graceful shutdown."""
-        self._original_sigint_handler = signal.signal(signal.SIGINT, self._handle_shutdown_signal)
-        self._original_sigterm_handler = signal.signal(signal.SIGTERM, self._handle_shutdown_signal)
-        self.logger.debug("Signal handlers installed for SIGINT and SIGTERM")
+        try:
+            self._original_sigint_handler = signal.signal(signal.SIGINT, self._handle_shutdown_signal)
+            self._original_sigterm_handler = signal.signal(signal.SIGTERM, self._handle_shutdown_signal)
+            self.logger.debug("Signal handlers installed for SIGINT and SIGTERM")
+        except ValueError:
+            # Signal handlers only work in main thread
+            self.logger.debug("Cannot install signal handlers (not in main thread)")
 
     def _restore_signal_handlers(self) -> None:
         """Restore original signal handlers."""
-        if self._original_sigint_handler is not None:
-            signal.signal(signal.SIGINT, self._original_sigint_handler)
-        if self._original_sigterm_handler is not None:
-            signal.signal(signal.SIGTERM, self._original_sigterm_handler)
-        self.logger.debug("Original signal handlers restored")
+        try:
+            if self._original_sigint_handler is not None:
+                signal.signal(signal.SIGINT, self._original_sigint_handler)
+            if self._original_sigterm_handler is not None:
+                signal.signal(signal.SIGTERM, self._original_sigterm_handler)
+            self.logger.debug("Original signal handlers restored")
+        except ValueError:
+            # Not in main thread, no handlers to restore
+            self.logger.debug("Cannot restore signal handlers (not in main thread)")
 
     def _handle_shutdown_signal(self, signum: int, _frame: Any) -> None:
         """
