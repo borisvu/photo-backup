@@ -604,21 +604,61 @@ backup-to-s3/                  # Project root directory
 - Uptime calculation in human-readable format
 - Integration with monitor and backup status
 
+**PID Management**:
+
+- Full PID file tracking (create, read, remove, validate)
+- Duplicate instance prevention with stale PID cleanup
+- Process existence checking (handles EPERM/ESRCH errors)
+- PID file locations:
+  - Production: `~/Library/Application Support/photo-backup/photo-backup.pid`
+  - Test mode: `/tmp/photo-backup-test/state/photo-backup.pid`
+- Stop/restart commands with SIGTERM/SIGKILL support
+- Automatic cleanup on service shutdown
+
+**Service Logging**:
+
+- Comprehensive lifecycle event logging
+- Start/stop events with detailed information:
+  - Timestamp, PID, mode (test/production), platform
+  - Configuration summary (source/destination paths)
+- State transition logging (STOPPED → STARTING → RUNNING → STOPPING)
+- Shutdown reason tracking (signal/error/request)
+- Service statistics: uptime, loop count, average loop time
+- Enhanced CLI command logging for all service operations
+
 **CLI Commands** (via `cli/service_commands.py`):
 
 - `photo-backup start`: Start the service
   - `--foreground` / `--background` mode selection
   - Configuration display on startup
   - Test mode defaults to foreground
-- `photo-backup stop`: Stop the service (placeholder - requires PID management)
-- `photo-backup restart`: Restart the service (placeholder - requires PID management)
+  - Prevents duplicate instances via PID checking
+- `photo-backup stop`: Stop the service gracefully
+  - Sends SIGTERM signal to running process
+  - Waits for clean shutdown
+  - Falls back to SIGKILL if needed
+  - Cleans up PID file
+- `photo-backup restart`: Restart the service
+  - Stops existing service gracefully
+  - Starts new service instance
+  - Preserves state across restart
 
-**Module Status**: 🔄 **IN PROGRESS** (Phase 8 - 70% complete)
+**Testing Coverage**:
 
-- 7/10 tasks completed (Tasks 73-79)
-- 73 comprehensive tests passing (57 unit + 16 functional)
-- Core functionality complete: lifecycle, loop, CLI integration
-- Remaining: PID management (Task 80), service logging (Task 81), functional test (Task 82)
+- **Unit Tests** (82 tests in `tests/unit/service/`):
+  - `test_manager.py`: ServiceManager lifecycle, state tracking, signal handling
+  - `test_service_loop.py`: Service loop integration with monitor and backup
+  - `test_pid_management.py`: PID file operations, duplicate prevention, process checking
+- **Functional Tests** (20 tests in `tests/functional/`):
+  - `test_service_start.py`: Service startup in test mode
+  - `test_service_lifecycle.py`: End-to-end lifecycle with photo detection and backup
+
+**Functional Test Scenarios**:
+
+- Complete service lifecycle: start → add photos → trigger backup → stop → verify
+- Multiple backup cycles: continuous monitoring with multiple change detections
+- Graceful shutdown: signal handling with proper cleanup
+- Thread-safe operation: concurrent signal handling during service operation
 
 ### 10. Verification Module (`verify.py`) - Future
 
