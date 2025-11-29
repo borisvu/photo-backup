@@ -9,7 +9,7 @@ import logging
 from typing import Any
 
 from .exceptions import CredentialError
-from .providers import DirectCredentialProvider, OnePasswordCredentialProvider, TestModeCredentialProvider
+from .providers import DirectCredentialProvider, OnePasswordCredentialProvider
 from .validators import RcloneCredentialValidator
 
 
@@ -27,7 +27,6 @@ class CredentialManager:
         self._credentials: dict[str, Any] | None = None
 
         # Initialize providers
-        self._test_provider = TestModeCredentialProvider(config)
         self._direct_provider = DirectCredentialProvider(config)
         self._onepassword_provider = OnePasswordCredentialProvider(config)
 
@@ -57,13 +56,6 @@ class CredentialManager:
                 if e.details:
                     self.logger.debug(f"Details: {e.details}")
 
-                # For test mode, provide specific Minio guidance
-                if self.config.is_test_mode():
-                    self.logger.error(
-                        "Test mode requires Minio container. "
-                        "Start with: docker run -d --name minio -p 9000:9000 minio/minio server /data"
-                    )
-
                 # Re-raise the error for proper handling
                 raise
 
@@ -86,11 +78,11 @@ class CredentialManager:
         if error.suggestion:
             message_parts.append(f"Fix: {error.suggestion}")
 
-        # Add mode-specific suggestions
-        if self.config.is_test_mode():
-            message_parts.append("For test mode: Ensure Minio container is running with 'docker start minio'")
-        else:
-            message_parts.append("For production: Set WASABI_ACCESS_KEY/WASABI_SECRET_KEY environment variables")
+        # Add general suggestions (mode-independent after Phase 1 refactoring)
+        message_parts.append(
+            "Set credentials via: 1) Environment variables (S3_ACCESS_KEY/S3_SECRET_KEY), "
+            "2) Config file storage section, or 3) 1Password integration"
+        )
 
         if error.details:
             message_parts.append(f"Technical details: {error.details}")
@@ -139,24 +131,60 @@ class CredentialManager:
         return status
 
     def _load_credentials(self) -> dict[str, Any]:
-        """Load credentials based on configuration and mode.
+        """Load credentials using unified credential chain (mode-independent).
+
+        Credential chain order:
+        1. Environment variables (via DirectCredentialProvider)
+        2. Config file storage section (via DirectCredentialProvider)
+        3. 1Password (if configured)
 
         Returns:
             Dictionary containing storage credentials
         """
         try:
-            if self.config.is_test_mode():
-                return self._test_provider.get_credentials()
-            else:
-                return self._get_production_credentials()
+            # Try direct credentials first (env vars + config file)
+            try:
+                credentials = self._direct_provider.get_credentials()
+
+                # If we got credentials with keys, use them
+                if credentials.get("access_key") and credentials.get("secret_key"):
+                    return credentials
+
+                # If we got config but no keys, try 1Password as fallback
+                self.logger.debug("No access keys in direct credentials, checking 1Password")
+                config_data = self.config.load_config()
+                storage_config = config_data.get("storage", {})
+
+                if storage_config.get("use_1password", False):
+                    onepassword_creds = self._onepassword_provider.get_credentials()
+                    # Merge 1Password credentials with storage config
+                    credentials["access_key"] = onepassword_creds["access_key"]
+                    credentials["secret_key"] = onepassword_creds["secret_key"]
+                    return credentials
+
+                # Return credentials even without keys (validation happens later)
+                return credentials
+
+            except CredentialError as e:
+                # If direct provider fails completely, try 1Password
+                self.logger.debug(f"Direct credentials failed: {e.message}, trying 1Password")
+                config_data = self.config.load_config()
+                storage_config = config_data.get("storage", {})
+
+                if storage_config.get("use_1password", False):
+                    return self._onepassword_provider.get_credentials()
+
+                # Re-raise the original error if no 1Password fallback
+                raise
+
         except CredentialError:
             # Re-raise credential errors as-is
             raise
         except Exception as e:
-            # Catch any unexpected errors and provide helpful context
-            mode = "test" if self.config.is_test_mode() else "production"
             raise CredentialError(
-                f"Failed to load {mode} credentials", "Check configuration and try again", f"Unexpected error: {e}"
+                "Failed to load credentials",
+                "Check configuration and ensure credentials are properly configured",
+                f"Unexpected error: {e}",
             ) from e
 
     def _get_production_credentials(self) -> dict[str, Any]:
@@ -205,17 +233,21 @@ class CredentialManager:
         try:
             credentials = self.get_credentials()
 
-            # Check required fields (except access_key and secret_key which may be None in production)
+            # Check required fields
             required_fields = ["endpoint", "bucket"]
             for field in required_fields:
                 if not credentials.get(field):
                     return False, f"Missing required credential field: {field}"
 
-            # Test mode specific validation
-            if self.config.is_test_mode():
-                return self._validate_test_credentials(credentials)
-            else:
-                return self._validate_production_credentials(credentials)
+            # Check that credentials are available (mode-independent after Phase 1)
+            if credentials.get("access_key") is None or credentials.get("secret_key") is None:
+                return False, (
+                    "Credentials not available. Set via environment variables, "
+                    "config file storage section, or 1Password integration."
+                )
+
+            # Test credentials with rclone (works with any S3-compatible backend)
+            return self.test_credentials_with_rclone()
         except CredentialError as e:
             return False, f"{e.message}. {e.suggestion}"
         except Exception as e:
@@ -234,45 +266,6 @@ class CredentialManager:
             return False, f"{e.message}. {e.suggestion}"
         except Exception as e:
             return False, f"Credential testing failed: {e}"
-
-    def _validate_test_credentials(self, credentials: dict[str, Any]) -> tuple[bool, str]:
-        """Validate test mode credentials.
-
-        Args:
-            credentials: Credentials dictionary
-
-        Returns:
-            Tuple of (is_valid, error_message)
-        """
-        # Check that credentials are present
-        if credentials["access_key"] == "minioadmin" and credentials["secret_key"] == "minioadmin":
-            # Test Minio connectivity with rclone
-            return self.test_credentials_with_rclone()
-        else:
-            return False, (
-                "Invalid test credentials - expected minioadmin/minioadmin. "
-                "Check test mode configuration or start Minio container"
-            )
-
-    def _validate_production_credentials(self, credentials: dict[str, Any]) -> tuple[bool, str]:
-        """Validate production credentials.
-
-        Args:
-            credentials: Credentials dictionary
-
-        Returns:
-            Tuple of (is_valid, error_message)
-        """
-        # Check that credentials are available
-        if credentials["access_key"] is None or credentials["secret_key"] is None:
-            suggestion = (
-                "Set WASABI_ACCESS_KEY and WASABI_SECRET_KEY environment variables, "
-                "or configure credentials in config file, or enable 1Password integration"
-            )
-            return False, f"Production credentials not available. {suggestion}"
-
-        # Test credentials with rclone for validation
-        return self.test_credentials_with_rclone()
 
     def get_credential_info(self) -> dict[str, Any]:
         """Get information about current credentials.
@@ -304,22 +297,22 @@ class CredentialManager:
         return info
 
     def _get_credential_source(self) -> str:
-        """Get the source of the current credentials.
+        """Get the source of the current credentials (mode-independent).
 
         Returns:
             String describing the credential source
         """
-        if self.config.is_test_mode():
-            return self._test_provider.get_source_name()
-
-        # Check direct provider first
+        # Check direct provider first (env vars or config file)
         try:
             self._direct_provider.get_credentials()
-            return self._direct_provider.get_source_name()
+            source = self._direct_provider.get_source_name()
+            # If direct provider has credentials, use it
+            if source != "none":
+                return source
         except CredentialError:
             pass
 
-        # Check if 1Password is configured
+        # Check if 1Password is configured and in use
         try:
             config_data = self.config.load_config()
             storage_config = config_data.get("storage", {})

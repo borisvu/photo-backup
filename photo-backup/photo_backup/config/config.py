@@ -45,25 +45,30 @@ class Config:
             dict: Configuration dictionary
         """
         if self._config is None:
-            # Try to load from file first
+            # Step 1: Start with DEFAULT_CONFIG as base
+            base_config = self._get_default_config()
+
+            # Step 2: If test mode, apply TEST_MODE_DEFAULTS on top of defaults
+            # These override default values but will be overridden by user config
+            if self.test_mode:
+                base_config = self.utils.merge_dicts(base_config, TEST_MODE_DEFAULTS)
+
+            # Step 3: Try to load user config from file
             file_config = self.loader.load_config_from_file()
 
             if file_config is not None:
                 # Validate loaded config
                 is_valid, errors = self.validator.validate_config(file_config)
                 if is_valid:
-                    self._config = self.utils.merge_with_defaults(file_config, DEFAULT_CONFIG)
+                    # Merge user config on top of base (user config wins)
+                    self._config = self.utils.merge_with_defaults(file_config, base_config)
                 else:
                     # Fail early with detailed error messages
                     error_msg = "Configuration validation failed:\n" + "\n".join(f"  - {error}" for error in errors)
                     raise ValueError(error_msg)
             else:
-                # No config file found, use defaults
-                self._config = self._get_default_config()
-
-            # Apply test mode overrides if needed
-            if self.test_mode:
-                self._config = self.utils.apply_test_mode_overrides(self._config, TEST_MODE_DEFAULTS)
+                # No config file found, use base config (defaults + test overrides if applicable)
+                self._config = base_config
 
             # Apply environment variable overrides (highest priority)
             self._config = EnvOverride.apply_env_overrides(self._config)

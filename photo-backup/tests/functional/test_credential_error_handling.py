@@ -148,7 +148,10 @@ class TestCredentialErrorHandlingFunctional:
         assert "suggestion" in status or status["has_credentials"] is True
 
     def test_credential_error_handling_test_mode_specific_guidance(self):
-        """Test that test mode provides specific Minio guidance."""
+        """Test that error handling provides generic credential guidance (Phase 7.2).
+
+        After refactoring: Error messages are mode-independent and generic.
+        """
         config = Config(test_mode=True)
         manager = CredentialManager(config)
 
@@ -158,13 +161,16 @@ class TestCredentialErrorHandlingFunctional:
         # Test error handling
         message = manager.handle_credential_error(error)
 
-        # Should include test mode specific guidance
+        # Should include mode label and generic credential suggestions
         assert "test mode" in message
-        assert "docker start minio" in message
-        assert "Minio container" in message
+        assert "Minio connection failed" in message
+        assert "Environment variables" in message or "Config file" in message
 
     def test_credential_error_handling_production_mode_specific_guidance(self):
-        """Test that production mode provides specific credential guidance."""
+        """Test that error handling provides generic credential guidance (Phase 7.2).
+
+        After refactoring: Error messages are mode-independent and generic.
+        """
         config = Config(test_mode=False)
         manager = CredentialManager(config)
 
@@ -174,7 +180,7 @@ class TestCredentialErrorHandlingFunctional:
         # Test error handling
         message = manager.handle_credential_error(error)
 
-        # Should include production mode specific guidance
+        # Should include mode label and generic credential suggestions
         assert "production mode" in message
-        assert "WASABI_ACCESS_KEY" in message
-        assert "environment variables" in message
+        assert "No credentials available" in message
+        assert "Environment variables" in message or "environment variables" in message

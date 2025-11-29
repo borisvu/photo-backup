@@ -5,10 +5,7 @@ Unit tests for DirectCredentialProvider.
 import os
 from unittest.mock import patch
 
-import pytest
-
 from photo_backup.config.config import Config
-from photo_backup.credentials.exceptions import CredentialError
 from photo_backup.credentials.providers.direct import DirectCredentialProvider
 
 
@@ -53,7 +50,12 @@ class TestDirectCredentialProvider:
                 assert credentials["bucket"] == "custom-bucket"
 
     def test_get_credentials_no_credentials_available(self):
-        """Test error when no credentials are available."""
+        """Test that credentials are returned even when keys are not available.
+
+        After Phase 1 refactoring, DirectCredentialProvider returns credentials
+        with None values instead of raising an error. Validation happens at a
+        higher level in the credential manager.
+        """
         config = Config(test_mode=False)
 
         mock_config_data = {"storage": {}}
@@ -61,12 +63,14 @@ class TestDirectCredentialProvider:
         with patch.object(config, "load_config", return_value=mock_config_data):
             with patch.dict(os.environ, {}, clear=True):
                 provider = DirectCredentialProvider(config)
+                credentials = provider.get_credentials()
 
-                with pytest.raises(CredentialError) as exc_info:
-                    provider.get_credentials()
-
-                assert "No direct credentials available" in str(exc_info.value)
-                assert "WASABI_ACCESS_KEY" in str(exc_info.value)
+                # Credentials should be returned but keys should be None
+                assert credentials["access_key"] is None
+                assert credentials["secret_key"] is None
+                # Other fields should have defaults
+                assert credentials["endpoint"] == "s3.wasabisys.com"
+                assert credentials["bucket"] == "my-photo-backup-bucket"
 
     def test_get_source_name_environment_variables(self):
         """Test source name when credentials come from environment."""

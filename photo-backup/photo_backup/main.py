@@ -26,12 +26,20 @@ def _get_logger(config_obj: Config, job_id: str | None = None) -> logging.Logger
 
 
 @click.group(invoke_without_command=True)
-@click.option("--test-mode", is_flag=True, help="Run in test mode using Minio instead of Wasabi")
+@click.option(
+    "--test-mode",
+    is_flag=True,
+    help="Run in test mode with optimized defaults for testing (faster intervals, debug logging, temp paths). Storage backend determined by config.",
+)
 @click.option("--dry-run", is_flag=True, help="Run in dry-run mode - show operations without executing them")
 @click.option("--version", is_flag=True, help="Show version and exit")
 @click.pass_context
 def main(ctx, test_mode, dry_run, version):
-    """Photo Backup System - Automated photo backup to S3-compatible storage."""
+    """Photo Backup System - Automated photo backup to S3-compatible storage.
+
+    Works with any S3-compatible backend (Wasabi, MinIO, AWS S3, etc.).
+    Storage backend is configured via config file, not by mode flags.
+    """
 
     if version:
         click.echo(f"Photo Backup v{__version__}")

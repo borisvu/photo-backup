@@ -4,11 +4,46 @@ Comprehensive system integration tests.
 These tests verify that all major components work together correctly.
 """
 
+import contextlib
+
+import docker
 import pytest
 
 
 class TestSystemIntegration:
     """Comprehensive system integration tests."""
+
+    MINIO_PORT = 9009
+
+    @pytest.fixture
+    def minio_container(self):
+        """Local Minio fixture for this test class."""
+        from tests.functional.minio_test_utils import MinioTestUtils
+
+        client = MinioTestUtils.get_docker_client()
+        if client is None:
+            pytest.skip("Docker not available or not running")
+
+        container_name = "photo-backup-system-test"
+
+        # Start or reuse container
+        try:
+            container = MinioTestUtils.start_or_reuse_minio(client, container_name, port=self.MINIO_PORT)
+            # Wait for Minio to be ready
+            MinioTestUtils.wait_for_minio_ready(container.name, port=self.MINIO_PORT)
+
+            yield container.id
+
+        finally:
+            # Cleanup - stop AND remove container
+            if client is not None:
+                with contextlib.suppress(docker.errors.NotFound, docker.errors.APIError):
+                    try:
+                        container = client.containers.get(container_name)
+                        container.stop(timeout=5)
+                        container.remove(force=True)
+                    except Exception:
+                        pass
 
     @pytest.mark.functional
     def test_modules_can_be_imported(self):
@@ -91,8 +126,11 @@ class TestSystemIntegration:
 
     @pytest.mark.functional
     @pytest.mark.slow
-    def test_full_infrastructure_integration(self, minio_container, test_photos, cli_runner):  # noqa: ARG002
+    def test_full_infrastructure_integration(self, minio_container, test_photos):  # noqa: ARG002
         """Test complete integration with all infrastructure components."""
+        import os
+        import subprocess
+
         # Verify test photos exist
         assert test_photos.exists()
 
@@ -101,14 +139,30 @@ class TestSystemIntegration:
         photo_files = [f for f in photo_files if f.is_file() and f.suffix.lower() in [".jpg", ".jpeg", ".dng", ".cr2"]]
         assert len(photo_files) == 5, f"Should have 5 test photos, found {len(photo_files)}"
 
+        # Configure environment for custom Minio endpoint
+        env = os.environ.copy()
+        env["PHOTO_BACKUP_STORAGE_ENDPOINT"] = f"localhost:{self.MINIO_PORT}"
+        env["PHOTO_BACKUP_STORAGE_ACCESS_KEY"] = "minioadmin"
+        env["PHOTO_BACKUP_STORAGE_SECRET_KEY"] = "minioadmin"
+        env["PHOTO_BACKUP_STORAGE_USE_SSL"] = "false"
+        env["PHOTO_BACKUP_STORAGE_BUCKET"] = "test-bucket"
+
         # Run CLI in test mode
-        result = cli_runner(["--test-mode"])
+        result = subprocess.run(
+            ["python3", "-m", "photo_backup.main", "--test-mode"],
+            capture_output=True,
+            text=True,
+            cwd=".",
+            env=env,
+        )
+
+        combined_output = result.stdout + result.stderr
 
         assert result.returncode == 0
-        assert "TEST MODE" in result.stdout
-        assert "localhost:9000" in result.stdout
-        assert "starting in TEST MODE" in result.stdout
-        assert "CLI initialization completed successfully" in result.stdout
+        assert "TEST MODE" in combined_output
+        assert f"localhost:{self.MINIO_PORT}" in combined_output
+        assert "starting in TEST MODE" in combined_output
+        assert "CLI initialization completed successfully" in combined_output
 
         # Note: Minio container is started by the fixture, but we don't need to verify
         # it's running here since that's tested in infrastructure tests

@@ -170,12 +170,66 @@ class TestConfigUtils:
 
         overridden = utils.apply_test_mode_overrides(base_config, TEST_MODE_DEFAULTS)
 
-        # Test mode overrides should take precedence
-        assert overridden["backup"]["source_path"] == "/tmp/photo-backup-test-photos"
-        assert overridden["storage"]["endpoint"] == "localhost:9000"
-        assert overridden["storage"]["access_key"] == "minioadmin"
-        assert overridden["storage"]["secret_key"] == "minioadmin"
-        assert overridden["storage"]["use_ssl"] is False
+        # After Phase 2 refactoring: User config takes precedence, test defaults are fallbacks
+        assert overridden["backup"]["source_path"] == "/custom/photos"  # User config wins
+        assert overridden["storage"]["endpoint"] == "custom.s3.com"  # User config wins
+        assert overridden["storage"]["access_key"] == "custom_key"  # User config wins
+        assert overridden["storage"]["secret_key"] == "custom_secret"  # User config wins
+        assert overridden["storage"]["use_ssl"] is True  # User config wins
+
+    @pytest.mark.unit
+    def test_user_config_overrides_test_defaults(self):
+        """Test that user config values override test mode defaults (Phase 3.3).
+
+        After Phase 2 refactoring, user-specified values take precedence
+        over test mode defaults.
+        """
+        utils = ConfigUtils()
+
+        # User specifies custom values
+        user_config = {"backup": {"source_path": "/my/photos"}, "storage": {"endpoint": "my-minio.local:9000"}}
+
+        test_defaults = {
+            "backup": {"source_path": "/tmp/photo-backup-test-photos"},
+            "storage": {"endpoint": "localhost:9000", "bucket": "test-bucket"},
+        }
+
+        result = utils.apply_test_mode_overrides(user_config, test_defaults)
+
+        # User values should win
+        assert result["backup"]["source_path"] == "/my/photos"
+        assert result["storage"]["endpoint"] == "my-minio.local:9000"
+        # But missing keys should be filled from defaults
+        assert result["storage"]["bucket"] == "test-bucket"
+
+    @pytest.mark.unit
+    def test_test_defaults_fill_missing_keys(self):
+        """Test that test defaults fill gaps in user config (Phase 3.4).
+
+        When user doesn't specify a value, test defaults should provide it.
+        """
+        utils = ConfigUtils()
+
+        # User only specifies some values
+        user_config = {
+            "backup": {"dry_run": True}
+            # No storage section at all
+        }
+
+        test_defaults = {
+            "backup": {"source_path": "/tmp/photo-backup-test-photos", "dry_run": False},
+            "storage": {"endpoint": "localhost:9000", "bucket": "test-bucket", "access_key": "minioadmin"},
+        }
+
+        result = utils.apply_test_mode_overrides(user_config, test_defaults)
+
+        # User's specified value should win
+        assert result["backup"]["dry_run"] is True
+        # Missing values should come from defaults
+        assert result["backup"]["source_path"] == "/tmp/photo-backup-test-photos"
+        assert result["storage"]["endpoint"] == "localhost:9000"
+        assert result["storage"]["bucket"] == "test-bucket"
+        assert result["storage"]["access_key"] == "minioadmin"
 
     @pytest.mark.unit
     def test_merge_dicts_immutable(self):

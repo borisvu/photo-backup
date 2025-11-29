@@ -29,6 +29,17 @@ from tests.fixtures.photo_fixtures import generate_test_photos
 class TestBackupFunctionalTest:
     """Comprehensive functional test for complete backup system."""
 
+    MINIO_PORT = 9002  # Unique port for this test suite
+
+    def _configure_test_endpoint(self, config: Config) -> None:
+        """Configure the endpoint and credentials to use the unique test port."""
+        storage = config._config.setdefault("storage", {})
+        storage["endpoint"] = f"localhost:{self.MINIO_PORT}"
+        storage["access_key"] = "minioadmin"
+        storage["secret_key"] = "minioadmin"
+        storage["use_ssl"] = False
+        storage["bucket"] = "test-bucket"
+
     @pytest.fixture
     def minio_container_management(self):
         """Manage Minio container lifecycle for functional testing."""
@@ -43,15 +54,17 @@ class TestBackupFunctionalTest:
 
         # Start or reuse container
         try:
-            container = MinioTestUtils.start_or_reuse_minio(client, container_name)
+            container = MinioTestUtils.start_or_reuse_minio(client, container_name, port=self.MINIO_PORT)
             # Wait for Minio to be ready
-            MinioTestUtils.wait_for_minio_ready(container.name)
+            MinioTestUtils.wait_for_minio_ready(container.name, port=self.MINIO_PORT)
 
             yield container
 
         finally:
+            # Cleanup - stop AND remove container
             with contextlib.suppress(docker.errors.NotFound, docker.errors.APIError):
                 container.stop(timeout=5)
+                container.remove(force=True)
 
     def test_complete_backup_cycle(self, minio_container_management, tmp_path):  # noqa: ARG002
         """Test complete backup cycle from start to finish."""
@@ -67,6 +80,7 @@ class TestBackupFunctionalTest:
         # Step 2: Initialize configuration and credentials
         config = Config(test_mode=True)
         config.load_config()
+        self._configure_test_endpoint(config)
 
         credential_manager = CredentialManager(config=config)
         credential_status = credential_manager.get_credential_status()
@@ -76,7 +90,8 @@ class TestBackupFunctionalTest:
             f"Credentials not available: {credential_status.get('error')}"
         )
         assert credential_status.get("validation", {}).get("is_valid") is True
-        assert credential_info.get("credential_source") == "test_mode"
+        # After Phase 1: credential source is "config_file" (from DirectCredentialProvider)
+        assert credential_info.get("credential_source") == "config_file"
 
         # Step 3: Initialize backup engine
         engine = BackupEngine(config=config, test_mode=True)
@@ -127,6 +142,7 @@ class TestBackupFunctionalTest:
         # Create backup engine
         config = Config(test_mode=True)
         config.load_config()
+        self._configure_test_endpoint(config)
         engine = BackupEngine(config=config, test_mode=True)
 
         # Test 1: Invalid source path
@@ -179,6 +195,7 @@ class TestBackupFunctionalTest:
         # Run backup
         config = Config(test_mode=True)
         config.load_config()
+        self._configure_test_endpoint(config)
         engine = BackupEngine(config=config, test_mode=True)
 
         job = BackupJob(
@@ -236,6 +253,7 @@ class TestBackupFunctionalTest:
 
         config = Config(test_mode=True)
         config.load_config()
+        self._configure_test_endpoint(config)
 
         # First backup
         engine1 = BackupEngine(config=config, test_mode=True)
@@ -287,6 +305,7 @@ class TestBackupFunctionalTest:
 
         config = Config(test_mode=True)
         config.load_config()
+        self._configure_test_endpoint(config)
         engine = BackupEngine(config=config, test_mode=True)
 
         # Dry run backup
@@ -311,6 +330,7 @@ class TestBackupFunctionalTest:
 
         config = Config(test_mode=True)
         config.load_config()
+        self._configure_test_endpoint(config)
         engine = BackupEngine(config=config, test_mode=True)
 
         job = BackupJob(
@@ -338,6 +358,7 @@ class TestBackupFunctionalTest:
         """Test error detection and categorization during backup."""
         config = Config(test_mode=True)
         config.load_config()
+        self._configure_test_endpoint(config)
         engine = BackupEngine(config=config, test_mode=True)
 
         # Test with permission error (create read-only directory)
@@ -387,6 +408,7 @@ class TestBackupFunctionalTest:
 
         config = Config(test_mode=True)
         config.load_config()
+        self._configure_test_endpoint(config)
         engine = BackupEngine(config=config, test_mode=True)
 
         job = BackupJob(

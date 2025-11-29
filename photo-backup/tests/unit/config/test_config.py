@@ -253,7 +253,11 @@ class TestConfigFileLoading:
 
     @pytest.mark.unit
     def test_load_config_from_file_with_test_mode_override(self):
-        """Test that test mode overrides are applied after file loading."""
+        """Test that user config takes precedence over test mode defaults (Phase 2/3).
+
+        After refactoring, test mode defaults serve as fallbacks, not overrides.
+        User-specified values always win.
+        """
         config = Config(test_mode=True)
         file_config = {"backup": {"source_path": "/custom/photos", "destination": "custom:backup"}}
 
@@ -263,9 +267,10 @@ class TestConfigFileLoading:
         ):
             result = config.load_config()
 
-            # Test mode overrides should be applied
-            assert result["backup"]["source_path"] == "/tmp/photo-backup-test-photos"
-            assert result["storage"]["endpoint"] == "localhost:9000"
+            # User config should win over test defaults
+            assert result["backup"]["source_path"] == "/custom/photos"  # User specified
+            # But test defaults should fill missing values
+            assert result["storage"]["endpoint"] == "localhost:9000"  # From test defaults
 
 
 class TestConfigMergeAndOverride:
@@ -313,12 +318,12 @@ class TestConfigMergeAndOverride:
 
         overridden = config.utils.apply_test_mode_overrides(base_config, TEST_MODE_DEFAULTS)
 
-        # Test mode overrides should take precedence
-        assert overridden["backup"]["source_path"] == "/tmp/photo-backup-test-photos"
-        assert overridden["storage"]["endpoint"] == "localhost:9000"
-        assert overridden["storage"]["access_key"] == "minioadmin"
-        assert overridden["storage"]["secret_key"] == "minioadmin"
-        assert overridden["storage"]["use_ssl"] is False
+        # After Phase 2 refactoring: User config takes precedence, test defaults are fallbacks
+        assert overridden["backup"]["source_path"] == "/custom/photos"  # User config wins
+        assert overridden["storage"]["endpoint"] == "custom.s3.com"  # User config wins
+        assert overridden["storage"]["access_key"] == "custom_key"  # User config wins
+        assert overridden["storage"]["secret_key"] == "custom_secret"  # User config wins
+        assert overridden["storage"]["use_ssl"] is True  # User config wins
 
     @pytest.mark.unit
     def test_get_config_file_path(self):

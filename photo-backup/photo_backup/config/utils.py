@@ -45,12 +45,16 @@ class ConfigUtils:
 
     @staticmethod
     def apply_test_mode_overrides(config: dict[str, Any], test_defaults: dict[str, Any]) -> dict[str, Any]:
-        """Apply test mode overrides to configuration.
+        """Apply test mode defaults as fallbacks to configuration.
+
+        After Phase 2 refactoring, TEST_MODE_DEFAULTS serve as FALLBACKS, not overrides.
+        User config takes precedence over test defaults.
 
         Args:
-            config: Base configuration
+            config: User configuration (takes precedence)
+            test_defaults: Test mode default values (fallbacks only)
 
         Returns:
-            Configuration with test mode overrides applied
+            Configuration with test defaults applied as fallbacks
         """
-        return ConfigUtils.merge_dicts(config, test_defaults)
+        return ConfigUtils.merge_dicts(test_defaults, config)

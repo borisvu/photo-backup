@@ -5,25 +5,69 @@ These tests verify that the backup system can successfully sync test photos
 to Minio in test mode.
 """
 
+import contextlib
+
+import docker
 import pytest
 
 from photo_backup.backup import BackupEngine, BackupJob, BackupStats
-
-
-@pytest.fixture
-def _minio_container(minio_container):
-    """Alias for minio_container fixture to satisfy ruff ARG002."""
-    return minio_container
+from photo_backup.config.config import Config
 
 
 class TestBackupSync:
     """Test backup sync functionality with real Minio."""
 
-    def test_sync_test_photos_to_minio(self, _minio_container, test_photos):
+    MINIO_PORT = 9005  # Unique port for this test suite
+
+    @pytest.fixture
+    def minio_container(self):
+        """Manage Minio container lifecycle for backup sync testing."""
+        from tests.functional.minio_test_utils import MinioTestUtils
+
+        client = MinioTestUtils.get_docker_client()
+        if client is None:
+            pytest.skip("Docker not available or not running")
+
+        container_name = "photo-backup-sync-test"
+
+        # Start or reuse container
+        try:
+            container = MinioTestUtils.start_or_reuse_minio(client, container_name, port=self.MINIO_PORT)
+            # Wait for Minio to be ready
+            MinioTestUtils.wait_for_minio_ready(container.name, port=self.MINIO_PORT)
+
+            yield container.id
+
+        finally:
+            # Cleanup - stop AND remove container
+            if client is not None:
+                with contextlib.suppress(docker.errors.NotFound, docker.errors.APIError):
+                    try:
+                        container = client.containers.get(container_name)
+                        container.stop(timeout=5)
+                        container.remove(force=True)
+                    except Exception:
+                        pass
+
+    def _get_test_config(self) -> Config:
+        """Create test configuration with proper credentials."""
+        config = Config(test_mode=True)
+        config.load_config()
+        # Configure credentials explicitly
+        storage = config._config.setdefault("storage", {})
+        storage["endpoint"] = f"localhost:{self.MINIO_PORT}"
+        storage["access_key"] = "minioadmin"
+        storage["secret_key"] = "minioadmin"
+        storage["use_ssl"] = False
+        storage["bucket"] = "test-bucket"
+        return config
+
+    def test_sync_test_photos_to_minio(self, minio_container, test_photos):  # noqa: ARG002
         """Test syncing test photos to Minio bucket."""
-        # The _minio_container fixture ensures Minio is running
-        # Create backup engine in test mode
-        engine = BackupEngine(test_mode=True)
+        # The minio_container fixture ensures Minio is running
+        # Create backup engine with proper config
+        config = self._get_test_config()
+        engine = BackupEngine(config=config, test_mode=True)
 
         # Verify environment is ready
         is_valid, errors = engine.validate_backup_environment()
@@ -57,11 +101,12 @@ class TestBackupSync:
         assert "STDOUT:" in output
         # Should show some transfer activity (exact output depends on photos)
 
-    def test_sync_dry_run_with_minio(self, _minio_container, test_photos):
+    def test_sync_dry_run_with_minio(self, minio_container, test_photos):  # noqa: ARG002
         """Test dry run sync with Minio."""
-        # The _minio_container fixture ensures Minio is running
-        # Create backup engine in test mode
-        engine = BackupEngine(test_mode=True)
+        # The minio_container fixture ensures Minio is running
+        # Create backup engine with proper config
+        config = self._get_test_config()
+        engine = BackupEngine(config=config, test_mode=True)
 
         # Create backup job with dry run
         job = BackupJob(source_path=str(test_photos), destination="minio-test:my-photo-backup-bucket-test", dry_run=True)
@@ -80,11 +125,12 @@ class TestBackupSync:
         # Verify job status updated
         assert job.status == "completed"
 
-    def test_sync_nonexistent_source(self, _minio_container):
+    def test_sync_nonexistent_source(self, minio_container):  # noqa: ARG002
         """Test sync with nonexistent source directory."""
-        # The _minio_container fixture ensures Minio is running
-        # Create backup engine in test mode
-        engine = BackupEngine(test_mode=True)
+        # The minio_container fixture ensures Minio is running
+        # Create backup engine with proper config
+        config = self._get_test_config()
+        engine = BackupEngine(config=config, test_mode=True)
 
         # Create backup job with nonexistent source
         job = BackupJob(source_path="/nonexistent/path", destination="minio-test:my-photo-backup-bucket-test", dry_run=False)
@@ -103,11 +149,12 @@ class TestBackupSync:
         # Verify error output contains meaningful information
         assert "STDERR:" in output
 
-    def test_sync_command_structure(self, _minio_container, test_photos):
+    def test_sync_command_structure(self, minio_container, test_photos):  # noqa: ARG002
         """Test that sync generates correct rclone command structure."""
-        # The _minio_container fixture ensures Minio is running
-        # Create backup engine in test mode
-        engine = BackupEngine(test_mode=True)
+        # The minio_container fixture ensures Minio is running
+        # Create backup engine with proper config
+        config = self._get_test_config()
+        engine = BackupEngine(config=config, test_mode=True)
 
         # Create backup job
         job = BackupJob(source_path=str(test_photos), destination="minio-test:my-photo-backup-bucket-test", dry_run=True)
@@ -137,11 +184,12 @@ class TestBackupSync:
         assert config_file.endswith(".conf")
         assert "tmp" in config_file.lower()
 
-    def test_sync_with_progress_parsing(self, _minio_container, test_photos):
+    def test_sync_with_progress_parsing(self, minio_container, test_photos):  # noqa: ARG002
         """Test sync with progress parsing functionality."""
-        # The _minio_container fixture ensures Minio is running
-        # Create backup engine in test mode
-        engine = BackupEngine(test_mode=True)
+        # The minio_container fixture ensures Minio is running
+        # Create backup engine with proper config
+        config = self._get_test_config()
+        engine = BackupEngine(config=config, test_mode=True)
 
         # Create backup job
         job = BackupJob(
@@ -178,11 +226,12 @@ class TestBackupSync:
         assert transfer_stats["percentage"] >= 0.0
         assert transfer_stats["errors"] >= 0
 
-    def test_sync_with_backup_stats(self, _minio_container, test_photos):
+    def test_sync_with_backup_stats(self, minio_container, test_photos):  # noqa: ARG002
         """Test sync_with_stats method returns comprehensive BackupStats."""
-        # The _minio_container fixture ensures Minio is running
-        # Create backup engine in test mode
-        engine = BackupEngine(test_mode=True)
+        # The minio_container fixture ensures Minio is running
+        # Create backup engine with proper config
+        config = self._get_test_config()
+        engine = BackupEngine(config=config, test_mode=True)
 
         # Create backup job
         job = BackupJob(

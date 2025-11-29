@@ -3,14 +3,49 @@
 Functional tests for the sync CLI command.
 """
 
+import contextlib
 import subprocess
 import tempfile
 
+import docker
+import pytest
 from pathlib import Path
 
 
 class TestSyncCommandFunctional:
     """Functional tests for the sync command."""
+
+    MINIO_PORT = 9008
+
+    @pytest.fixture
+    def minio_container(self):
+        """Local Minio fixture for this test class."""
+        from tests.functional.minio_test_utils import MinioTestUtils
+
+        client = MinioTestUtils.get_docker_client()
+        if client is None:
+            pytest.skip("Docker not available or not running")
+
+        container_name = "photo-backup-sync-test"
+
+        # Start or reuse container
+        try:
+            container = MinioTestUtils.start_or_reuse_minio(client, container_name, port=self.MINIO_PORT)
+            # Wait for Minio to be ready
+            MinioTestUtils.wait_for_minio_ready(container.name, port=self.MINIO_PORT)
+
+            yield container.id
+
+        finally:
+            # Cleanup - stop AND remove container
+            if client is not None:
+                with contextlib.suppress(docker.errors.NotFound, docker.errors.APIError):
+                    try:
+                        container = client.containers.get(container_name)
+                        container.stop(timeout=5)
+                        container.remove(force=True)
+                    except Exception:
+                        pass
 
     def test_sync_help(self):
         """Test that sync command shows help."""
@@ -65,6 +100,8 @@ class TestSyncCommandFunctional:
         """Test sync command in test mode when Minio is running."""
         # Minio container is managed by fixture
         # Create test photos directory and some test files
+        import os
+
         from pathlib import Path
 
         test_photos_dir = Path("/tmp/photo-backup-test-photos")
@@ -75,12 +112,21 @@ class TestSyncCommandFunctional:
         test_file.write_text("test photo content")
 
         try:
+            # Configure environment for custom Minio endpoint
+            env = os.environ.copy()
+            env["PHOTO_BACKUP_STORAGE_ENDPOINT"] = f"localhost:{self.MINIO_PORT}"
+            env["PHOTO_BACKUP_STORAGE_ACCESS_KEY"] = "minioadmin"
+            env["PHOTO_BACKUP_STORAGE_SECRET_KEY"] = "minioadmin"
+            env["PHOTO_BACKUP_STORAGE_USE_SSL"] = "false"
+            env["PHOTO_BACKUP_STORAGE_BUCKET"] = "test-bucket"
+
             # Test with dry run first
             result = subprocess.run(
                 ["python3", "-m", "photo_backup.main", "--test-mode", "--dry-run", "sync"],
                 capture_output=True,
                 text=True,
                 cwd=".",
+                env=env,
             )
 
             combined_output = result.stdout + result.stderr
@@ -147,11 +193,16 @@ class TestSyncCommandFunctional:
                 photo_file.parent.mkdir(parents=True, exist_ok=True)
                 photo_file.write_text(f"Test photo content for {photo_path}")
 
-            # Set environment variable to use our test photos directory
+            # Set environment variables for custom Minio endpoint and test photos directory
             import os
 
             env = os.environ.copy()
             env["PHOTO_BACKUP_BACKUP_SOURCE_PATH"] = str(temp_path)
+            env["PHOTO_BACKUP_STORAGE_ENDPOINT"] = f"localhost:{self.MINIO_PORT}"
+            env["PHOTO_BACKUP_STORAGE_ACCESS_KEY"] = "minioadmin"
+            env["PHOTO_BACKUP_STORAGE_SECRET_KEY"] = "minioadmin"
+            env["PHOTO_BACKUP_STORAGE_USE_SSL"] = "false"
+            env["PHOTO_BACKUP_STORAGE_BUCKET"] = "test-bucket"
 
             # Test sync with dry run
             result = subprocess.run(

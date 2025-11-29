@@ -208,8 +208,12 @@ state:
             assert info["credential_source"] == "environment_variables"
 
     def test_test_mode_credentials_unchanged(self):
-        """Test that test mode credentials remain unchanged."""
-        # Set environment variables (should be ignored in test mode)
+        """Test that environment variables override test defaults (Phase 5).
+
+        After Phase 1 refactoring: Environment variables take precedence in ALL modes,
+        including test mode. This enables flexible testing scenarios.
+        """
+        # Set environment variables (should override test defaults)
         env = {"WASABI_ACCESS_KEY": "env_access_key", "WASABI_SECRET_KEY": "env_secret_key"}
 
         with patch.dict(os.environ, env):
@@ -218,9 +222,66 @@ state:
 
             credentials = manager.get_credentials()
 
-            # Test mode should use Minio credentials regardless of environment
-            assert credentials["access_key"] == "minioadmin"
-            assert credentials["secret_key"] == "minioadmin"
+            # Environment variables should override test defaults
+            assert credentials["access_key"] == "env_access_key"
+            assert credentials["secret_key"] == "env_secret_key"
+            # But test mode defaults should apply for other settings
             assert credentials["endpoint"] == "localhost:9000"
             assert credentials["bucket"] == "test-bucket"
             assert credentials["use_ssl"] is False
+
+    def test_storage_section_in_any_mode(self):
+        """Test that storage section in config works in any mode (Phase 5.3).
+
+        After Phase 1 refactoring: DirectCredentialProvider reads from storage
+        section regardless of mode. This enables MinIO in production, Wasabi in test.
+        """
+        # Test 1: MinIO config in production mode
+        minio_config = {
+            "storage": {
+                "endpoint": "minio.prod.local:9000",
+                "bucket": "prod-bucket",
+                "access_key": "minio_prod_key",
+                "secret_key": "minio_prod_secret",
+                "use_ssl": True,
+            }
+        }
+
+        prod_config = Config(test_mode=False)
+        with (
+            patch.object(prod_config, "load_config", return_value=minio_config),
+            patch.dict(os.environ, {}, clear=True),
+        ):
+            manager = CredentialManager(prod_config)
+            credentials = manager.get_credentials()
+
+            # MinIO should work in production mode
+            assert credentials["endpoint"] == "minio.prod.local:9000"
+            assert credentials["bucket"] == "prod-bucket"
+            assert credentials["access_key"] == "minio_prod_key"
+            assert credentials["use_ssl"] is True
+
+        # Test 2: Wasabi config in test mode
+        wasabi_config = {
+            "storage": {
+                "endpoint": "s3.wasabisys.com",
+                "bucket": "test-wasabi-bucket",
+                "access_key": "wasabi_test_key",
+                "secret_key": "wasabi_test_secret",
+                "use_ssl": True,
+            }
+        }
+
+        test_config = Config(test_mode=True)
+        with (
+            patch.object(test_config, "load_config", return_value=wasabi_config),
+            patch.dict(os.environ, {}, clear=True),
+        ):
+            manager = CredentialManager(test_config)
+            credentials = manager.get_credentials()
+
+            # Wasabi should work in test mode
+            assert credentials["endpoint"] == "s3.wasabisys.com"
+            assert credentials["bucket"] == "test-wasabi-bucket"
+            assert credentials["access_key"] == "wasabi_test_key"
+            assert credentials["use_ssl"] is True

@@ -105,15 +105,28 @@ def start_minio_container():
 
 
 def stop_minio_container():
-    """Stops and removes the Minio Docker container."""
+    """Stops and removes the Minio Docker container.
+
+    Handles errors gracefully to ensure cleanup always attempts removal.
+    """
     if not container_exists(MINIO_CONTAINER_NAME):
         return
 
-    # Stop container
-    run_docker_command(["stop", MINIO_CONTAINER_NAME])
+    try:
+        # Stop container (might already be stopped)
+        result = run_docker_command(["stop", MINIO_CONTAINER_NAME])
+        if result.returncode != 0 and "is already stopped" not in result.stderr:
+            print(f"⚠️  Warning: Failed to stop container: {result.stderr}")
+    except Exception as e:
+        print(f"⚠️  Warning: Exception stopping container: {e}")
 
-    # Remove container
-    run_docker_command(["rm", MINIO_CONTAINER_NAME])
+    try:
+        # Remove container (always attempt even if stop failed)
+        result = run_docker_command(["rm", "-f", MINIO_CONTAINER_NAME])
+        if result.returncode != 0:
+            print(f"⚠️  Warning: Failed to remove container: {result.stderr}")
+    except Exception as e:
+        print(f"⚠️  Warning: Exception removing container: {e}")
 
 
 def create_test_photos(base_dir=TEST_PHOTO_DIR):
@@ -133,10 +146,23 @@ def cleanup_test_data(base_dir=TEST_PHOTO_DIR):
 # Pytest fixtures
 @pytest.fixture(scope="session")
 def minio_container():
-    """Fixture to start/stop Minio container for integration tests."""
+    """Fixture to start/stop Minio container for integration tests.
+
+    Session-scoped to share one container across all tests that need it.
+    Ensures cleanup even if tests fail.
+    """
     start_minio_container()
-    yield
-    stop_minio_container()
+    try:
+        yield
+    finally:
+        # Always cleanup, even if tests fail
+        try:
+            stop_minio_container()
+        except Exception as e:
+            print(f"\n⚠️  Warning: Failed to stop minio container: {e}")
+            # Try force removal as last resort
+            with contextlib.suppress(Exception):
+                run_docker_command(["rm", "-f", MINIO_CONTAINER_NAME])
 
 
 @pytest.fixture

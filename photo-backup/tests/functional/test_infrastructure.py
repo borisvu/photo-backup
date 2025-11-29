@@ -4,6 +4,9 @@ Functional tests for test infrastructure.
 These tests verify that the test infrastructure (Docker, Minio) works correctly.
 """
 
+import contextlib
+
+import docker
 import pytest
 
 
@@ -181,6 +184,38 @@ class TestFixtureIntegration:
 class TestInfrastructureResilience:
     """Tests for infrastructure resilience and error handling."""
 
+    MINIO_PORT = 9007
+
+    @pytest.fixture
+    def minio_container(self):
+        """Local Minio fixture for this test class."""
+        from tests.functional.minio_test_utils import MinioTestUtils
+
+        client = MinioTestUtils.get_docker_client()
+        if client is None:
+            pytest.skip("Docker not available or not running")
+
+        container_name = "photo-backup-infra-test"
+
+        # Start or reuse container
+        try:
+            container = MinioTestUtils.start_or_reuse_minio(client, container_name, port=self.MINIO_PORT)
+            # Wait for Minio to be ready
+            MinioTestUtils.wait_for_minio_ready(container.name, port=self.MINIO_PORT)
+
+            yield container.id
+
+        finally:
+            # Cleanup - stop AND remove container
+            if client is not None:
+                with contextlib.suppress(docker.errors.NotFound, docker.errors.APIError):
+                    try:
+                        container = client.containers.get(container_name)
+                        container.stop(timeout=5)
+                        container.remove(force=True)
+                    except Exception:
+                        pass
+
     @pytest.mark.functional
     @pytest.mark.slow
     def test_infrastructure_resilience(self):
@@ -223,13 +258,30 @@ class TestInfrastructureResilience:
 
     @pytest.mark.functional
     @pytest.mark.slow
-    def test_minio_integration_with_cli(self, minio_container, cli_runner):  # noqa: ARG002
+    def test_minio_integration_with_cli(self, minio_container):  # noqa: ARG002
         """Test Minio integration with CLI (simplified version)."""
         # Just test that CLI works when Minio fixture is active
-        result = cli_runner(["--test-mode"])
+        import os
+        import subprocess
+
+        env = os.environ.copy()
+        env["PHOTO_BACKUP_STORAGE_ENDPOINT"] = f"localhost:{self.MINIO_PORT}"
+        env["PHOTO_BACKUP_STORAGE_ACCESS_KEY"] = "minioadmin"
+        env["PHOTO_BACKUP_STORAGE_SECRET_KEY"] = "minioadmin"
+        env["PHOTO_BACKUP_STORAGE_USE_SSL"] = "false"
+        env["PHOTO_BACKUP_STORAGE_BUCKET"] = "test-bucket"
+
+        result = subprocess.run(
+            ["python3", "-m", "photo_backup.main", "--test-mode"],
+            capture_output=True,
+            text=True,
+            cwd=".",
+            env=env,
+        )
 
         assert result.returncode == 0
-        assert "TEST MODE" in result.stdout
-        assert "localhost:9000" in result.stdout
+        combined_output = result.stdout + result.stderr
+        assert "TEST MODE" in combined_output
+        assert f"localhost:{self.MINIO_PORT}" in combined_output
 
         # Note: minio_container fixture ensures Minio is available for the test

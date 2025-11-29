@@ -185,3 +185,100 @@ class TestConfigIntegration:
         assert prod_config.get("logging.level") == "INFO"
         assert test_config.get("logging.level") == "DEBUG"
         assert prod_config.get("logging.directory") != test_config.get("logging.directory")
+
+    @pytest.mark.integration
+    def test_production_vs_test_config(self):
+        """Test that production and test configs behave correctly (Phase 4.1).
+
+        After Phase 2 refactoring: TEST_MODE_DEFAULTS serve as fallbacks
+        for DEFAULT_CONFIG, not overrides of user config.
+        """
+        from photo_backup.config import Config
+
+        prod_config = Config(test_mode=False)
+        prod_config.load_config()
+
+        test_config = Config(test_mode=True)
+        test_config.load_config()
+
+        # Test mode should have test defaults applied to base config
+        assert test_config.get("storage.endpoint") == "localhost:9000"
+        assert test_config.get("storage.use_ssl") is False
+        assert test_config.get("logging.level") == "DEBUG"
+
+        # Production should use production defaults
+        assert prod_config.get("storage.endpoint") == "s3.wasabisys.com"
+        assert prod_config.get("storage.use_ssl") is True
+        assert prod_config.get("logging.level") == "INFO"
+
+    @pytest.mark.integration
+    def test_custom_config_in_test_mode(self):
+        """Test that custom config.test.yaml is respected (Phase 4.2).
+
+        User-specified values in config files should take precedence over
+        TEST_MODE_DEFAULTS.
+        """
+        from unittest.mock import patch
+
+        from photo_backup.config import Config
+
+        # Simulate a user config file with custom values
+        custom_config = {
+            "backup": {"source_path": "/my/custom/photos", "destination": "my-custom-minio:my-bucket"},
+            "storage": {"endpoint": "my-minio.local:9000", "bucket": "my-custom-bucket"},
+        }
+
+        test_config = Config(test_mode=True)
+
+        with (
+            patch.object(test_config.loader, "load_config_from_file", return_value=custom_config),
+            patch.object(test_config.validator, "validate_config", return_value=(True, [])),
+        ):
+            test_config.load_config()
+
+            # User's custom values should win
+            assert test_config.get("backup.source_path") == "/my/custom/photos"
+            assert test_config.get("backup.destination") == "my-custom-minio:my-bucket"
+            assert test_config.get("storage.endpoint") == "my-minio.local:9000"
+            assert test_config.get("storage.bucket") == "my-custom-bucket"
+
+            # But test defaults should fill gaps (like access_key not specified)
+            assert test_config.get("storage.access_key") == "minioadmin"
+            assert test_config.get("storage.secret_key") == "minioadmin"
+
+    @pytest.mark.integration
+    def test_minio_in_production_mode(self):
+        """Test that MinIO works in production mode (Phase 4.3).
+
+        After Phase 1 refactoring: Credential loading is mode-independent.
+        MinIO should work in production mode if configured.
+        """
+        from unittest.mock import patch
+
+        from photo_backup.config import Config
+
+        # Simulate a production config pointing to MinIO
+        minio_prod_config = {
+            "storage": {
+                "endpoint": "minio.prod.example.com:9000",
+                "bucket": "prod-bucket",
+                "access_key": "prod_access",
+                "secret_key": "prod_secret",
+                "use_ssl": True,
+            }
+        }
+
+        prod_config = Config(test_mode=False)
+
+        with (
+            patch.object(prod_config.loader, "load_config_from_file", return_value=minio_prod_config),
+            patch.object(prod_config.validator, "validate_config", return_value=(True, [])),
+        ):
+            prod_config.load_config()
+
+            # Production mode should accept MinIO configuration
+            assert prod_config.get("storage.endpoint") == "minio.prod.example.com:9000"
+            assert prod_config.get("storage.bucket") == "prod-bucket"
+            assert prod_config.get("storage.access_key") == "prod_access"
+            assert prod_config.get("storage.secret_key") == "prod_secret"
+            assert prod_config.get("storage.use_ssl") is True

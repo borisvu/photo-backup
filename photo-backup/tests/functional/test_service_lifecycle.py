@@ -30,6 +30,17 @@ from tests.functional.minio_test_utils import MinioTestUtils
 class TestServiceLifecycle:
     """Comprehensive functional test for service lifecycle."""
 
+    MINIO_PORT = 9003  # Unique port for this test suite
+
+    def _configure_test_endpoint(self, config: Config) -> None:
+        """Configure the endpoint and credentials to use the unique test port."""
+        storage = config._config.setdefault("storage", {})
+        storage["endpoint"] = f"localhost:{self.MINIO_PORT}"
+        storage["access_key"] = "minioadmin"
+        storage["secret_key"] = "minioadmin"
+        storage["use_ssl"] = False
+        storage["bucket"] = "test-bucket"
+
     @pytest.fixture
     def minio_container_lifecycle(self):
         """Manage Minio container lifecycle for service testing."""
@@ -41,15 +52,17 @@ class TestServiceLifecycle:
 
         # Start or reuse container
         try:
-            container = MinioTestUtils.start_or_reuse_minio(client, container_name)
+            container = MinioTestUtils.start_or_reuse_minio(client, container_name, port=self.MINIO_PORT)
             # Wait for Minio to be ready
-            MinioTestUtils.wait_for_minio_ready(container.name)
+            MinioTestUtils.wait_for_minio_ready(container.name, port=self.MINIO_PORT)
 
             yield container
 
         finally:
+            # Cleanup - stop AND remove container
             with contextlib.suppress(docker.errors.NotFound, docker.errors.APIError):
                 container.stop(timeout=5)
+                container.remove(force=True)
 
     @pytest.fixture
     def test_environment(self, tmp_path):
@@ -80,6 +93,7 @@ class TestServiceLifecycle:
         # Step 1: Initialize configuration
         config = Config(test_mode=True)
         config.load_config()
+        self._configure_test_endpoint(config)
 
         # Override source path in config
         config._config["backup"]["source_path"] = str(source_dir)
@@ -197,6 +211,7 @@ class TestServiceLifecycle:
         # Initialize and start service
         config = Config(test_mode=True)
         config.load_config()
+        self._configure_test_endpoint(config)
         config._config["backup"]["source_path"] = str(source_dir)
 
         # Reduce loop interval for faster testing
@@ -253,6 +268,7 @@ class TestServiceLifecycle:
 
         config = Config(test_mode=True)
         config.load_config()
+        self._configure_test_endpoint(config)
         config._config["backup"]["source_path"] = str(source_dir)
 
         service = ServiceManager(config)
