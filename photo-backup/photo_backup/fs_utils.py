@@ -14,8 +14,9 @@ def ensure_directory(path: str) -> tuple[bool, str | None]:
         return False, "Path cannot be empty"
 
     try:
-        # Convert to absolute path
-        abs_path = os.path.abspath(path)
+        # Expand ~ and environment variables, then convert to absolute path
+        expanded_path = os.path.expanduser(path)
+        abs_path = os.path.abspath(expanded_path)
 
         # Check if it already exists
         if os.path.exists(abs_path):
@@ -52,7 +53,9 @@ def validate_path(path: str) -> tuple[bool, str | None]:
     if not path or not isinstance(path, str):
         return False, "Path must be a non-empty string"
     try:
-        abs_path = os.path.abspath(path)
+        # Expand ~ and environment variables, then convert to absolute path
+        expanded_path = os.path.expanduser(path)
+        abs_path = os.path.abspath(expanded_path)
         if not os.path.exists(abs_path):
             return False, f"Path does not exist: {abs_path}"
         if not os.access(abs_path, os.R_OK):
