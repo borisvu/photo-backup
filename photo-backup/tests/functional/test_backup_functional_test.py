@@ -16,7 +16,6 @@ This is Task 62: Backup Functional Test - the final test for Phase 6.
 import contextlib
 import os
 
-import docker
 import pytest
 from pathlib import Path
 
@@ -40,31 +39,12 @@ class TestBackupFunctionalTest:
         storage["use_ssl"] = False
         storage["bucket"] = "test-bucket"
 
-    @pytest.fixture
-    def minio_container_management(self):
-        """Manage Minio container lifecycle for functional testing."""
-        # Use shared utilities for Docker/Minio management
-        from tests.functional.minio_test_utils import MinioTestUtils
+    # Use shared fixture factory to avoid code duplication
+    from tests.functional.minio_test_utils import MinioTestUtils
 
-        client = MinioTestUtils.get_docker_client()
-        if client is None:
-            pytest.skip("Docker not available or not running")
-
-        container_name = "photo-backup-functional-test"
-
-        # Start or reuse container
-        try:
-            container = MinioTestUtils.start_or_reuse_minio(client, container_name, port=self.MINIO_PORT)
-            # Wait for Minio to be ready
-            MinioTestUtils.wait_for_minio_ready(container.name, port=self.MINIO_PORT)
-
-            yield container
-
-        finally:
-            # Cleanup - stop AND remove container
-            with contextlib.suppress(docker.errors.NotFound, docker.errors.APIError):
-                container.stop(timeout=5)
-                container.remove(force=True)
+    minio_container_management = MinioTestUtils.create_minio_fixture(
+        "photo-backup-functional-test", port=MINIO_PORT, yield_id=False
+    )
 
     def test_complete_backup_cycle(self, minio_container_management, tmp_path):  # noqa: ARG002
         """Test complete backup cycle from start to finish."""

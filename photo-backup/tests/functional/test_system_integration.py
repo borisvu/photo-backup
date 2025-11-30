@@ -4,9 +4,6 @@ Comprehensive system integration tests.
 These tests verify that all major components work together correctly.
 """
 
-import contextlib
-
-import docker
 import pytest
 
 
@@ -15,35 +12,10 @@ class TestSystemIntegration:
 
     MINIO_PORT = 9009
 
-    @pytest.fixture
-    def minio_container(self):
-        """Local Minio fixture for this test class."""
-        from tests.functional.minio_test_utils import MinioTestUtils
+    # Use shared fixture factory to avoid code duplication
+    from tests.functional.minio_test_utils import MinioTestUtils
 
-        client = MinioTestUtils.get_docker_client()
-        if client is None:
-            pytest.skip("Docker not available or not running")
-
-        container_name = "photo-backup-system-test"
-
-        # Start or reuse container
-        try:
-            container = MinioTestUtils.start_or_reuse_minio(client, container_name, port=self.MINIO_PORT)
-            # Wait for Minio to be ready
-            MinioTestUtils.wait_for_minio_ready(container.name, port=self.MINIO_PORT)
-
-            yield container.id
-
-        finally:
-            # Cleanup - stop AND remove container
-            if client is not None:
-                with contextlib.suppress(docker.errors.NotFound, docker.errors.APIError):
-                    try:
-                        container = client.containers.get(container_name)
-                        container.stop(timeout=5)
-                        container.remove(force=True)
-                    except Exception:
-                        pass
+    minio_container = MinioTestUtils.create_minio_fixture("photo-backup-system-test", port=MINIO_PORT)
 
     @pytest.mark.functional
     def test_modules_can_be_imported(self):

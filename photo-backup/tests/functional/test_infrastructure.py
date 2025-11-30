@@ -4,9 +4,6 @@ Functional tests for test infrastructure.
 These tests verify that the test infrastructure (Docker, Minio) works correctly.
 """
 
-import contextlib
-
-import docker
 import pytest
 
 
@@ -186,35 +183,10 @@ class TestInfrastructureResilience:
 
     MINIO_PORT = 9007
 
-    @pytest.fixture
-    def minio_container(self):
-        """Local Minio fixture for this test class."""
-        from tests.functional.minio_test_utils import MinioTestUtils
+    # Use shared fixture factory to avoid code duplication
+    from tests.functional.minio_test_utils import MinioTestUtils
 
-        client = MinioTestUtils.get_docker_client()
-        if client is None:
-            pytest.skip("Docker not available or not running")
-
-        container_name = "photo-backup-infra-test"
-
-        # Start or reuse container
-        try:
-            container = MinioTestUtils.start_or_reuse_minio(client, container_name, port=self.MINIO_PORT)
-            # Wait for Minio to be ready
-            MinioTestUtils.wait_for_minio_ready(container.name, port=self.MINIO_PORT)
-
-            yield container.id
-
-        finally:
-            # Cleanup - stop AND remove container
-            if client is not None:
-                with contextlib.suppress(docker.errors.NotFound, docker.errors.APIError):
-                    try:
-                        container = client.containers.get(container_name)
-                        container.stop(timeout=5)
-                        container.remove(force=True)
-                    except Exception:
-                        pass
+    minio_container = MinioTestUtils.create_minio_fixture("photo-backup-infra-test", port=MINIO_PORT)
 
     @pytest.mark.functional
     @pytest.mark.slow

@@ -6,13 +6,10 @@ Task 52: Credential Functional Test
 Tests the complete credential flow with Minio container.
 """
 
-import contextlib
 import os
 import shutil
 import subprocess
-from collections.abc import Generator
 
-import docker
 import pytest
 from pathlib import Path
 
@@ -23,37 +20,10 @@ from photo_backup.credentials import CredentialManager
 class TestCredentialFlow:
     """Test complete credential flow with Minio container."""
 
-    @pytest.fixture
-    def minio_container(self) -> Generator[str]:
-        """Manage Minio container lifecycle for credential testing."""
-        # Use shared utilities for Docker/Minio management
-        from tests.functional.minio_test_utils import MinioTestUtils
+    # Use shared fixture factory to avoid code duplication
+    from tests.functional.minio_test_utils import MinioTestUtils
 
-        client = MinioTestUtils.get_docker_client()
-        if client is None:
-            pytest.skip("Docker not available or not running")
-
-        container_name = "photo-backup-credential-test"
-        port = 9001  # Use unique port to avoid collisions
-
-        # Start or reuse container
-        try:
-            container = MinioTestUtils.start_or_reuse_minio(client, container_name, port=port)
-            # Wait for Minio to be ready
-            MinioTestUtils.wait_for_minio_ready(container.name, port=port)
-
-            yield container.id
-
-        finally:
-            # Cleanup - stop AND remove container
-            if client is not None:
-                with contextlib.suppress(docker.errors.NotFound, docker.errors.APIError):
-                    try:
-                        container = client.containers.get(container_name)
-                        container.stop(timeout=5)
-                        container.remove(force=True)
-                    except Exception:
-                        pass
+    minio_container = MinioTestUtils.create_minio_fixture("photo-backup-credential-test", port=9001)
 
     @pytest.fixture
     def test_config(self) -> Config:
