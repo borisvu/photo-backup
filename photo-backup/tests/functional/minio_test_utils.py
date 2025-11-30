@@ -1,8 +1,10 @@
 import contextlib
 import subprocess
 import time
+from collections.abc import Generator
 
 import docker
+import pytest
 
 
 class MinioTestUtils:
@@ -110,3 +112,72 @@ class MinioTestUtils:
             remove=True,
         )
         return container
+
+    @staticmethod
+    @contextlib.contextmanager
+    def minio_container_context(container_name: str, port: int = 9000) -> Generator[docker.models.containers.Container]:
+        """Context manager for Minio container lifecycle.
+
+        Handles container startup, readiness check, and cleanup.
+
+        Args:
+            container_name: Unique name for the container
+            port: External port to expose Minio API (default: 9000)
+
+        Yields:
+            Container object
+
+        Example:
+            with MinioTestUtils.minio_container_context("test-container", 9000) as container:
+                # Use container
+                pass
+        """
+        client = MinioTestUtils.get_docker_client()
+        if client is None:
+            pytest.skip("Docker not available or not running")
+
+        try:
+            container = MinioTestUtils.start_or_reuse_minio(client, container_name, port=port)
+            MinioTestUtils.wait_for_minio_ready(container.name, port=port)
+            yield container
+        finally:
+            # Cleanup - stop AND remove container
+            if client is not None:
+                with contextlib.suppress(docker.errors.NotFound, docker.errors.APIError):
+                    try:
+                        container = client.containers.get(container_name)
+                        container.stop(timeout=5)
+                        container.remove(force=True)
+                    except Exception:
+                        pass
+
+    @staticmethod
+    def create_minio_fixture(container_name: str, port: int = 9000, yield_id: bool = True):
+        """Factory function to create a minio_container pytest fixture.
+
+        This eliminates code duplication across test files by providing a reusable
+        fixture factory for Minio container management.
+
+        Args:
+            container_name: Unique name for the container (e.g., "photo-backup-test-xyz")
+            port: External port to expose Minio API (default: 9000)
+            yield_id: If True, yields container.id; if False, yields container object
+
+        Returns:
+            A pytest fixture function that manages the container lifecycle
+
+        Example:
+            class TestMyFeature:
+                MINIO_PORT = 9002
+                minio_container = MinioTestUtils.create_minio_fixture(
+                    "photo-backup-my-test", port=MINIO_PORT
+                )
+        """
+
+        @pytest.fixture
+        def minio_fixture(self):  # noqa: ARG001
+            """Manage Minio container lifecycle."""
+            with MinioTestUtils.minio_container_context(container_name, port) as container:
+                yield container.id if yield_id else container
+
+        return minio_fixture
