@@ -94,7 +94,13 @@ def status(ctx: click.Context, verbose: bool, json: bool) -> None:
 
     # Create config object
     config_obj = Config(test_mode=test_mode, dry_run=dry_run)
-    config_obj.load_config()
+    try:
+        config_obj.load_config()
+    except ValueError as e:
+        # Configuration validation failed - show clean error without traceback
+        click.echo("❌ Configuration Error:", err=True)
+        click.echo(str(e), err=True)
+        sys.exit(1)
 
     # Set up logger with job context
     logger = _get_logger(config_obj)

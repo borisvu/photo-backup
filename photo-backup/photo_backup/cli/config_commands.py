@@ -84,7 +84,15 @@ def config(ctx):
         test_mode = EnvOverride.is_test_mode_enabled()
 
     config_obj = Config(test_mode=test_mode, dry_run=dry_run)
-    config_data = config_obj.load_config()
+
+    # Load and validate configuration
+    try:
+        config_data = config_obj.load_config()
+    except ValueError as e:
+        # Configuration validation failed - show clean error without traceback
+        click.echo("❌ Configuration Error:", err=True)
+        click.echo(str(e), err=True)
+        sys.exit(1)
 
     # Set up logger with job context
     job_id = generate_job_id("config")
@@ -142,7 +150,15 @@ def validate(ctx):
         test_mode = EnvOverride.is_test_mode_enabled()
 
     config_obj = Config(test_mode=test_mode, dry_run=dry_run)
-    config_data = config_obj.load_config()
+
+    # Load and validate configuration
+    try:
+        config_data = config_obj.load_config()
+    except ValueError as e:
+        # Configuration validation failed - show clean error without traceback
+        click.echo("❌ Configuration Error:", err=True)
+        click.echo(str(e), err=True)
+        sys.exit(1)
 
     # Set up logger with job context
     job_id = generate_job_id("validate")

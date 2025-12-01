@@ -53,7 +53,13 @@ def start(ctx, background, foreground):
 
     # Load configuration
     config = Config(test_mode=test_mode, dry_run=dry_run)
-    config.load_config()
+    try:
+        config.load_config()
+    except ValueError as e:
+        # Configuration validation failed - show clean error without traceback
+        click.echo("❌ Configuration Error:", err=True)
+        click.echo(str(e), err=True)
+        sys.exit(1)
 
     # Generate job ID for this service session
     job_id = generate_job_id("service")
@@ -149,7 +155,13 @@ def stop(ctx, force, timeout):
     test_mode = ctx.obj.get("test_mode", False)
 
     config = Config(test_mode=test_mode)
-    config.load_config()
+    try:
+        config.load_config()
+    except ValueError as e:
+        # Configuration validation failed - show clean error without traceback
+        click.echo("❌ Configuration Error:", err=True)
+        click.echo(str(e), err=True)
+        sys.exit(1)
 
     job_id = generate_job_id("stop")
     logger = setup_logger_from_config(config, job_id, "photo_backup.service")
@@ -246,7 +258,13 @@ def restart(ctx, force):
     dry_run = ctx.obj.get("dry_run", False)
 
     config = Config(test_mode=test_mode, dry_run=dry_run)
-    config.load_config()
+    try:
+        config.load_config()
+    except ValueError as e:
+        # Configuration validation failed - show clean error without traceback
+        click.echo("❌ Configuration Error:", err=True)
+        click.echo(str(e), err=True)
+        sys.exit(1)
 
     job_id = generate_job_id("restart")
     logger = setup_logger_from_config(config, job_id, "photo_backup.service")

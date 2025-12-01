@@ -46,7 +46,13 @@ def sync(ctx: click.Context, verbose: bool) -> None:
 
     # Create config object
     config = Config(test_mode=test_mode, dry_run=dry_run)
-    config.load_config()
+    try:
+        config.load_config()
+    except ValueError as e:
+        # Configuration validation failed - show clean error without traceback
+        click.echo("❌ Configuration Error:", err=True)
+        click.echo(str(e), err=True)
+        sys.exit(1)
 
     # Set up logger
     logger = _get_logger(config)
