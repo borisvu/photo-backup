@@ -124,9 +124,8 @@ photo-backup/
 │   │   ├── providers/        # Credential providers
 │   │   │   ├── __init__.py
 │   │   │   ├── base.py       # Base provider interface
-│   │   │   ├── direct.py     # Direct credential provider
-│   │   │   ├── onepassword.py # 1Password integration
-│   │   │   └── test_mode.py  # Test mode credentials
+│   │   │   ├── direct.py     # Direct credential provider (handles both test and production)
+│   │   │   └── onepassword.py # 1Password integration
 │   │   ├── session/          # Session management
 │   │   │   ├── __init__.py
 │   │   │   └── onepassword.py # 1Password session handling
@@ -186,9 +185,9 @@ photo-backup/
 │   └── integration/          # Integration tests
 │       └── test_*.py         # Component interaction tests
 │
-└── scripts/                   # Utility scripts (future)
-    ├── uninstall.py          # Clean removal script
-    └── debug.py              # Diagnostic tool
+└── scripts/                   # Utility scripts (planned, not yet implemented)
+    ├── uninstall.py          # Clean removal script (future)
+    └── debug.py              # Diagnostic tool (future)
 
 # Project Management Files (Root Level)
 
@@ -199,8 +198,7 @@ backup-to-s3/                  # Project root directory
 ├── instructions.md           # Project instructions
 ├── tasks.md                  # Task definitions and requirements
 ├── Progress/                 # Progress tracking directory
-│   ├── progress.yaml         # Current progress status
-│   └── Tasks 001 - 062.yaml # Detailed task tracking
+│   └── progress.yaml         # Current progress status
 └── tests/                    # Additional test directory
     └── unit/
         └── logger/           # Logger-specific unit tests
@@ -318,21 +316,20 @@ backup-to-s3/                  # Project root directory
 - **`credentials/manager.py`**: Main credential orchestration
 - **`credentials/exceptions.py`**: Credential-specific error handling
 - **`credentials/providers/`**: Multiple credential sources
-  - `direct.py`: Environment variables and config file credentials
+  - `direct.py`: Environment variables and config file credentials (handles both test and production modes)
   - `onepassword.py`: 1Password CLI integration
-  - `test_mode.py`: Hardcoded test credentials for Minio
 - **`credentials/session/`**: Session management for 1Password
 - **`credentials/validators/`**: rclone-based credential validation
 
 **Key Features**:
 
-- Primary: Direct credentials via environment variables
+- Primary: Direct credentials via environment variables or config file
 - Fallback: 1Password CLI integration with session caching
-- Test mode: Hardcoded Minio credentials
+- Test mode: Minio credentials provided via config system (defaults.yaml)
 - rclone-based validation for all credential sources
 - Never stores credentials on disk
 
-### 5. Backup Engine (`backup.py`)
+### 5. Backup Engine (`backup/`)
 
 **Purpose**: Core backup orchestration with rclone integration
 
