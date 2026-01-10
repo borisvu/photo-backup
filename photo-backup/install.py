@@ -6,6 +6,9 @@ This script checks prerequisites and creates necessary directories
 for the photo backup system.
 """
 
+import os
+import plistlib
+import shutil
 import sys
 
 import click
@@ -105,6 +108,99 @@ def create_directories(test_mode: bool = False) -> tuple[bool, str]:
         return False, f"Failed to create directories: {e!s}"
     except Exception as e:
         return False, f"Unexpected error creating directories: {e!s}"
+
+
+def create_launchd_plist(test_mode: bool = False, output_path: str | None = None) -> tuple[bool, str]:
+    """Create a launchd plist file for the photo backup service.
+
+    Args:
+        test_mode: If True, use test mode identifier and settings
+        output_path: Optional path to write the plist file. If None, returns plist content as string.
+
+    Returns:
+        Tuple of (success, message or file path)
+    """
+    try:
+        # Determine service identifier
+        label = "com.example.photo-backup.test" if test_mode else "com.example.photo-backup"
+
+        # Get Python executable path
+        python_exe: str | None = sys.executable
+        if not python_exe or not os.path.exists(python_exe):
+            # Fallback to finding python3 in PATH
+            python_exe = shutil.which("python3")
+            if not python_exe:
+                return False, "Could not find Python executable"
+
+        # Get the main.py path or use the installed entry point
+        # Try to find the installed entry point first
+        entry_point = shutil.which("photo-backup")
+        if entry_point:
+            # Use the installed entry point
+            program_args = [entry_point, "start"]
+        else:
+            # Fall back to using python -m photo_backup.main
+            package_dir = Path(__file__).parent
+            main_py = package_dir / "photo_backup" / "main.py"
+            if not main_py.exists():
+                return False, f"Could not find main.py at {main_py}"
+            program_args = [python_exe, str(main_py), "start"]
+
+        # Add test-mode flag if needed
+        if test_mode:
+            program_args.append("--test-mode")
+
+        # Build plist dictionary based on mode
+        if test_mode:
+            # Test mode: simpler KeepAlive and test log paths
+            test_log_dir = "/tmp/photo-backup-test/logs"
+            os.makedirs(test_log_dir, exist_ok=True)
+            plist_dict = {
+                "Label": label,
+                "ProgramArguments": program_args,
+                "RunAtLoad": False,  # Don't start automatically on load
+                "KeepAlive": {
+                    "SuccessfulExit": False,  # Restart if process exits with non-zero code
+                },
+                "StandardOutPath": os.path.join(test_log_dir, "service.log"),
+                "StandardErrorPath": os.path.join(test_log_dir, "service-error.log"),
+            }
+        else:
+            # Production mode: watch for drive mount
+            plist_dict = {
+                "Label": label,
+                "ProgramArguments": program_args,
+                "RunAtLoad": False,  # Don't start automatically on load
+                "StartOnMount": {
+                    "/Volumes/4TB-SSD": True,  # Start when this drive is mounted
+                },
+                "KeepAlive": {
+                    "PathState": {
+                        "/Volumes/4TB-SSD": True,  # Keep alive while drive is mounted
+                    }
+                },
+                "StandardOutPath": os.path.expanduser("~/Library/Logs/photo-backup/service.log"),
+                "StandardErrorPath": os.path.expanduser("~/Library/Logs/photo-backup/service-error.log"),
+            }
+
+        # Generate plist XML
+        plist_xml = plistlib.dumps(plist_dict, fmt=plistlib.FMT_XML, sort_keys=False)
+
+        if output_path:
+            # Write to file
+            output_file = Path(output_path)
+            output_file.parent.mkdir(parents=True, exist_ok=True)
+            with open(output_file, "wb") as f:
+                f.write(plist_xml)
+            # Set permissions (600 for security)
+            os.chmod(output_file, 0o600)
+            return True, str(output_file)
+        else:
+            # Return as string
+            return True, plist_xml.decode("utf-8")
+
+    except Exception as e:
+        return False, f"Failed to create plist: {e!s}"
 
 
 @click.command()
