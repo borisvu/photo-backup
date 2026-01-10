@@ -12,6 +12,7 @@ import click
 from .__version__ import __version__
 from .cli.auth_commands import test_auth
 from .cli.config_commands import config, setup_config, validate
+from .cli.deps_commands import check_deps
 from .cli.log_commands import logs
 from .cli.service_commands import restart, start, stop
 from .cli.status_commands import status
@@ -107,6 +108,7 @@ def main(ctx, test_mode, dry_run, version):
 main.add_command(config)
 main.add_command(setup_config)
 main.add_command(validate)
+main.add_command(check_deps)
 main.add_command(logs)
 main.add_command(status)
 main.add_command(test_auth)

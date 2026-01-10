@@ -14,48 +14,8 @@ from pathlib import Path
 # Add the photo_backup package to the path
 sys.path.insert(0, str(Path(__file__).parent))
 
-from photo_backup.backup.rclone_utils import check_rclone
-from photo_backup.credentials.utils import check_op_cli
+from photo_backup.deps import get_dependency_status
 from photo_backup.state_utils import get_state_directories
-
-
-def check_python_version() -> tuple[bool, str]:
-    """Check if Python version meets requirements.
-
-    Returns:
-        Tuple of (is_sufficient, message)
-    """
-    version = sys.version_info
-    required_major = 3
-    required_minor = 13
-
-    if version.major > required_major or (version.major == required_major and version.minor >= required_minor):
-        return True, f"Python {version.major}.{version.minor}.{version.micro} (meets requirement >=3.13)"
-    else:
-        return False, f"Python {version.major}.{version.minor}.{version.micro} is too old (requires >=3.13)"
-
-
-def check_docker() -> tuple[bool, str]:
-    """Check if Docker is available.
-
-    Returns:
-        Tuple of (is_available, message)
-    """
-    import subprocess
-
-    try:
-        result = subprocess.run(["docker", "--version"], capture_output=True, text=True, timeout=10.0)
-        if result.returncode == 0:
-            version = result.stdout.strip()
-            return True, f"Docker available: {version}"
-        else:
-            return False, f"Docker command failed: {result.stderr.strip()}"
-    except FileNotFoundError:
-        return False, "Docker not found - required for test mode. Install from https://www.docker.com/"
-    except subprocess.TimeoutExpired:
-        return False, "Docker version check timed out"
-    except Exception as e:
-        return False, f"Error checking Docker: {e!s}"
 
 
 def check_prerequisites(test_mode: bool = False) -> tuple[bool, list[str]]:
@@ -70,48 +30,47 @@ def check_prerequisites(test_mode: bool = False) -> tuple[bool, list[str]]:
     errors = []
     all_passed = True
 
+    # Get dependency status
+    all_passed, results = get_dependency_status(test_mode=test_mode)
+
     # Check Python version
     click.echo("Checking Python version...")
-    python_ok, python_msg = check_python_version()
+    python_ok, python_msg = results["python"]
     if python_ok:
         click.echo(f"  ✓ {python_msg}")
     else:
         click.echo(f"  ✗ {python_msg}")
         errors.append(python_msg)
-        all_passed = False
 
     # Check rclone
     click.echo("Checking rclone...")
-    rclone_ok, rclone_msg, _ = check_rclone()
+    rclone_ok, rclone_msg = results["rclone"]
     if rclone_ok:
         click.echo(f"  ✓ {rclone_msg}")
     else:
         click.echo(f"  ✗ {rclone_msg}")
         errors.append(rclone_msg)
-        all_passed = False
 
     # Check Docker (required for test mode)
+    docker_ok, docker_msg = results["docker"]
     if test_mode:
         click.echo("Checking Docker (required for test mode)...")
-        docker_ok, docker_msg = check_docker()
         if docker_ok:
             click.echo(f"  ✓ {docker_msg}")
         else:
             click.echo(f"  ✗ {docker_msg}")
             errors.append(docker_msg)
-            all_passed = False
     else:
         click.echo("Checking Docker (optional)...")
-        docker_ok, docker_msg = check_docker()
         if docker_ok:
             click.echo(f"  ✓ {docker_msg}")
         else:
             click.echo(f"  ⚠ {docker_msg} (optional, only needed for test mode)")
 
     # Check 1Password CLI (skip in test mode)
+    op_ok, op_msg = results["1password"]
     if not test_mode:
         click.echo("Checking 1Password CLI...")
-        op_ok, op_msg = check_op_cli()
         if op_ok:
             click.echo(f"  ✓ {op_msg}")
         else:
