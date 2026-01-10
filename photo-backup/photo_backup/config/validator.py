@@ -222,7 +222,7 @@ class ConfigValidator:
             if "check_interval_hours" in monitoring:
                 value = monitoring["check_interval_hours"]
                 if isinstance(value, int | float):
-                    if value < 0.0166 or value > 24:
+                    if value < 0.1 or value > 24:
                         errors.append("monitoring.check_interval_hours must be between 0.1 and 24 hours")
                 else:
                     errors.append("monitoring.check_interval_hours must be a number")

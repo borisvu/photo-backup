@@ -137,9 +137,9 @@ def filter_text_logs_by_level(log_content: str, level: str) -> str:
 )
 @click.option("--errors", is_flag=True, help="Show only error/critical logs (shortcut for --level ERROR)")
 @click.option("--follow", is_flag=True, help="Follow log file in real-time (like tail -f)")
-@click.option("--json", is_flag=True, help="Output in JSON format (if logs are in JSON format)")
+@click.option("--json", "_json_output", is_flag=True, help="Output in JSON format (if logs are in JSON format)")
 @click.pass_context
-def logs(ctx: click.Context, tail: int, level: str | None, errors: bool, follow: bool, _json: bool) -> None:
+def logs(ctx: click.Context, tail: int, level: str | None, errors: bool, follow: bool, _json_output: bool) -> None:
     """View and filter photo-backup log files.
 
     This command provides comprehensive log viewing and filtering capabilities,
@@ -169,7 +169,7 @@ def logs(ctx: click.Context, tail: int, level: str | None, errors: bool, follow:
         sys.exit(1)
 
     # TODO: Implement JSON output formatting
-    # _json parameter is currently unused but kept for future implementation
+    # _json_output parameter is currently unused but kept for future implementation
 
     # Get log file path
     log_file = get_log_file_path(config)

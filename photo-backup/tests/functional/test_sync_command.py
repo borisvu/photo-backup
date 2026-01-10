@@ -84,8 +84,9 @@ class TestSyncCommandFunctional:
         test_file.write_text("test photo content")
 
         try:
-            # Configure environment for custom Minio endpoint
+            # Configure environment for custom Minio endpoint and test photos directory
             env = os.environ.copy()
+            env["PHOTO_BACKUP_BACKUP_SOURCE_PATH"] = str(test_photos_dir)
             env["PHOTO_BACKUP_STORAGE_ENDPOINT"] = f"localhost:{self.MINIO_PORT}"
             env["PHOTO_BACKUP_STORAGE_ACCESS_KEY"] = "minioadmin"
             env["PHOTO_BACKUP_STORAGE_SECRET_KEY"] = "minioadmin"

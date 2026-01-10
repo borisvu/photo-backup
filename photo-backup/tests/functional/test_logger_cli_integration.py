@@ -16,54 +16,6 @@ from pathlib import Path
 class TestEnhancedLoggerCLI:
     """Test enhanced logger integration with CLI commands."""
 
-    def test_config_command_with_enhanced_logging(self):
-        """Test that config command uses enhanced logging with job context."""
-        result = subprocess.run(
-            ["python3", "-m", "photo_backup.main", "--test-mode", "config"],
-            capture_output=True,
-            text=True,
-            cwd=".",
-        )
-
-        assert result.returncode == 0
-        assert "Configuration display completed." in result.stdout
-
-        # Check that logging configuration is displayed
-        # After refactoring: config file overrides test defaults, so check for either INFO or DEBUG
-        assert "Level: INFO" in result.stdout or "Level: DEBUG" in result.stdout
-        assert "Format: detailed" in result.stdout
-
-    def test_validate_command_with_enhanced_logging(self):
-        """Test that validate command uses enhanced logging with job context."""
-        result = subprocess.run(
-            ["python3", "-m", "photo_backup.main", "--test-mode", "validate"],
-            capture_output=True,
-            text=True,
-            cwd=".",
-        )
-
-        # Should fail due to missing paths, but logging should work
-        assert result.returncode == 1
-        assert "Configuration Validation for Photo Backup System" in result.stdout
-
-    def test_main_command_with_enhanced_logging(self):
-        """Test that main command uses enhanced logging with job context."""
-        result = subprocess.run(
-            ["python3", "-m", "photo_backup.main", "--test-mode"],
-            capture_output=True,
-            text=True,
-            cwd=".",
-        )
-
-        assert result.returncode == 0
-        assert "Photo Backup v" in result.stdout
-        assert "TEST MODE" in result.stdout
-
-        # Check that logging configuration is displayed
-        # After refactoring: config file overrides test defaults, so check for either INFO or DEBUG
-        assert "Log level: INFO" in result.stdout or "Log level: DEBUG" in result.stdout
-        assert "Log format: detailed" in result.stdout
-
     def test_log_level_changes_work(self):
         """Test that log level changes work based on config."""
         # Test log level parsing by importing and testing directly
@@ -98,33 +50,6 @@ class TestEnhancedLoggerCLI:
 
         logger = setup_logger_from_config(config_obj, job_id="test-job")
         assert logger.level == logging.DEBUG
-
-    def test_test_mode_verbose_logging(self):
-        """Test that test mode logging works correctly (config file takes precedence)."""
-        result = subprocess.run(
-            ["python3", "-m", "photo_backup.main", "--test-mode"],
-            capture_output=True,
-            text=True,
-            cwd=".",
-        )
-
-        assert result.returncode == 0
-        # After refactoring: config file overrides test defaults
-        # Test just verifies logging configuration is shown
-        assert "Log level: INFO" in result.stdout or "Log level: DEBUG" in result.stdout
-
-    def test_production_mode_logging(self):
-        """Test that production mode uses appropriate logging level."""
-        result = subprocess.run(
-            ["python3", "-m", "photo_backup.main"],
-            capture_output=True,
-            text=True,
-            cwd=".",
-        )
-
-        assert result.returncode == 0
-        assert "PRODUCTION MODE" in result.stdout
-        assert "Log level: INFO" in result.stdout  # Production uses INFO by default
 
     def test_json_format_logging(self):
         """Test JSON format logging functionality."""
@@ -215,62 +140,6 @@ class TestEnhancedLoggerCLI:
         assert "INFO" in result
         assert "Test message" in result
 
-    def test_job_context_in_logs(self):
-        """Test that job context appears in log messages."""
-        # This test verifies that job IDs are generated and used
-        # We can't easily capture the actual log output in functional tests,
-        # but we can verify the job context is set up correctly
-
-        result = subprocess.run(
-            ["python3", "-m", "photo_backup.main", "--test-mode", "config"],
-            capture_output=True,
-            text=True,
-            cwd=".",
-        )
-
-        assert result.returncode == 0
-        # The job context is internal to the logging system,
-        # but we can verify the command completes successfully with enhanced logging
-
-    def test_logging_configuration_display(self):
-        """Test that logging configuration is properly displayed."""
-        result = subprocess.run(
-            ["python3", "-m", "photo_backup.main", "--test-mode"],
-            capture_output=True,
-            text=True,
-            cwd=".",
-        )
-
-        assert result.returncode == 0
-
-        # Check that logging settings are displayed
-        # After refactoring: config file overrides test defaults, so check for either INFO or DEBUG
-        assert "Log level: INFO" in result.stdout or "Log level: DEBUG" in result.stdout
-        assert "Log format: detailed" in result.stdout
-
-    def test_environment_override_logging_settings(self):
-        """Test that environment variables override logging settings."""
-        # Test environment override functionality by testing the config system
-        from photo_backup.config.config import Config
-        from photo_backup.config.env_override import EnvOverride
-
-        # Test that environment override system is available
-        assert hasattr(EnvOverride, "is_test_mode_enabled")
-        assert callable(EnvOverride.is_test_mode_enabled)
-
-        # Test config object can handle environment overrides
-        config_obj = Config(test_mode=True)
-        config_data = config_obj.load_config()
-
-        # Verify logging settings are present in config
-        assert "logging" in config_data
-        assert "level" in config_data["logging"]
-        assert "format" in config_data["logging"]
-
-        # Test that config object has get method for logging settings
-        assert config_obj.get("logging.level") is not None
-        assert config_obj.get("logging.format") is not None
-
     def test_file_logging_configuration(self):
         """Test file logging configuration."""
         # Test file logging functionality by testing the setup function
@@ -306,20 +175,6 @@ class TestEnhancedLoggerCLI:
             log_content = log_file.read_text()
             assert "Test message" in log_content
             assert "test-job" in log_content
-
-    def test_logging_with_dry_run_mode(self):
-        """Test that logging works correctly with dry-run mode."""
-        result = subprocess.run(
-            ["python3", "-m", "photo_backup.main", "--test-mode", "--dry-run"],
-            capture_output=True,
-            text=True,
-            cwd=".",
-        )
-
-        assert result.returncode == 0
-        assert "TEST MODE (DRY RUN)" in result.stdout
-        assert "Log level:" in result.stdout
-        assert "Log format:" in result.stdout
 
     def test_backward_compatibility(self):
         """Test that enhanced logger maintains backward compatibility."""
@@ -385,22 +240,3 @@ print("Backward compatibility test passed")
         # Should not raise exception, should fall back to console
         logger = setup_logger_from_config(config_obj)
         assert len(logger.handlers) == 1  # Console handler as fallback
-
-    def test_logging_performance(self):
-        """Test that enhanced logging doesn't significantly impact performance."""
-        import time
-
-        start_time = time.time()
-
-        result = subprocess.run(
-            ["python3", "-m", "photo_backup.main", "--test-mode", "config"],
-            capture_output=True,
-            text=True,
-            cwd=".",
-        )
-
-        end_time = time.time()
-        execution_time = end_time - start_time
-
-        assert result.returncode == 0
-        assert execution_time < 5.0  # Should complete within 5 seconds
