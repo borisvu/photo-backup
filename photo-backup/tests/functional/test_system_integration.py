@@ -35,6 +35,8 @@ class TestSystemIntegration:
     @pytest.mark.functional
     def test_config_system_integration(self):
         """Test that config system works in both modes."""
+        import os
+
         from photo_backup.config import Config
 
         # Production config
@@ -42,10 +44,18 @@ class TestSystemIntegration:
         prod_config.load_config()
         assert prod_config.get("storage.endpoint") == "s3.wasabisys.com"
 
-        # Test config
-        test_config = Config(test_mode=True)
-        test_config.load_config()
-        assert test_config.get("storage.endpoint") == "localhost:9000"
+        # Test config - use environment variables to override config file
+        env_backup = os.environ.copy()
+        try:
+            os.environ["PHOTO_BACKUP_STORAGE_ENDPOINT"] = "localhost:9000"
+            os.environ["PHOTO_BACKUP_BACKUP_SOURCE_PATH"] = "/tmp/photo-backup-test-photos"
+            test_config = Config(test_mode=True)
+            test_config.load_config()
+            assert test_config.get("storage.endpoint") == "localhost:9000"
+            assert test_config.get("backup.source_path") == "/tmp/photo-backup-test-photos"
+        finally:
+            os.environ.clear()
+            os.environ.update(env_backup)
 
     @pytest.mark.functional
     def test_logger_system_integration(self):
@@ -86,9 +96,26 @@ class TestSystemIntegration:
         assert "CLI initialization completed successfully" in result.stdout
 
     @pytest.mark.functional
-    def test_cli_test_mode_integration(self, cli_runner):
+    def test_cli_test_mode_integration(self):
         """Test CLI test mode integration."""
-        result = cli_runner(["--test-mode"])
+        import os
+        import subprocess
+        import sys
+
+        from pathlib import Path
+
+        # Use environment variable to override config file
+        env = os.environ.copy()
+        env["PHOTO_BACKUP_STORAGE_ENDPOINT"] = "localhost:9000"
+        env["PHOTO_BACKUP_LOGGING_LEVEL"] = "DEBUG"
+
+        result = subprocess.run(
+            [sys.executable, "-m", "photo_backup.main", "--test-mode"],
+            capture_output=True,
+            text=True,
+            env=env,
+            cwd=Path(__file__).parent.parent,
+        )
 
         assert result.returncode == 0
         assert "TEST MODE" in result.stdout
@@ -201,6 +228,7 @@ class TestSystemIntegration:
     def test_mode_isolation_integration(self):
         """Test that test and production modes are properly isolated."""
         import logging
+        import os
 
         from photo_backup.config import Config
         from photo_backup.logger import setup_logger
@@ -210,21 +238,29 @@ class TestSystemIntegration:
         prod_config.load_config()
         prod_logger = setup_logger("prod", logging.INFO)
 
-        # Test mode
-        test_config = Config(test_mode=True)
-        test_config.load_config()
-        test_logger = setup_logger("test", logging.DEBUG)
+        # Test mode - use environment variables to override config file
+        env_backup = os.environ.copy()
+        try:
+            os.environ["PHOTO_BACKUP_STORAGE_ENDPOINT"] = "localhost:9000"
+            os.environ["PHOTO_BACKUP_BACKUP_SOURCE_PATH"] = "/tmp/photo-backup-test-photos"
+            test_config = Config(test_mode=True)
+            test_config.load_config()
+            test_logger = setup_logger("test", logging.DEBUG)
 
-        # Verify isolation
-        assert prod_config.get("storage.endpoint") != test_config.get("storage.endpoint")
-        assert prod_config.get("backup.source_path") != test_config.get("backup.source_path")
-        assert prod_logger.level != test_logger.level
+            # Verify isolation
+            assert prod_config.get("storage.endpoint") != test_config.get("storage.endpoint")
+            assert prod_config.get("backup.source_path") != test_config.get("backup.source_path")
+            assert prod_logger.level != test_logger.level
 
-        # Verify specific values
-        assert prod_config.get("storage.endpoint") == "s3.wasabisys.com"
-        assert test_config.get("storage.endpoint") == "localhost:9000"
-        assert prod_logger.level == logging.INFO
-        assert test_logger.level == logging.DEBUG
+            # Verify specific values
+            assert prod_config.get("storage.endpoint") == "s3.wasabisys.com"
+            assert test_config.get("storage.endpoint") == "localhost:9000"
+            assert test_config.get("backup.source_path") == "/tmp/photo-backup-test-photos"
+            assert prod_logger.level == logging.INFO
+            assert test_logger.level == logging.DEBUG
+        finally:
+            os.environ.clear()
+            os.environ.update(env_backup)
 
     @pytest.mark.functional
     def test_cli_version_integration(self, cli_runner):
@@ -248,46 +284,53 @@ class TestSystemIntegration:
     def test_component_interaction_workflow(self, temp_dir):
         """Test a complete workflow using all components."""
         import logging
+        import os
 
         from photo_backup.config import Config
         from photo_backup.format_utils import format_bytes
         from photo_backup.fs_utils import ensure_directory
         from photo_backup.logger import setup_logger
 
-        # Step 1: Initialize config
-        config = Config(test_mode=True)
-        config.load_config()
+        # Step 1: Initialize config - use environment variable to override config file
+        env_backup = os.environ.copy()
+        try:
+            os.environ["PHOTO_BACKUP_STORAGE_ENDPOINT"] = "localhost:9000"
+            config = Config(test_mode=True)
+            config.load_config()
 
-        # Step 2: Setup logger based on config
-        logger = setup_logger("workflow", logging.DEBUG)
+            # Step 2: Setup logger based on config
+            logger = setup_logger("workflow", logging.DEBUG)
 
-        # Step 3: Create directories using utils
-        base_dir = temp_dir / "workflow_test"
-        state_dir = base_dir / "state"
-        photos_dir = base_dir / "photos"
+            # Step 3: Create directories using utils
+            base_dir = temp_dir / "workflow_test"
+            state_dir = base_dir / "state"
+            photos_dir = base_dir / "photos"
 
-        for directory in [base_dir, state_dir, photos_dir]:
-            success, error = ensure_directory(str(directory))
-            assert success is True, f"Failed to create {directory}: {error}"
-            logger.debug(f"Created directory: {directory}")
+            for directory in [base_dir, state_dir, photos_dir]:
+                success, error = ensure_directory(str(directory))
+                assert success is True, f"Failed to create {directory}: {error}"
+                logger.debug(f"Created directory: {directory}")
 
-        # Step 4: Create some test files
-        test_files = []
-        for i in range(3):
-            test_file = photos_dir / f"photo_{i}.jpg"
-            content = f"Test photo content {i}" * 100  # Make it bigger
-            test_file.write_text(content)
-            test_files.append(test_file)
-            logger.debug(f"Created test file: {test_file}")
+            # Step 4: Create some test files
+            test_files = []
+            for i in range(3):
+                test_file = photos_dir / f"photo_{i}.jpg"
+                content = f"Test photo content {i}" * 100  # Make it bigger
+                test_file.write_text(content)
+                test_files.append(test_file)
+                logger.debug(f"Created test file: {test_file}")
 
-        # Step 5: Calculate and format total size
-        total_size = sum(f.stat().st_size for f in test_files)
-        formatted_size = format_bytes(total_size)
-        logger.info(f"Total test data size: {formatted_size}")
+            # Step 5: Calculate and format total size
+            total_size = sum(f.stat().st_size for f in test_files)
+            formatted_size = format_bytes(total_size)
+            logger.info(f"Total test data size: {formatted_size}")
 
-        # Step 6: Verify everything worked
-        assert all(f.exists() for f in test_files)
-        assert total_size > 0
-        assert "B" in formatted_size  # Should have some unit
-        assert config.get("storage.endpoint") == "localhost:9000"  # Test mode
-        assert logger.level == logging.DEBUG
+            # Step 6: Verify everything worked
+            assert all(f.exists() for f in test_files)
+            assert total_size > 0
+            assert "B" in formatted_size  # Should have some unit
+            assert config.get("storage.endpoint") == "localhost:9000"  # Test mode
+            assert logger.level == logging.DEBUG
+        finally:
+            os.environ.clear()
+            os.environ.update(env_backup)
