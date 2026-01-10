@@ -419,7 +419,251 @@ def setup_config(test_mode: bool = False) -> tuple[bool, str]:
         return False, f"Failed to set up config: {e!s}"
 
 
-@click.command()
+def uninstall_service(test_mode: bool = False, remove_data: bool = False) -> tuple[bool, str]:
+    """Uninstall the photo backup service.
+
+    This function:
+    1. Stops the service if running
+    2. Unloads the service from launchctl
+    3. Removes the plist file
+    4. Optionally removes data directories
+
+    Args:
+        test_mode: If True, uninstall test service
+        remove_data: If True, also remove config and state directories
+
+    Returns:
+        Tuple of (success, message)
+    """
+    label = get_service_label(test_mode)
+    plist_path = get_plist_path(test_mode)
+    errors = []
+
+    try:
+        click.echo(f"\nUninstalling service: {label}")
+
+        # Stop service if running
+        if is_service_loaded(test_mode):
+            click.echo("  Stopping and unloading service...")
+            success, msg = unload_service(test_mode)
+            if success:
+                click.echo(f"  ✓ {msg}")
+            else:
+                click.echo(f"  ⚠ {msg}")
+                errors.append(msg)
+        else:
+            click.echo("  ✓ Service not running")
+
+        # Remove plist file
+        if os.path.exists(plist_path):
+            click.echo(f"  Removing plist file: {plist_path}")
+            os.unlink(plist_path)
+            click.echo("  ✓ Plist file removed")
+        else:
+            click.echo("  ✓ Plist file already removed")
+
+        # Optionally remove data directories
+        if remove_data:
+            click.echo("\nRemoving data directories...")
+            from photo_backup.consts import PROD_MODE_BASE_DIR, TEST_MODE_BASE_DIR
+
+            base_dir = TEST_MODE_BASE_DIR if test_mode else os.path.expanduser(PROD_MODE_BASE_DIR)
+
+            if os.path.exists(base_dir):
+                click.echo(f"  Removing {base_dir}...")
+                shutil.rmtree(base_dir)
+                click.echo("  ✓ Data directories removed")
+            else:
+                click.echo("  ✓ Data directories already removed")
+
+            # Also clean up log directory in test mode
+            if test_mode:
+                test_log_dir = "/tmp/photo-backup-test/logs"
+                if os.path.exists(test_log_dir):
+                    shutil.rmtree(test_log_dir)
+                    click.echo("  ✓ Test logs removed")
+        else:
+            click.echo("\n  ⚠ Data directories preserved (use --remove-data to delete)")
+
+        if errors:
+            return False, f"Uninstall completed with warnings: {'; '.join(errors)}"
+        return True, f"Service {label} uninstalled successfully"
+
+    except Exception as e:
+        return False, f"Failed to uninstall: {e!s}"
+
+
+def check_minio_connectivity() -> tuple[bool, str]:
+    """Check if Minio is accessible for test mode.
+
+    Returns:
+        Tuple of (success, message)
+    """
+    try:
+        import socket
+
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(2)
+        result = sock.connect_ex(("localhost", 9000))
+        sock.close()
+
+        if result == 0:
+            return True, "Minio is accessible at localhost:9000"
+        else:
+            return (
+                False,
+                "Minio is not accessible at localhost:9000 (start with: docker run -d -p 9000:9000 minio/minio server /data)",
+            )
+    except Exception as e:
+        return False, f"Error checking Minio connectivity: {e!s}"
+
+
+def validate_installation(test_mode: bool = False) -> tuple[bool, list[tuple[str, bool, str]]]:
+    """Validate that the installation is complete and correct.
+
+    This function checks:
+    1. Required directories exist
+    2. Config file exists and is readable
+    3. Plist file exists
+    4. Service is loaded (optional)
+    5. Permissions are correct
+    6. In test mode, checks Minio connectivity
+
+    Args:
+        test_mode: If True, validate test mode installation
+
+    Returns:
+        Tuple of (all_passed, list of (check_name, passed, message))
+    """
+    results: list[tuple[str, bool, str]] = []
+    all_passed = True
+
+    # Get paths
+    from photo_backup.consts import PROD_MODE_BASE_DIR, TEST_MODE_BASE_DIR
+
+    base_dir = TEST_MODE_BASE_DIR if test_mode else os.path.expanduser(PROD_MODE_BASE_DIR)
+    plist_path = get_plist_path(test_mode)
+    config_path = os.path.join(base_dir, "config", "config.yaml")
+
+    # Check 1: Base directory exists
+    if os.path.isdir(base_dir):
+        results.append(("Base directory", True, f"Exists: {base_dir}"))
+    else:
+        results.append(("Base directory", False, f"Missing: {base_dir}"))
+        all_passed = False
+
+    # Check 2: State directory exists
+    state_dir = os.path.join(base_dir, "state")
+    if os.path.isdir(state_dir):
+        results.append(("State directory", True, f"Exists: {state_dir}"))
+    else:
+        results.append(("State directory", False, f"Missing: {state_dir}"))
+        all_passed = False
+
+    # Check 3: Config directory exists
+    config_dir = os.path.join(base_dir, "config")
+    if os.path.isdir(config_dir):
+        results.append(("Config directory", True, f"Exists: {config_dir}"))
+    else:
+        results.append(("Config directory", False, f"Missing: {config_dir}"))
+        all_passed = False
+
+    # Check 4: Temp directory exists
+    temp_dir = os.path.join(base_dir, "temp")
+    if os.path.isdir(temp_dir):
+        results.append(("Temp directory", True, f"Exists: {temp_dir}"))
+    else:
+        results.append(("Temp directory", False, f"Missing: {temp_dir}"))
+        all_passed = False
+
+    # Check 5: Config file exists and is readable
+    if os.path.isfile(config_path):
+        try:
+            with open(config_path) as f:
+                f.read(1)  # Try to read
+            results.append(("Config file", True, f"Exists and readable: {config_path}"))
+
+            # Check config file permissions
+            mode = os.stat(config_path).st_mode & 0o777
+            if mode == 0o600:
+                results.append(("Config permissions", True, "Secure (0600)"))
+            else:
+                results.append(("Config permissions", False, f"Insecure ({oct(mode)}), should be 0600"))
+                all_passed = False
+        except PermissionError:
+            results.append(("Config file", False, f"Not readable: {config_path}"))
+            all_passed = False
+    else:
+        results.append(("Config file", False, f"Missing: {config_path}"))
+        all_passed = False
+
+    # Check 6: Plist file exists
+    if os.path.isfile(plist_path):
+        results.append(("Plist file", True, f"Exists: {plist_path}"))
+
+        # Check plist file permissions
+        mode = os.stat(plist_path).st_mode & 0o777
+        if mode == 0o600:
+            results.append(("Plist permissions", True, "Secure (0600)"))
+        else:
+            results.append(("Plist permissions", False, f"Insecure ({oct(mode)}), should be 0600"))
+            all_passed = False
+    else:
+        results.append(("Plist file", False, f"Missing: {plist_path}"))
+        all_passed = False
+
+    # Check 7: Service is loaded
+    if is_service_loaded(test_mode):
+        results.append(("Service loaded", True, f"Service {get_service_label(test_mode)} is loaded"))
+    else:
+        results.append(("Service loaded", False, f"Service {get_service_label(test_mode)} is not loaded"))
+        # This is not a critical failure - service might be intentionally stopped
+        # all_passed = False
+
+    # Check 8: Directory permissions
+    for dir_name, dir_path in [("Base", base_dir), ("State", state_dir), ("Config", config_dir), ("Temp", temp_dir)]:
+        if os.path.isdir(dir_path):
+            mode = os.stat(dir_path).st_mode & 0o777
+            if mode == 0o755:
+                results.append((f"{dir_name} dir permissions", True, "Correct (0755)"))
+            else:
+                results.append((f"{dir_name} dir permissions", False, f"Unexpected ({oct(mode)}), expected 0755"))
+                # Not critical
+                # all_passed = False
+
+    # Check 9: In test mode, check Minio connectivity
+    if test_mode:
+        minio_ok, minio_msg = check_minio_connectivity()
+        results.append(("Minio connectivity", minio_ok, minio_msg))
+        if not minio_ok:
+            all_passed = False
+
+    # Check 10: Dependencies
+    deps_ok, deps_results = get_dependency_status(test_mode=test_mode)
+    for dep_name, (dep_ok, dep_msg) in deps_results.items():
+        # Skip 1password check in test mode
+        if test_mode and dep_name == "1password":
+            continue
+        # Docker is only required in test mode
+        if not test_mode and dep_name == "docker":
+            continue
+        results.append((f"Dependency: {dep_name}", dep_ok, dep_msg))
+        if not dep_ok and dep_name in ["python", "rclone"]:
+            all_passed = False
+        if not dep_ok and test_mode and dep_name == "docker":
+            all_passed = False
+
+    return all_passed, results
+
+
+# CLI Commands
+@click.group()
+def cli():
+    """Photo Backup System Installation Tools."""
+    pass
+
+
+@cli.command()
 @click.option(
     "--test",
     "test_mode",
@@ -499,5 +743,118 @@ def install(test_mode: bool, skip_service: bool, skip_config: bool) -> None:
     click.echo()
 
 
+@cli.command()
+@click.option(
+    "--test",
+    "test_mode",
+    is_flag=True,
+    help="Uninstall test mode service",
+)
+@click.option(
+    "--remove-data",
+    is_flag=True,
+    help="Also remove config and state directories (WARNING: deletes all data)",
+)
+@click.option(
+    "--yes",
+    "-y",
+    is_flag=True,
+    help="Skip confirmation prompt",
+)
+def uninstall(test_mode: bool, remove_data: bool, yes: bool) -> None:
+    """Uninstall Photo Backup System - stop service and remove files.
+
+    This command stops the launchd service, removes the plist file,
+    and optionally removes all data directories.
+    """
+    mode_text = "TEST MODE" if test_mode else "PRODUCTION MODE"
+    click.echo(f"Photo Backup System Uninstall ({mode_text})")
+    click.echo("=" * 60)
+
+    # Confirm uninstall
+    if not yes:
+        if remove_data:
+            click.echo("\n⚠️  WARNING: This will remove ALL data including:")
+            click.echo("    - Configuration files")
+            click.echo("    - State files")
+            click.echo("    - Temporary files")
+            if not click.confirm("\nAre you sure you want to continue?"):
+                click.echo("Uninstall cancelled.")
+                sys.exit(0)
+        else:
+            if not click.confirm("\nThis will stop and remove the service. Continue?"):
+                click.echo("Uninstall cancelled.")
+                sys.exit(0)
+
+    # Perform uninstall
+    success, message = uninstall_service(test_mode=test_mode, remove_data=remove_data)
+
+    if success:
+        click.echo("\n" + "=" * 60)
+        click.echo("✅ Uninstall completed successfully!")
+        if not remove_data:
+            click.echo("\nNote: Data directories were preserved.")
+            click.echo("Run with --remove-data to delete all data.")
+    else:
+        click.echo(f"\n❌ {message}")
+        sys.exit(1)
+
+    click.echo()
+
+
+@cli.command()
+@click.option(
+    "--test",
+    "test_mode",
+    is_flag=True,
+    help="Validate test mode installation",
+)
+def validate(test_mode: bool) -> None:
+    """Validate Photo Backup System installation.
+
+    This command checks that all components are correctly installed
+    and configured, including directories, config files, permissions,
+    and service status.
+    """
+    mode_text = "TEST MODE" if test_mode else "PRODUCTION MODE"
+    click.echo(f"Photo Backup System Validation ({mode_text})")
+    click.echo("=" * 60)
+
+    # Run validation
+    all_passed, results = validate_installation(test_mode=test_mode)
+
+    # Display results
+    click.echo("\nValidation Results:")
+    click.echo("-" * 60)
+
+    passed_count = 0
+    failed_count = 0
+
+    for check_name, passed, message in results:
+        if passed:
+            click.echo(f"  ✓ {check_name}: {message}")
+            passed_count += 1
+        else:
+            click.echo(f"  ✗ {check_name}: {message}")
+            failed_count += 1
+
+    # Summary
+    click.echo("\n" + "=" * 60)
+    click.echo(f"Summary: {passed_count} passed, {failed_count} failed")
+
+    if all_passed:
+        click.echo("\n✅ Installation is valid and ready to use!")
+        if test_mode:
+            click.echo("\nYou can now run: photo-backup sync --test-mode")
+        else:
+            click.echo("\nYou can now run: photo-backup sync")
+    else:
+        click.echo("\n❌ Installation has issues that need to be resolved.")
+        click.echo("\nRun 'python install.py install" + (" --test" if test_mode else "") + "' to fix issues.")
+        sys.exit(1)
+
+    click.echo()
+
+
 if __name__ == "__main__":
-    install()
+    cli()

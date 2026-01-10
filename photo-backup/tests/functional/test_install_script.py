@@ -28,10 +28,10 @@ class TestInstallScript:
         if test_base_dir.exists():
             shutil.rmtree(test_base_dir)
 
-        # Run install script in test mode
+        # Run install script in test mode (now using 'install' subcommand)
         install_script = Path(__file__).parent.parent.parent / "install.py"
         result = subprocess.run(
-            ["python3", str(install_script), "--test"],
+            ["python3", str(install_script), "install", "--test"],
             capture_output=True,
             text=True,
             cwd=str(install_script.parent),
@@ -59,7 +59,7 @@ class TestInstallScript:
         """Test that install script checks prerequisites."""
         install_script = Path(__file__).parent.parent.parent / "install.py"
         result = subprocess.run(
-            ["python3", str(install_script), "--test"],
+            ["python3", str(install_script), "install", "--test"],
             capture_output=True,
             text=True,
             cwd=str(install_script.parent),
@@ -88,7 +88,7 @@ class TestInstallScript:
         # Run install script in production mode (no --test flag)
         install_script = Path(__file__).parent.parent.parent / "install.py"
         result = subprocess.run(
-            ["python3", str(install_script)],
+            ["python3", str(install_script), "install"],
             capture_output=True,
             text=True,
             cwd=str(install_script.parent),
@@ -120,7 +120,7 @@ class TestInstallScript:
         # Run install script in test mode
         install_script = Path(__file__).parent.parent.parent / "install.py"
         result = subprocess.run(
-            ["python3", str(install_script), "--test"],
+            ["python3", str(install_script), "install", "--test"],
             capture_output=True,
             text=True,
             cwd=str(install_script.parent),
@@ -532,7 +532,7 @@ class TestConfigSetup:
 
         # Run install in test mode (skip service to avoid launchctl dependencies)
         result = subprocess.run(
-            ["python3", str(install_script), "--test", "--skip-service"],
+            ["python3", str(install_script), "install", "--test", "--skip-service"],
             capture_output=True,
             text=True,
             cwd=str(install_script.parent),
@@ -553,3 +553,326 @@ class TestConfigSetup:
         assert "backup" in config_data, "Config should have backup section"
         assert "storage" in config_data, "Config should have storage section"
         assert "monitoring" in config_data, "Config should have monitoring section"
+
+
+class TestUninstall:
+    """Tests for Task 88: Uninstall Script."""
+
+    @pytest.fixture(autouse=True)
+    def setup_and_teardown(self):
+        """Set up and clean up for each test."""
+        import sys
+
+        from photo_backup.consts import TEST_MODE_BASE_DIR
+
+        sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+        from install import (
+            get_plist_path,
+            is_service_loaded,
+            unload_service,
+        )
+
+        self.test_base_dir = Path(TEST_MODE_BASE_DIR)
+        self.get_plist_path = get_plist_path
+        self.is_service_loaded = is_service_loaded
+        self.unload_service = unload_service
+
+        # Clean up before test
+        if self.test_base_dir.exists():
+            shutil.rmtree(self.test_base_dir)
+
+        yield
+
+        # Clean up after test
+        unload_service(test_mode=True)
+        plist_path = get_plist_path(test_mode=True)
+        if os.path.exists(plist_path):
+            os.unlink(plist_path)
+        if self.test_base_dir.exists():
+            shutil.rmtree(self.test_base_dir)
+
+    @pytest.mark.functional
+    def test_uninstall_service_function(self):
+        """Test that uninstall_service function removes service correctly."""
+        import sys
+
+        sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+        from install import install_plist, uninstall_service
+
+        # First install the service
+        success, _ = install_plist(test_mode=True)
+        assert success, "Installation should succeed"
+
+        plist_path = self.get_plist_path(test_mode=True)
+        assert os.path.exists(plist_path), "Plist should exist after install"
+
+        # Now uninstall
+        success, message = uninstall_service(test_mode=True, remove_data=False)
+        assert success, f"Uninstall should succeed: {message}"
+
+        # Verify service is unloaded
+        assert not self.is_service_loaded(test_mode=True), "Service should be unloaded"
+
+        # Verify plist is removed
+        assert not os.path.exists(plist_path), "Plist should be removed"
+
+    @pytest.mark.functional
+    def test_uninstall_with_remove_data(self):
+        """Test that uninstall removes data directories when --remove-data is used."""
+        import sys
+
+        sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+        from install import install_plist, setup_config, uninstall_service
+        from photo_backup.state_utils import get_state_directories
+
+        # First install everything
+        get_state_directories(test_mode=True)  # Create directories
+        setup_config(test_mode=True)
+        install_plist(test_mode=True)
+
+        # Verify directories exist
+        assert self.test_base_dir.exists(), "Base directory should exist"
+
+        # Now uninstall with remove_data
+        success, message = uninstall_service(test_mode=True, remove_data=True)
+        assert success, f"Uninstall should succeed: {message}"
+
+        # Verify directories are removed
+        assert not self.test_base_dir.exists(), "Base directory should be removed"
+
+    @pytest.mark.functional
+    def test_uninstall_preserves_data_by_default(self):
+        """Test that uninstall preserves data directories by default."""
+        import sys
+
+        sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+        from install import install_plist, setup_config, uninstall_service
+        from photo_backup.state_utils import get_state_directories
+
+        # First install everything
+        get_state_directories(test_mode=True)  # Create directories
+        setup_config(test_mode=True)
+        install_plist(test_mode=True)
+
+        # Verify directories exist
+        assert self.test_base_dir.exists(), "Base directory should exist"
+
+        # Now uninstall without remove_data
+        success, message = uninstall_service(test_mode=True, remove_data=False)
+        assert success, f"Uninstall should succeed: {message}"
+
+        # Verify directories are preserved
+        assert self.test_base_dir.exists(), "Base directory should be preserved"
+
+    @pytest.mark.functional
+    def test_uninstall_cli_command(self):
+        """Test that uninstall CLI command works correctly."""
+        install_script = Path(__file__).parent.parent.parent / "install.py"
+
+        # First install
+        result = subprocess.run(
+            ["python3", str(install_script), "install", "--test"],
+            capture_output=True,
+            text=True,
+            cwd=str(install_script.parent),
+        )
+        assert result.returncode == 0, f"Install failed: {result.stderr}"
+
+        # Now uninstall (with --yes to skip confirmation)
+        result = subprocess.run(
+            ["python3", str(install_script), "uninstall", "--test", "--yes"],
+            capture_output=True,
+            text=True,
+            cwd=str(install_script.parent),
+        )
+        assert result.returncode == 0, f"Uninstall failed: {result.stderr}"
+        assert "Uninstall completed" in result.stdout, "Should show success message"
+
+    @pytest.mark.functional
+    def test_uninstall_cli_with_remove_data(self):
+        """Test that uninstall CLI command removes data with --remove-data."""
+        install_script = Path(__file__).parent.parent.parent / "install.py"
+
+        # First install
+        result = subprocess.run(
+            ["python3", str(install_script), "install", "--test"],
+            capture_output=True,
+            text=True,
+            cwd=str(install_script.parent),
+        )
+        assert result.returncode == 0, f"Install failed: {result.stderr}"
+
+        # Verify directories exist
+        assert self.test_base_dir.exists(), "Base directory should exist after install"
+
+        # Now uninstall with --remove-data
+        result = subprocess.run(
+            ["python3", str(install_script), "uninstall", "--test", "--remove-data", "--yes"],
+            capture_output=True,
+            text=True,
+            cwd=str(install_script.parent),
+        )
+        assert result.returncode == 0, f"Uninstall failed: {result.stderr}"
+
+        # Verify directories are removed
+        assert not self.test_base_dir.exists(), "Base directory should be removed"
+
+
+class TestValidation:
+    """Tests for Task 89: Install Validation."""
+
+    @pytest.fixture(autouse=True)
+    def setup_and_teardown(self):
+        """Set up and clean up for each test."""
+        import sys
+
+        from photo_backup.consts import TEST_MODE_BASE_DIR
+
+        sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+        from install import get_plist_path, unload_service
+
+        self.test_base_dir = Path(TEST_MODE_BASE_DIR)
+        self.get_plist_path = get_plist_path
+        self.unload_service = unload_service
+
+        # Clean up before test
+        if self.test_base_dir.exists():
+            shutil.rmtree(self.test_base_dir)
+
+        yield
+
+        # Clean up after test
+        unload_service(test_mode=True)
+        plist_path = get_plist_path(test_mode=True)
+        if os.path.exists(plist_path):
+            os.unlink(plist_path)
+        if self.test_base_dir.exists():
+            shutil.rmtree(self.test_base_dir)
+
+    @pytest.mark.functional
+    def test_validate_installation_passes_after_install(self):
+        """Test that validate_installation passes after successful install."""
+        import sys
+
+        sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+        from install import install_plist, setup_config, validate_installation
+        from photo_backup.state_utils import get_state_directories
+
+        # Install everything
+        get_state_directories(test_mode=True)
+        setup_config(test_mode=True)
+        install_plist(test_mode=True)
+
+        # Validate (note: Minio check will likely fail, but core checks should pass)
+        all_passed, results = validate_installation(test_mode=True)
+
+        # Check that core components passed
+        core_checks = [
+            r
+            for r in results
+            if r[0] in ["Base directory", "State directory", "Config directory", "Config file", "Plist file"]
+        ]
+        for check_name, passed, message in core_checks:
+            assert passed, f"{check_name} should pass: {message}"
+
+    @pytest.mark.functional
+    def test_validate_installation_fails_without_install(self):
+        """Test that validate_installation fails when not installed."""
+        import sys
+
+        sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+        from install import validate_installation
+
+        # Validate without installing
+        all_passed, results = validate_installation(test_mode=True)
+
+        # Should fail because directories don't exist
+        assert not all_passed, "Validation should fail without installation"
+
+        # Check that base directory check failed
+        base_check = next(r for r in results if r[0] == "Base directory")
+        assert not base_check[1], "Base directory check should fail"
+
+    @pytest.mark.functional
+    def test_validate_checks_permissions(self):
+        """Test that validate_installation checks file permissions."""
+        import sys
+
+        sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+        from install import setup_config, validate_installation
+        from photo_backup.state_utils import get_state_directories
+
+        # Create directories and config
+        get_state_directories(test_mode=True)
+        setup_config(test_mode=True)
+
+        # Validate
+        _, results = validate_installation(test_mode=True)
+
+        # Check that permissions are validated
+        perm_checks = [r for r in results if "permissions" in r[0].lower()]
+        assert len(perm_checks) > 0, "Should check permissions"
+
+        # Config permissions should pass (0600)
+        config_perm = [r for r in perm_checks if "Config" in r[0]]
+        if config_perm:
+            assert config_perm[0][1], f"Config permissions should be correct: {config_perm[0][2]}"
+
+    @pytest.mark.functional
+    def test_validate_cli_command(self):
+        """Test that validate CLI command works correctly."""
+        install_script = Path(__file__).parent.parent.parent / "install.py"
+
+        # First install (skip service to simplify)
+        result = subprocess.run(
+            ["python3", str(install_script), "install", "--test", "--skip-service"],
+            capture_output=True,
+            text=True,
+            cwd=str(install_script.parent),
+        )
+        assert result.returncode == 0, f"Install failed: {result.stderr}"
+
+        # Now validate
+        result = subprocess.run(
+            ["python3", str(install_script), "validate", "--test"],
+            capture_output=True,
+            text=True,
+            cwd=str(install_script.parent),
+        )
+
+        # Check output contains validation results
+        assert "Validation Results" in result.stdout, "Should show validation results"
+        assert "Base directory" in result.stdout, "Should check base directory"
+        assert "Config file" in result.stdout, "Should check config file"
+
+    @pytest.mark.functional
+    def test_validate_reports_issues(self):
+        """Test that validate command reports issues correctly."""
+        install_script = Path(__file__).parent.parent.parent / "install.py"
+
+        # Validate without installing (should fail)
+        result = subprocess.run(
+            ["python3", str(install_script), "validate", "--test"],
+            capture_output=True,
+            text=True,
+            cwd=str(install_script.parent),
+        )
+
+        # Should exit with error code
+        assert result.returncode != 0, "Validate should fail when not installed"
+        assert "issues" in result.stdout.lower() or "✗" in result.stdout, "Should report issues"
+
+    @pytest.mark.functional
+    def test_validate_checks_minio_in_test_mode(self):
+        """Test that validate checks Minio connectivity in test mode."""
+        import sys
+
+        sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+        from install import validate_installation
+
+        # Validate in test mode
+        _, results = validate_installation(test_mode=True)
+
+        # Should include Minio check
+        minio_check = [r for r in results if "Minio" in r[0]]
+        assert len(minio_check) > 0, "Should check Minio connectivity in test mode"
