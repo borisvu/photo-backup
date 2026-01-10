@@ -656,6 +656,263 @@ def validate_installation(test_mode: bool = False) -> tuple[bool, list[tuple[str
     return all_passed, results
 
 
+def detect_existing_install(test_mode: bool = False) -> dict:
+    """Detect existing installation and return details.
+
+    Args:
+        test_mode: If True, check test mode installation
+
+    Returns:
+        Dictionary with installation details:
+        - installed: bool - whether installation exists
+        - has_config: bool - whether config file exists
+        - has_plist: bool - whether plist file exists
+        - service_loaded: bool - whether service is loaded
+        - base_dir: str - path to base directory
+        - config_path: str - path to config file
+        - plist_path: str - path to plist file
+    """
+    from photo_backup.consts import PROD_MODE_BASE_DIR, TEST_MODE_BASE_DIR
+
+    base_dir = TEST_MODE_BASE_DIR if test_mode else os.path.expanduser(PROD_MODE_BASE_DIR)
+    config_path = os.path.join(base_dir, "config", "config.yaml")
+    plist_path = get_plist_path(test_mode)
+
+    has_base_dir = os.path.isdir(base_dir)
+    has_config = os.path.isfile(config_path)
+    has_plist = os.path.isfile(plist_path)
+    service_loaded = is_service_loaded(test_mode)
+
+    # Consider installed if any of the major components exist
+    installed = has_base_dir or has_config or has_plist
+
+    return {
+        "installed": installed,
+        "has_config": has_config,
+        "has_plist": has_plist,
+        "has_base_dir": has_base_dir,
+        "service_loaded": service_loaded,
+        "base_dir": base_dir,
+        "config_path": config_path,
+        "plist_path": plist_path,
+    }
+
+
+def backup_config(test_mode: bool = False) -> tuple[bool, str]:
+    """Backup existing config file before upgrade.
+
+    Args:
+        test_mode: If True, backup test mode config
+
+    Returns:
+        Tuple of (success, backup_path or error message)
+    """
+    from datetime import datetime
+
+    from photo_backup.consts import PROD_MODE_BASE_DIR, TEST_MODE_BASE_DIR
+
+    base_dir = TEST_MODE_BASE_DIR if test_mode else os.path.expanduser(PROD_MODE_BASE_DIR)
+    config_path = os.path.join(base_dir, "config", "config.yaml")
+
+    if not os.path.isfile(config_path):
+        return True, "No config to backup"
+
+    try:
+        # Create backup with timestamp
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_path = f"{config_path}.backup.{timestamp}"
+
+        shutil.copy2(config_path, backup_path)
+        return True, backup_path
+    except Exception as e:
+        return False, f"Failed to backup config: {e!s}"
+
+
+def migrate_state(test_mode: bool = False) -> tuple[bool, str]:
+    """Migrate state files if needed during upgrade.
+
+    This function handles any state file migrations needed between versions.
+    Currently a no-op placeholder for future migrations.
+
+    Args:
+        test_mode: If True, migrate test mode state
+
+    Returns:
+        Tuple of (success, message)
+    """
+    from photo_backup.consts import PROD_MODE_BASE_DIR, TEST_MODE_BASE_DIR
+
+    base_dir = TEST_MODE_BASE_DIR if test_mode else os.path.expanduser(PROD_MODE_BASE_DIR)
+    state_dir = os.path.join(base_dir, "state")
+
+    if not os.path.isdir(state_dir):
+        return True, "No state to migrate"
+
+    # Future: Add migration logic here if state format changes
+    # For now, just verify state directory is accessible
+    try:
+        # List state files to verify access
+        state_files = os.listdir(state_dir)
+        return True, f"State directory OK ({len(state_files)} files)"
+    except Exception as e:
+        return False, f"Failed to access state directory: {e!s}"
+
+
+def upgrade_installation(
+    test_mode: bool = False,
+    preserve_config: bool = True,
+    force: bool = False,
+) -> tuple[bool, str]:
+    """Upgrade an existing installation.
+
+    This function:
+    1. Detects existing installation
+    2. Backs up config if preserve_config is True
+    3. Stops service if running
+    4. Updates plist with new settings
+    5. Migrates state files if needed
+    6. Restarts service
+    7. Verifies upgrade
+
+    Args:
+        test_mode: If True, upgrade test mode installation
+        preserve_config: If True, preserve existing config (default)
+        force: If True, force upgrade even if no existing installation
+
+    Returns:
+        Tuple of (success, message)
+    """
+    label = get_service_label(test_mode)
+
+    try:
+        click.echo(f"\nUpgrading installation: {label}")
+
+        # Step 1: Detect existing installation
+        click.echo("\n  Detecting existing installation...")
+        install_info = detect_existing_install(test_mode)
+
+        if not install_info["installed"] and not force:
+            return (
+                False,
+                "No existing installation found. Use 'install' command for fresh install, or --force to upgrade anyway.",
+            )
+
+        if install_info["installed"]:
+            click.echo(f"  ✓ Found existing installation at {install_info['base_dir']}")
+            if install_info["has_config"]:
+                click.echo("  ✓ Config file exists")
+            if install_info["has_plist"]:
+                click.echo("  ✓ Plist file exists")
+            if install_info["service_loaded"]:
+                click.echo("  ✓ Service is currently loaded")
+        else:
+            click.echo("  ⚠ No existing installation found, performing fresh install")
+
+        # Step 2: Backup config if requested and exists
+        backup_path = None
+        if preserve_config and install_info["has_config"]:
+            click.echo("\n  Backing up configuration...")
+            success, result = backup_config(test_mode)
+            if success:
+                if result != "No config to backup":
+                    backup_path = result
+                    click.echo(f"  ✓ Config backed up to {backup_path}")
+                else:
+                    click.echo("  ✓ No config to backup")
+            else:
+                return False, f"Failed to backup config: {result}"
+
+        # Step 3: Stop service if running
+        if install_info["service_loaded"]:
+            click.echo("\n  Stopping service...")
+            success, msg = unload_service(test_mode)
+            if success:
+                click.echo(f"  ✓ {msg}")
+            else:
+                click.echo(f"  ⚠ {msg}")
+                # Continue anyway - service might be in a bad state
+
+        # Step 4: Create/update directories
+        click.echo("\n  Updating directories...")
+        dirs = get_state_directories(test_mode=test_mode)
+        click.echo(f"  ✓ Directories ready at {dirs['base']}")
+
+        # Step 5: Setup config (will skip if exists)
+        if not preserve_config or not install_info["has_config"]:
+            click.echo("\n  Setting up configuration...")
+            # Find the example config file
+            install_script_dir = Path(__file__).parent
+            example_config = install_script_dir / "config.yaml.example"
+            config_path = install_info["config_path"]
+
+            if example_config.exists():
+                # Remove existing config if not preserving
+                if os.path.exists(config_path) and not preserve_config:
+                    os.unlink(config_path)
+                    click.echo("  ✓ Old config removed")
+
+                if not os.path.exists(config_path):
+                    shutil.copy2(example_config, config_path)
+                    os.chmod(config_path, 0o600)
+                    click.echo("  ✓ New config installed")
+                else:
+                    click.echo("  ✓ Existing config preserved")
+            else:
+                click.echo("  ⚠ Example config not found, skipping")
+        else:
+            click.echo("\n  Preserving existing configuration...")
+            click.echo("  ✓ Config preserved")
+
+        # Step 6: Migrate state if needed
+        click.echo("\n  Checking state files...")
+        success, msg = migrate_state(test_mode)
+        if success:
+            click.echo(f"  ✓ {msg}")
+        else:
+            click.echo(f"  ⚠ {msg}")
+            # Continue anyway - state migration failures are not critical
+
+        # Step 7: Update and reload plist
+        click.echo("\n  Updating service plist...")
+        plist_path = get_plist_path(test_mode)
+        success, result = create_launchd_plist(test_mode=test_mode, output_path=plist_path)
+        if not success:
+            return False, f"Failed to create plist: {result}"
+        click.echo("  ✓ Plist updated")
+
+        # Step 8: Load service
+        click.echo("  Loading service...")
+        load_result = subprocess.run(
+            ["launchctl", "load", plist_path],
+            capture_output=True,
+            text=True,
+        )
+        if load_result.returncode != 0:
+            click.echo(f"  ⚠ Failed to load service: {load_result.stderr}")
+        else:
+            click.echo("  ✓ Service loaded")
+
+        # Step 9: Verify upgrade
+        click.echo("\n  Verifying upgrade...")
+        if is_service_loaded(test_mode):
+            click.echo(f"  ✓ Service {label} is loaded")
+        else:
+            click.echo(f"  ⚠ Service {label} is not loaded (may need manual start)")
+
+        if os.path.isfile(install_info["config_path"]):
+            click.echo("  ✓ Config file exists")
+
+        return (
+            True,
+            f"Upgrade completed successfully. Backup at: {backup_path}"
+            if backup_path
+            else "Upgrade completed successfully",
+        )
+
+    except Exception as e:
+        return False, f"Upgrade failed: {e!s}"
+
+
 # CLI Commands
 @click.group()
 def cli():
@@ -851,6 +1108,99 @@ def validate(test_mode: bool) -> None:
     else:
         click.echo("\n❌ Installation has issues that need to be resolved.")
         click.echo("\nRun 'python install.py install" + (" --test" if test_mode else "") + "' to fix issues.")
+        sys.exit(1)
+
+    click.echo()
+
+
+@cli.command()
+@click.option(
+    "--test",
+    "test_mode",
+    is_flag=True,
+    help="Upgrade test mode installation",
+)
+@click.option(
+    "--no-preserve-config",
+    is_flag=True,
+    help="Replace config with fresh example (default: preserve existing config)",
+)
+@click.option(
+    "--force",
+    is_flag=True,
+    help="Force upgrade even if no existing installation found",
+)
+@click.option(
+    "--yes",
+    "-y",
+    is_flag=True,
+    help="Skip confirmation prompt",
+)
+def upgrade(test_mode: bool, no_preserve_config: bool, force: bool, yes: bool) -> None:
+    """Upgrade Photo Backup System - update service while preserving config.
+
+    This command upgrades an existing installation by:
+    - Backing up the current configuration
+    - Stopping the running service
+    - Updating the launchd plist
+    - Migrating state files if needed
+    - Restarting the service
+
+    By default, your existing configuration is preserved. Use --no-preserve-config
+    to replace it with the default configuration.
+    """
+    mode_text = "TEST MODE" if test_mode else "PRODUCTION MODE"
+    click.echo(f"Photo Backup System Upgrade ({mode_text})")
+    click.echo("=" * 60)
+
+    # Check for existing installation
+    install_info = detect_existing_install(test_mode)
+
+    if not install_info["installed"] and not force:
+        click.echo("\n❌ No existing installation found.")
+        click.echo("Use 'python install.py install' for fresh installation.")
+        click.echo("Use --force to upgrade anyway.")
+        sys.exit(1)
+
+    # Show what will be done
+    click.echo("\nUpgrade plan:")
+    if install_info["has_config"]:
+        if no_preserve_config:
+            click.echo("  - Config will be REPLACED with fresh example")
+        else:
+            click.echo("  - Config will be preserved (backup created)")
+    else:
+        click.echo("  - Fresh config will be installed")
+
+    if install_info["has_plist"]:
+        click.echo("  - Plist will be updated")
+    else:
+        click.echo("  - Fresh plist will be installed")
+
+    if install_info["service_loaded"]:
+        click.echo("  - Service will be stopped and restarted")
+
+    # Confirm upgrade
+    if not yes and not click.confirm("\nProceed with upgrade?"):
+        click.echo("Upgrade cancelled.")
+        sys.exit(0)
+
+    # Perform upgrade
+    preserve_config = not no_preserve_config
+    success, message = upgrade_installation(
+        test_mode=test_mode,
+        preserve_config=preserve_config,
+        force=force,
+    )
+
+    if success:
+        click.echo("\n" + "=" * 60)
+        click.echo("✅ " + message)
+        if not no_preserve_config and install_info["has_config"]:
+            click.echo("\nYour configuration has been preserved.")
+            click.echo("A backup was created in case you need to restore.")
+    else:
+        click.echo(f"\n❌ {message}")
         sys.exit(1)
 
     click.echo()

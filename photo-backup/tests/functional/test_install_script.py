@@ -876,3 +876,241 @@ class TestValidation:
         # Should include Minio check
         minio_check = [r for r in results if "Minio" in r[0]]
         assert len(minio_check) > 0, "Should check Minio connectivity in test mode"
+
+
+class TestUpgrade:
+    """Tests for Task 90: Upgrade Support."""
+
+    @pytest.fixture(autouse=True)
+    def setup_and_teardown(self):
+        """Set up and clean up for each test."""
+        import sys
+
+        from photo_backup.consts import TEST_MODE_BASE_DIR
+
+        sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+        from install import get_plist_path, unload_service
+
+        self.test_base_dir = Path(TEST_MODE_BASE_DIR)
+        self.config_path = self.test_base_dir / "config" / "config.yaml"
+        self.get_plist_path = get_plist_path
+        self.unload_service = unload_service
+
+        # Clean up before test
+        if self.test_base_dir.exists():
+            shutil.rmtree(self.test_base_dir)
+
+        yield
+
+        # Clean up after test
+        unload_service(test_mode=True)
+        plist_path = get_plist_path(test_mode=True)
+        if os.path.exists(plist_path):
+            os.unlink(plist_path)
+        if self.test_base_dir.exists():
+            shutil.rmtree(self.test_base_dir)
+
+    @pytest.mark.functional
+    def test_detect_existing_install_no_install(self):
+        """Test that detect_existing_install returns correct info when not installed."""
+        import sys
+
+        sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+        from install import detect_existing_install
+
+        # Nothing installed yet
+        info = detect_existing_install(test_mode=True)
+
+        assert not info["installed"], "Should not be installed"
+        assert not info["has_config"], "Should not have config"
+        assert not info["has_plist"], "Should not have plist"
+        assert not info["service_loaded"], "Service should not be loaded"
+
+    @pytest.mark.functional
+    def test_detect_existing_install_after_install(self):
+        """Test that detect_existing_install detects installation correctly."""
+        import sys
+
+        sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+        from install import detect_existing_install, install_plist, setup_config
+        from photo_backup.state_utils import get_state_directories
+
+        # Install everything
+        get_state_directories(test_mode=True)
+        setup_config(test_mode=True)
+        install_plist(test_mode=True)
+
+        # Now detect
+        info = detect_existing_install(test_mode=True)
+
+        assert info["installed"], "Should be installed"
+        assert info["has_config"], "Should have config"
+        assert info["has_plist"], "Should have plist"
+        assert info["service_loaded"], "Service should be loaded"
+
+    @pytest.mark.functional
+    def test_backup_config(self):
+        """Test that backup_config creates a backup file."""
+        import sys
+
+        sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+        from install import backup_config, setup_config
+        from photo_backup.state_utils import get_state_directories
+
+        # Create config
+        get_state_directories(test_mode=True)
+        setup_config(test_mode=True)
+
+        # Write some custom content
+        with open(self.config_path, "w") as f:
+            f.write("custom: content\n")
+
+        # Backup
+        success, backup_path = backup_config(test_mode=True)
+
+        assert success, f"Backup should succeed: {backup_path}"
+        assert os.path.exists(backup_path), "Backup file should exist"
+
+        # Verify backup content matches original
+        with open(backup_path) as f:
+            backup_content = f.read()
+        assert backup_content == "custom: content\n", "Backup should have original content"
+
+    @pytest.mark.functional
+    def test_upgrade_preserves_config(self):
+        """Test that upgrade preserves existing config by default."""
+        import sys
+
+        sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+        from install import install_plist, setup_config, upgrade_installation
+        from photo_backup.state_utils import get_state_directories
+
+        # Install everything first
+        get_state_directories(test_mode=True)
+        setup_config(test_mode=True)
+        install_plist(test_mode=True)
+
+        # Modify config
+        custom_content = "# Custom user config\ntest: value\n"
+        with open(self.config_path, "w") as f:
+            f.write(custom_content)
+
+        # Upgrade
+        success, message = upgrade_installation(test_mode=True, preserve_config=True)
+
+        assert success, f"Upgrade should succeed: {message}"
+
+        # Verify config was preserved
+        with open(self.config_path) as f:
+            content = f.read()
+        assert content == custom_content, "Config should be preserved"
+
+    @pytest.mark.functional
+    def test_upgrade_replaces_config_when_requested(self):
+        """Test that upgrade replaces config when preserve_config=False."""
+        import sys
+
+        sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+        from install import install_plist, setup_config, upgrade_installation
+        from photo_backup.state_utils import get_state_directories
+
+        # Install everything first
+        get_state_directories(test_mode=True)
+        setup_config(test_mode=True)
+        install_plist(test_mode=True)
+
+        # Modify config
+        custom_content = "# Custom user config\ntest: value\n"
+        with open(self.config_path, "w") as f:
+            f.write(custom_content)
+
+        # Upgrade without preserving config
+        success, message = upgrade_installation(test_mode=True, preserve_config=False)
+
+        assert success, f"Upgrade should succeed: {message}"
+
+        # Verify config was replaced (should have example config content)
+        with open(self.config_path) as f:
+            content = f.read()
+        assert content != custom_content, "Config should be replaced"
+        assert "backup" in content.lower(), "Should have default config content"
+
+    @pytest.mark.functional
+    def test_upgrade_fails_without_existing_install(self):
+        """Test that upgrade fails when no existing installation and not forced."""
+        import sys
+
+        sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+        from install import upgrade_installation
+
+        # Try to upgrade without existing installation
+        success, message = upgrade_installation(test_mode=True, force=False)
+
+        assert not success, "Upgrade should fail without existing installation"
+        assert "No existing installation" in message, "Should indicate no existing installation"
+
+    @pytest.mark.functional
+    def test_upgrade_with_force_flag(self):
+        """Test that upgrade works with --force flag even without existing installation."""
+        import sys
+
+        sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+        from install import upgrade_installation
+
+        # Try to upgrade with force flag
+        success, message = upgrade_installation(test_mode=True, force=True)
+
+        assert success, f"Forced upgrade should succeed: {message}"
+
+        # Verify installation was created
+        assert self.test_base_dir.exists(), "Base directory should exist"
+        assert self.config_path.exists(), "Config should exist"
+
+    @pytest.mark.functional
+    def test_upgrade_cli_command(self):
+        """Test that upgrade CLI command works correctly."""
+        install_script = Path(__file__).parent.parent.parent / "install.py"
+
+        # First install
+        result = subprocess.run(
+            ["python3", str(install_script), "install", "--test"],
+            capture_output=True,
+            text=True,
+            cwd=str(install_script.parent),
+        )
+        assert result.returncode == 0, f"Install failed: {result.stderr}"
+
+        # Now upgrade
+        result = subprocess.run(
+            ["python3", str(install_script), "upgrade", "--test", "--yes"],
+            capture_output=True,
+            text=True,
+            cwd=str(install_script.parent),
+        )
+        assert result.returncode == 0, f"Upgrade failed: {result.stderr}"
+        assert "Upgrade completed" in result.stdout, "Should show success message"
+
+    @pytest.mark.functional
+    def test_upgrade_creates_backup(self):
+        """Test that upgrade creates config backup."""
+        import sys
+
+        sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+        from install import install_plist, setup_config, upgrade_installation
+        from photo_backup.state_utils import get_state_directories
+
+        # Install everything first
+        get_state_directories(test_mode=True)
+        setup_config(test_mode=True)
+        install_plist(test_mode=True)
+
+        # Upgrade
+        success, message = upgrade_installation(test_mode=True, preserve_config=True)
+
+        assert success, f"Upgrade should succeed: {message}"
+        assert "Backup at:" in message or "completed successfully" in message, "Should indicate backup or success"
+
+        # Check for backup file
+        config_dir = self.test_base_dir / "config"
+        backup_files = list(config_dir.glob("config.yaml.backup.*"))
+        assert len(backup_files) >= 1, "Should have at least one backup file"
