@@ -9,6 +9,7 @@ for the photo backup system.
 import os
 import plistlib
 import shutil
+import subprocess
 import sys
 
 import click
@@ -19,6 +20,10 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from photo_backup.deps import get_dependency_status
 from photo_backup.state_utils import get_state_directories
+
+# Service identifiers
+PROD_SERVICE_LABEL = "com.example.photo-backup"
+TEST_SERVICE_LABEL = "com.example.photo-backup.test"
 
 
 def check_prerequisites(test_mode: bool = False) -> tuple[bool, list[str]]:
@@ -203,6 +208,217 @@ def create_launchd_plist(test_mode: bool = False, output_path: str | None = None
         return False, f"Failed to create plist: {e!s}"
 
 
+def get_plist_path(test_mode: bool = False) -> str:
+    """Get the path where the plist should be installed.
+
+    Args:
+        test_mode: If True, use test service path
+
+    Returns:
+        Path to the plist file
+    """
+    label = TEST_SERVICE_LABEL if test_mode else PROD_SERVICE_LABEL
+    plist_filename = f"{label}.plist"
+
+    if test_mode:
+        # For test mode, use a temp directory
+        return f"/tmp/photo-backup-test/{plist_filename}"
+    else:
+        # Production: use ~/Library/LaunchAgents
+        launch_agents_dir = os.path.expanduser("~/Library/LaunchAgents")
+        return os.path.join(launch_agents_dir, plist_filename)
+
+
+def get_service_label(test_mode: bool = False) -> str:
+    """Get the launchd service label.
+
+    Args:
+        test_mode: If True, return test service label
+
+    Returns:
+        Service label string
+    """
+    return TEST_SERVICE_LABEL if test_mode else PROD_SERVICE_LABEL
+
+
+def is_service_loaded(test_mode: bool = False) -> bool:
+    """Check if the service is loaded in launchctl.
+
+    Args:
+        test_mode: If True, check for test service
+
+    Returns:
+        True if service is loaded, False otherwise
+    """
+    label = get_service_label(test_mode)
+    try:
+        result = subprocess.run(
+            ["launchctl", "list", label],
+            capture_output=True,
+            text=True,
+        )
+        # launchctl list returns 0 if service is found
+        return result.returncode == 0
+    except Exception:
+        return False
+
+
+def unload_service(test_mode: bool = False) -> tuple[bool, str]:
+    """Unload the service from launchctl if it's loaded.
+
+    Args:
+        test_mode: If True, unload test service
+
+    Returns:
+        Tuple of (success, message)
+    """
+    if not is_service_loaded(test_mode):
+        return True, "Service not loaded, nothing to unload"
+
+    plist_path = get_plist_path(test_mode)
+    label = get_service_label(test_mode)
+
+    try:
+        # Try to unload using the plist file if it exists
+        if os.path.exists(plist_path):
+            result = subprocess.run(
+                ["launchctl", "unload", plist_path],
+                capture_output=True,
+                text=True,
+            )
+        else:
+            # Fall back to using bootout with the label
+            result = subprocess.run(
+                ["launchctl", "bootout", f"gui/{os.getuid()}/{label}"],
+                capture_output=True,
+                text=True,
+            )
+
+        if result.returncode == 0:
+            return True, f"Service {label} unloaded successfully"
+        else:
+            # Some errors are acceptable (e.g., service already unloaded)
+            if "No such process" in result.stderr or "Could not find" in result.stderr:
+                return True, f"Service {label} was not loaded"
+            return False, f"Failed to unload service: {result.stderr}"
+    except Exception as e:
+        return False, f"Error unloading service: {e!s}"
+
+
+def install_plist(test_mode: bool = False) -> tuple[bool, str]:
+    """Install the launchd plist and load the service.
+
+    This function:
+    1. Creates the plist file at the appropriate location
+    2. Unloads any existing service with the same label
+    3. Loads the new service with launchctl
+    4. Verifies the service is loaded
+
+    Args:
+        test_mode: If True, install test service
+
+    Returns:
+        Tuple of (success, message)
+    """
+    label = get_service_label(test_mode)
+    plist_path = get_plist_path(test_mode)
+
+    try:
+        click.echo(f"\nInstalling launchd service: {label}")
+
+        # Unload existing service if loaded
+        if is_service_loaded(test_mode):
+            click.echo("  Unloading existing service...")
+            success, msg = unload_service(test_mode)
+            if not success:
+                return False, f"Failed to unload existing service: {msg}"
+            click.echo(f"  ✓ {msg}")
+
+        # Create the plist file
+        click.echo(f"  Creating plist at {plist_path}...")
+        success, result = create_launchd_plist(test_mode=test_mode, output_path=plist_path)
+        if not success:
+            return False, f"Failed to create plist: {result}"
+        click.echo("  ✓ Plist created")
+
+        # Load the service
+        click.echo("  Loading service with launchctl...")
+        load_result = subprocess.run(
+            ["launchctl", "load", plist_path],
+            capture_output=True,
+            text=True,
+        )
+
+        if load_result.returncode != 0:
+            return False, f"Failed to load service: {load_result.stderr}"
+        click.echo("  ✓ Service loaded")
+
+        # Verify service is loaded
+        if is_service_loaded(test_mode):
+            click.echo(f"  ✓ Verified: service {label} is loaded")
+            return True, f"Service {label} installed and loaded at {plist_path}"
+        else:
+            return False, "Service loaded but verification failed"
+
+    except Exception as e:
+        return False, f"Failed to install plist: {e!s}"
+
+
+def setup_config(test_mode: bool = False) -> tuple[bool, str]:
+    """Set up configuration file by copying example config.
+
+    This function:
+    1. Ensures the config directory exists
+    2. Copies config.yaml.example to config.yaml if it doesn't exist
+    3. Sets appropriate paths based on mode
+
+    Args:
+        test_mode: If True, set up test mode configuration
+
+    Returns:
+        Tuple of (success, message)
+    """
+    try:
+        click.echo("\nSetting up configuration...")
+
+        # Get state directories (this also creates them)
+        dirs = get_state_directories(test_mode=test_mode)
+        config_dir = dirs["config"]
+        config_path = os.path.join(config_dir, "config.yaml")
+
+        # Find the example config file
+        install_script_dir = Path(__file__).parent
+        example_config = install_script_dir / "config.yaml.example"
+
+        if not example_config.exists():
+            return False, f"Example config not found at {example_config}"
+
+        # Check if config already exists
+        if os.path.exists(config_path):
+            click.echo(f"  ⚠ Config file already exists at {config_path}")
+            click.echo("    To reset, delete the existing config and run again.")
+            return True, f"Config already exists at {config_path}"
+
+        # Copy example config
+        click.echo(f"  Copying config template to {config_path}...")
+        shutil.copy2(example_config, config_path)
+        click.echo("  ✓ Configuration file created")
+
+        # Set permissions (600 for security - config may contain sensitive paths)
+        os.chmod(config_path, 0o600)
+        click.echo("  ✓ Permissions set (0600)")
+
+        # Create state directories if needed
+        state_dir = dirs["state"]
+        if os.path.exists(state_dir):
+            click.echo(f"  ✓ State directory ready: {state_dir}")
+
+        return True, f"Configuration set up at {config_path}"
+
+    except Exception as e:
+        return False, f"Failed to set up config: {e!s}"
+
+
 @click.command()
 @click.option(
     "--test",
@@ -210,11 +426,22 @@ def create_launchd_plist(test_mode: bool = False, output_path: str | None = None
     is_flag=True,
     help="Run in test mode - creates test structure and requires Docker",
 )
-def install(test_mode: bool) -> None:
-    """Install Photo Backup System - check prerequisites and create directories.
+@click.option(
+    "--skip-service",
+    is_flag=True,
+    help="Skip launchd service installation",
+)
+@click.option(
+    "--skip-config",
+    is_flag=True,
+    help="Skip configuration file setup",
+)
+def install(test_mode: bool, skip_service: bool, skip_config: bool) -> None:
+    """Install Photo Backup System - check prerequisites, create directories, and set up service.
 
-    This script verifies that all required dependencies are installed
-    and creates the necessary directory structure for the application.
+    This script verifies that all required dependencies are installed,
+    creates the necessary directory structure, sets up configuration,
+    and installs the launchd service.
     """
     mode_text = "TEST MODE" if test_mode else "PRODUCTION MODE"
     click.echo(f"Photo Backup System Installation ({mode_text})")
@@ -237,18 +464,38 @@ def install(test_mode: bool) -> None:
         click.echo(f"\n❌ {message}")
         sys.exit(1)
 
+    # Set up configuration
+    if not skip_config:
+        success, message = setup_config(test_mode=test_mode)
+        if not success:
+            click.echo(f"\n❌ {message}")
+            sys.exit(1)
+    else:
+        click.echo("\n⚠ Skipping configuration setup (--skip-config)")
+
+    # Install launchd service
+    if not skip_service:
+        success, message = install_plist(test_mode=test_mode)
+        if not success:
+            click.echo(f"\n❌ {message}")
+            sys.exit(1)
+    else:
+        click.echo("\n⚠ Skipping service installation (--skip-service)")
+
     # Success message
     click.echo("\n" + "=" * 60)
     click.echo("✅ Installation completed successfully!")
     click.echo("\nNext steps:")
     if test_mode:
         click.echo("  1. Start Minio container: docker run -d --name minio -p 9000:9000 minio/minio server /data")
-        click.echo("  2. Configure your backup settings")
+        click.echo("  2. Edit your config at /tmp/photo-backup-test/config/config.yaml")
         click.echo("  3. Run: photo-backup sync --test-mode")
     else:
-        click.echo("  1. Configure your backup settings")
+        click.echo("  1. Edit your config at ~/Library/Application Support/photo-backup/config/config.yaml")
         click.echo("  2. Set up credentials (1Password or environment variables)")
         click.echo("  3. Run: photo-backup sync")
+        click.echo("\nThe launchd service is installed but not started.")
+        click.echo("To start it manually: launchctl start com.example.photo-backup")
     click.echo()
 
 

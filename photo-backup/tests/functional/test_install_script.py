@@ -279,3 +279,277 @@ class TestInstallScript:
         plist_data = plistlib.loads(result.encode("utf-8"))
         assert "Label" in plist_data, "Should contain Label key"
         assert plist_data["Label"] == "com.example.photo-backup.test", "Should use test label"
+
+
+class TestPlistInstallation:
+    """Tests for Task 86: Plist Installation."""
+
+    @pytest.fixture(autouse=True)
+    def setup_and_teardown(self):
+        """Set up and clean up for each test."""
+        import sys
+
+        sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+        from install import (
+            TEST_SERVICE_LABEL,
+            get_plist_path,
+            get_service_label,
+            is_service_loaded,
+            unload_service,
+        )
+
+        self.get_plist_path = get_plist_path
+        self.get_service_label = get_service_label
+        self.is_service_loaded = is_service_loaded
+        self.unload_service = unload_service
+        self.TEST_SERVICE_LABEL = TEST_SERVICE_LABEL
+
+        # Store original state
+        self.was_loaded = is_service_loaded(test_mode=True)
+
+        yield
+
+        # Cleanup: unload test service and remove plist
+        unload_service(test_mode=True)
+        plist_path = get_plist_path(test_mode=True)
+        if os.path.exists(plist_path):
+            os.unlink(plist_path)
+
+    @pytest.mark.functional
+    def test_get_plist_path_test_mode(self):
+        """Test that get_plist_path returns test path in test mode."""
+        path = self.get_plist_path(test_mode=True)
+        assert "/tmp/photo-backup-test" in path, "Test mode should use temp directory"
+        assert "com.example.photo-backup.test.plist" in path, "Should use test service name"
+
+    @pytest.mark.functional
+    def test_get_plist_path_production_mode(self):
+        """Test that get_plist_path returns LaunchAgents path in production mode."""
+        path = self.get_plist_path(test_mode=False)
+        assert "Library/LaunchAgents" in path, "Production mode should use LaunchAgents"
+        assert "com.example.photo-backup.plist" in path, "Should use production service name"
+
+    @pytest.mark.functional
+    def test_get_service_label(self):
+        """Test that get_service_label returns correct labels."""
+        test_label = self.get_service_label(test_mode=True)
+        prod_label = self.get_service_label(test_mode=False)
+
+        assert test_label == "com.example.photo-backup.test", "Test label should have .test suffix"
+        assert prod_label == "com.example.photo-backup", "Production label should not have .test suffix"
+
+    @pytest.mark.functional
+    def test_install_plist_test_mode(self):
+        """Test that install_plist installs and loads test service."""
+        import sys
+
+        sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+        from install import install_plist
+
+        # Install the plist
+        success, message = install_plist(test_mode=True)
+
+        # Verify success
+        assert success, f"Plist installation failed: {message}"
+
+        # Verify plist file was created
+        plist_path = self.get_plist_path(test_mode=True)
+        assert os.path.exists(plist_path), f"Plist file should exist at {plist_path}"
+
+        # Verify plist content
+        with open(plist_path, "rb") as f:
+            plist_data = plistlib.load(f)
+        assert plist_data["Label"] == self.TEST_SERVICE_LABEL, "Should use test label"
+
+        # Verify service is loaded
+        assert self.is_service_loaded(test_mode=True), "Service should be loaded after installation"
+
+    @pytest.mark.functional
+    def test_install_plist_reinstalls_existing(self):
+        """Test that install_plist can reinstall over existing service."""
+        import sys
+
+        sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+        from install import install_plist
+
+        # Install first time
+        success1, _ = install_plist(test_mode=True)
+        assert success1, "First installation should succeed"
+
+        # Install again (should unload and reload)
+        success2, message = install_plist(test_mode=True)
+        assert success2, f"Reinstallation should succeed: {message}"
+
+        # Verify service is still loaded
+        assert self.is_service_loaded(test_mode=True), "Service should be loaded after reinstallation"
+
+    @pytest.mark.functional
+    def test_unload_service(self):
+        """Test that unload_service properly unloads the service."""
+        import sys
+
+        sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+        from install import install_plist
+
+        # First install the service
+        success, _ = install_plist(test_mode=True)
+        assert success, "Installation should succeed"
+        assert self.is_service_loaded(test_mode=True), "Service should be loaded"
+
+        # Now unload it
+        success, message = self.unload_service(test_mode=True)
+        assert success, f"Unload should succeed: {message}"
+
+        # Verify service is no longer loaded
+        assert not self.is_service_loaded(test_mode=True), "Service should not be loaded after unload"
+
+
+class TestConfigSetup:
+    """Tests for Task 87: Configuration Setup."""
+
+    @pytest.fixture(autouse=True)
+    def setup_and_teardown(self):
+        """Set up and clean up for each test."""
+        from photo_backup.consts import TEST_MODE_BASE_DIR
+
+        self.test_base_dir = Path(TEST_MODE_BASE_DIR)
+        self.config_path = self.test_base_dir / "config" / "config.yaml"
+
+        # Clean up before test
+        if self.test_base_dir.exists():
+            shutil.rmtree(self.test_base_dir)
+
+        yield
+
+        # Clean up after test
+        if self.test_base_dir.exists():
+            shutil.rmtree(self.test_base_dir)
+
+    @pytest.mark.functional
+    def test_setup_config_creates_config_file(self):
+        """Test that setup_config creates config.yaml in config directory."""
+        import sys
+
+        sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+        from install import setup_config
+
+        # Run setup_config
+        success, message = setup_config(test_mode=True)
+
+        # Verify success
+        assert success, f"Config setup failed: {message}"
+
+        # Verify config file was created
+        assert self.config_path.exists(), f"Config file should exist at {self.config_path}"
+
+    @pytest.mark.functional
+    def test_setup_config_copies_example(self):
+        """Test that setup_config copies content from example config."""
+        import sys
+
+        sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+        from install import setup_config
+
+        # Get example config content for comparison
+        example_config = Path(__file__).parent.parent.parent / "config.yaml.example"
+        with open(example_config) as f:
+            example_content = f.read()
+
+        # Run setup_config
+        success, _ = setup_config(test_mode=True)
+        assert success, "Config setup should succeed"
+
+        # Verify content matches example
+        with open(self.config_path) as f:
+            config_content = f.read()
+
+        assert config_content == example_content, "Config content should match example"
+
+    @pytest.mark.functional
+    def test_setup_config_sets_permissions(self):
+        """Test that setup_config sets secure permissions on config file."""
+        import sys
+
+        sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+        from install import setup_config
+
+        # Run setup_config
+        success, _ = setup_config(test_mode=True)
+        assert success, "Config setup should succeed"
+
+        # Verify permissions (should be 0600)
+        mode = os.stat(self.config_path).st_mode & 0o777
+        assert mode == 0o600, f"Config should have permissions 0o600, got {oct(mode)}"
+
+    @pytest.mark.functional
+    def test_setup_config_preserves_existing(self):
+        """Test that setup_config does not overwrite existing config."""
+        import sys
+
+        sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+        from install import setup_config
+
+        # First create the config
+        success, _ = setup_config(test_mode=True)
+        assert success, "First setup should succeed"
+
+        # Modify the config
+        custom_content = "# Custom configuration\ntest: value\n"
+        with open(self.config_path, "w") as f:
+            f.write(custom_content)
+
+        # Run setup_config again
+        success, message = setup_config(test_mode=True)
+        assert success, "Second setup should succeed (no-op)"
+        assert "already exists" in message, "Should indicate config already exists"
+
+        # Verify content was not overwritten
+        with open(self.config_path) as f:
+            content = f.read()
+        assert content == custom_content, "Config content should not be overwritten"
+
+    @pytest.mark.functional
+    def test_setup_config_creates_state_directories(self):
+        """Test that setup_config ensures state directories exist."""
+        import sys
+
+        sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+        from install import setup_config
+
+        # Run setup_config
+        success, _ = setup_config(test_mode=True)
+        assert success, "Config setup should succeed"
+
+        # Verify state directories were created
+        assert (self.test_base_dir / "state").exists(), "State directory should exist"
+        assert (self.test_base_dir / "config").exists(), "Config directory should exist"
+        assert (self.test_base_dir / "temp").exists(), "Temp directory should exist"
+
+    @pytest.mark.functional
+    def test_install_with_config_setup(self):
+        """Test that full install process creates ready-to-use config."""
+        install_script = Path(__file__).parent.parent.parent / "install.py"
+
+        # Run install in test mode (skip service to avoid launchctl dependencies)
+        result = subprocess.run(
+            ["python3", str(install_script), "--test", "--skip-service"],
+            capture_output=True,
+            text=True,
+            cwd=str(install_script.parent),
+        )
+
+        # Verify script succeeded
+        assert result.returncode == 0, f"Install script failed: {result.stderr}"
+
+        # Verify config file was created
+        assert self.config_path.exists(), "Config file should be created by install"
+
+        # Verify config is valid YAML
+        import yaml
+
+        with open(self.config_path) as f:
+            config_data = yaml.safe_load(f)
+
+        assert "backup" in config_data, "Config should have backup section"
+        assert "storage" in config_data, "Config should have storage section"
+        assert "monitoring" in config_data, "Config should have monitoring section"
