@@ -8,6 +8,7 @@ Usage:
     from photo_backup.verify import Verifier, HashCalculator, RemoteLister
     from photo_backup.verify import FileHash, ComparisonResult, VerificationReport
     from photo_backup.verify import HashCache, CacheEntry, get_default_cache_path
+    from photo_backup.verify import VerificationScheduler, VerificationScheduleState
 """
 
 # Cache
@@ -30,6 +31,13 @@ from .models import (
 # Remote lister
 from .remote_lister import RemoteLister
 
+# Scheduler
+from .scheduler import (
+    ScheduledVerificationResult,
+    VerificationScheduler,
+    VerificationScheduleState,
+)
+
 # Main verifier
 from .verifier import Verifier
 
@@ -44,9 +52,12 @@ __all__ = [
     "HashCalculator",
     "RemoteLister",
     "RepairResult",
+    "ScheduledVerificationResult",
     "VerificationJob",
     "VerificationReport",
     "VerificationResult",
+    "VerificationScheduleState",
+    "VerificationScheduler",
     "VerificationStatus",
     "Verifier",
     "get_default_cache_path",

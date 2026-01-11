@@ -22,6 +22,7 @@ from ..config.config import Config
 from ..consts import SERVICE_PID_FILENAME
 from ..monitor import DriveMonitor
 from ..state_utils import get_state_directories
+from ..verify.scheduler import VerificationScheduler
 
 
 class ServiceState(Enum):
@@ -71,6 +72,8 @@ class ServiceManager:
         logger: logging.Logger | None = None,
         monitor: DriveMonitor | None = None,
         backup_engine: BackupEngine | None = None,
+        verification_scheduler: VerificationScheduler | None = None,
+        enable_scheduled_verification: bool = True,
     ):
         """
         Initialize service manager.
@@ -80,6 +83,8 @@ class ServiceManager:
             logger: Optional logger instance (creates one if not provided)
             monitor: Optional DriveMonitor instance (creates one if not provided)
             backup_engine: Optional BackupEngine instance (creates one if not provided)
+            verification_scheduler: Optional VerificationScheduler instance
+            enable_scheduled_verification: Whether to run scheduled verifications
         """
         self.config = config
         self.logger = logger or logging.getLogger(__name__)
@@ -91,6 +96,15 @@ class ServiceManager:
         # Initialize monitor and backup engine
         self.monitor = monitor or DriveMonitor(config)
         self.backup_engine = backup_engine or BackupEngine(config, test_mode=config.test_mode)
+
+        # Initialize verification scheduler
+        self._enable_scheduled_verification = enable_scheduled_verification
+        self.verification_scheduler = verification_scheduler
+        if enable_scheduled_verification and verification_scheduler is None:
+            self.verification_scheduler = VerificationScheduler(
+                config=config,
+                test_mode=config.test_mode,
+            )
 
         # Signal handlers for graceful shutdown
         # Type matches signal.signal() return: Callable | int (SIG_DFL/SIG_IGN) | None
@@ -104,7 +118,8 @@ class ServiceManager:
         self._shutdown_reason: str | None = None
 
         self.logger.info(
-            f"ServiceManager initialized (test_mode={config.test_mode}, loop_interval={self._loop_interval}s)"
+            f"ServiceManager initialized (test_mode={config.test_mode}, loop_interval={self._loop_interval}s, "
+            f"scheduled_verification={'enabled' if enable_scheduled_verification else 'disabled'})"
         )
 
     @property
@@ -350,11 +365,20 @@ class ServiceManager:
         2. If so, checks for file changes
         3. If changes detected, triggers backup
         4. After successful backup, resets changes
-        5. Sleeps for configured interval
+        5. Checks if scheduled verification is due
+        6. Sleeps for configured interval
         """
         self.logger.info("Entering main service loop")
         self.logger.info(f"Monitor: {self.monitor.watch_path}")
         self.logger.info(f"Backup destination: {self.config.get('backup.destination')}")
+
+        # Log verification schedule info at startup
+        if self._enable_scheduled_verification and self.verification_scheduler:
+            schedule_info = self.verification_scheduler.get_schedule_info()
+            self.logger.info(
+                f"Scheduled verification: interval={schedule_info['interval_days']} days, "
+                f"is_due={schedule_info['is_due']}"
+            )
 
         while not self._shutdown_requested:
             try:
@@ -387,6 +411,9 @@ class ServiceManager:
                             self._trigger_backup(summary)
                     else:
                         self.logger.debug("No changes detected")
+
+                # Check for scheduled verification
+                self._check_scheduled_verification()
 
                 # Sleep for configured interval
                 time.sleep(self._loop_interval)
@@ -433,6 +460,46 @@ class ServiceManager:
 
         except Exception as e:
             self.logger.error(f"Error triggering backup: {e}", exc_info=True)
+
+    def _check_scheduled_verification(self) -> None:
+        """
+        Check if scheduled verification is due and run it if needed.
+
+        Add Scheduled Verification - Monthly automatic check (daily in test mode).
+        """
+        if not self._enable_scheduled_verification or self.verification_scheduler is None:
+            return
+
+        try:
+            if self.verification_scheduler.is_verification_due():
+                self.logger.info("Scheduled verification is due, starting...")
+
+                result = self.verification_scheduler.run_scheduled_verification(
+                    repair=True,  # Auto-repair any issues
+                    save_report=True,  # Save report for record
+                )
+
+                if result.ran:
+                    if result.passed:
+                        self.logger.info(f"Scheduled verification PASSED: {result.get_summary()}")
+                    else:
+                        self.logger.warning(f"Scheduled verification FAILED: {result.get_summary()}")
+                        if result.errors:
+                            for error in result.errors:
+                                self.logger.error(f"  Verification error: {error}")
+                else:
+                    self.logger.debug(f"Scheduled verification skipped: {result.skipped_reason}")
+            else:
+                # Log schedule info periodically (every 100 loops)
+                if self._status.loop_count % 100 == 0:
+                    schedule_info = self.verification_scheduler.get_schedule_info()
+                    if schedule_info.get("time_until_next_hours"):
+                        self.logger.debug(
+                            f"Next scheduled verification in {schedule_info['time_until_next_hours']:.1f} hours"
+                        )
+
+        except Exception as e:
+            self.logger.error(f"Error checking scheduled verification: {e}", exc_info=True)
 
     def stop(self) -> None:
         """
