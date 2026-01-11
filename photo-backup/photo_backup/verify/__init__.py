@@ -7,7 +7,11 @@ by comparing local and remote hashes, and supports repair operations.
 Usage:
     from photo_backup.verify import Verifier, HashCalculator, RemoteLister
     from photo_backup.verify import FileHash, ComparisonResult, VerificationReport
+    from photo_backup.verify import HashCache, CacheEntry, get_default_cache_path
 """
+
+# Cache
+from .cache import CacheEntry, CacheMetadata, CacheStats, HashCache, get_default_cache_path
 
 # Models (dataclasses and enums)
 # Hash calculator
@@ -30,9 +34,13 @@ from .remote_lister import RemoteLister
 from .verifier import Verifier
 
 __all__ = [
+    "CacheEntry",
+    "CacheMetadata",
+    "CacheStats",
     "ComparisonResult",
     "FileHash",
     "FileMismatch",
+    "HashCache",
     "HashCalculator",
     "RemoteLister",
     "RepairResult",
@@ -41,4 +49,5 @@ __all__ = [
     "VerificationResult",
     "VerificationStatus",
     "Verifier",
+    "get_default_cache_path",
 ]

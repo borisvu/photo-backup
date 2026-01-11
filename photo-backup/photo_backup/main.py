@@ -17,6 +17,7 @@ from .cli.log_commands import logs
 from .cli.service_commands import restart, start, stop
 from .cli.status_commands import status
 from .cli.sync_commands import sync
+from .cli.verify_commands import verify
 from .config.config import Config
 from .logger import generate_job_id, setup_logger_from_config
 
@@ -113,6 +114,7 @@ main.add_command(logs)
 main.add_command(status)
 main.add_command(test_auth)
 main.add_command(sync)
+main.add_command(verify)
 # Service management commands
 main.add_command(start)
 main.add_command(stop)

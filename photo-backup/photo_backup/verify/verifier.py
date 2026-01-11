@@ -19,6 +19,7 @@ from pathlib import Path
 
 from ..config.config import Config
 from ..credentials.manager import CredentialManager
+from .cache import HashCache, get_default_cache_path
 from .hash_calculator import HashCalculator
 from .models import (
     ComparisonResult,
@@ -34,12 +35,18 @@ from .remote_lister import RemoteLister
 class Verifier:
     """Core verifier for photo backup integrity checking."""
 
-    def __init__(self, config: Config | None = None, test_mode: bool = False):
+    def __init__(
+        self,
+        config: Config | None = None,
+        test_mode: bool = False,
+        use_cache: bool = True,
+    ):
         """Initialize the verifier.
 
         Args:
             config: Configuration object. If None, creates a new one
             test_mode: Whether to run in test mode (uses Minio)
+            use_cache: Whether to use hash cache for speedup
         """
         self.config = config or Config(test_mode=test_mode)
         self.test_mode = test_mode or self.config.is_test_mode()
@@ -48,10 +55,55 @@ class Verifier:
         self.hash_calculator = HashCalculator()
         self.remote_lister = RemoteLister(self.config, self.credential_manager)
 
+        # Hash cache integration
+        self.use_cache = use_cache
+        self._cache: HashCache | None = None
+        if use_cache:
+            self._init_cache()
+
         # Load configuration
         self.config.load_config()
 
         self.logger.info(f"Verifier initialized in {'test' if self.test_mode else 'production'} mode")
+        if use_cache:
+            self.logger.info(f"Hash cache enabled with {len(self._cache) if self._cache else 0} entries")
+
+    def _init_cache(self) -> None:
+        """Initialize the hash cache."""
+        cache_path = get_default_cache_path(self.test_mode)
+        source_path = self.config.get("backup.source_path", "")
+
+        self._cache = HashCache.create(
+            cache_file=cache_path,
+            source_path=source_path,
+            auto_save=True,
+        )
+
+        # Try to load existing cache
+        if cache_path.exists():
+            self._cache.load()
+            # Validate cache entries against filesystem
+            if source_path and Path(source_path).exists():
+                self._cache.validate(source_path)
+
+    @property
+    def cache(self) -> HashCache | None:
+        """Get the hash cache instance."""
+        return self._cache
+
+    def get_cache_stats(self) -> dict[str, Any]:
+        """Get cache statistics.
+
+        Returns:
+            Dictionary with cache stats or empty dict if cache disabled
+        """
+        if self._cache is None:
+            return {"enabled": False}
+
+        return {
+            "enabled": True,
+            **self._cache.get_info(),
+        }
 
     def create_verification_job(self) -> VerificationJob:
         """Create a verification job from current configuration.
@@ -88,6 +140,8 @@ class Verifier:
     ) -> list[FileHash]:
         """Calculate hashes for all local files.
 
+        Uses cache to speed up repeated verifications.
+
         Args:
             source_path: Path to local directory (uses config if None)
             progress_callback: Optional callback for progress reporting
@@ -106,7 +160,104 @@ class Verifier:
             self.hash_calculator.progress_callback = progress_callback
 
         self.logger.info(f"Calculating hashes for local files in: {source_path}")
+
+        # Use cache if available
+        if self.use_cache and self._cache is not None:
+            return self._calculate_hashes_with_cache(source_path)
+
         return self.hash_calculator.calculate_directory_hashes(source_path)
+
+    def _calculate_hashes_with_cache(self, source_path: str) -> list[FileHash]:
+        """Calculate hashes using cache for speedup.
+
+        Cache-enabled hash calculation.
+
+        Args:
+            source_path: Path to local directory
+
+        Returns:
+            List of FileHash objects for local files
+        """
+        # Assert cache is available (caller ensures this)
+        assert self._cache is not None
+
+        source_dir = Path(source_path)
+        if not source_dir.exists():
+            raise FileNotFoundError(f"Directory not found: {source_dir}")
+
+        exclude_patterns = [".*", "Thumbs.db", ".DS_Store"]
+        file_hashes: list[FileHash] = []
+        cache_hits = 0
+        cache_misses = 0
+
+        for file_path in source_dir.rglob("*"):
+            if not file_path.is_file():
+                continue
+
+            # Check exclusions
+            should_exclude = False
+            for pattern in exclude_patterns:
+                if file_path.match(pattern):
+                    should_exclude = True
+                    break
+
+            if should_exclude:
+                self.logger.debug(f"Excluding file: {file_path}")
+                continue
+
+            try:
+                relative_path = str(file_path.relative_to(source_dir))
+                stat_info = file_path.stat()
+
+                # Try to get from cache
+                cached_hash = self._cache.get(
+                    relative_path,
+                    current_mtime=stat_info.st_mtime,
+                    current_size=stat_info.st_size,
+                )
+
+                if cached_hash:
+                    # Cache hit - use cached hash
+                    cache_hits += 1
+                    file_hash = FileHash(
+                        path=relative_path,
+                        size=stat_info.st_size,
+                        hash_md5=cached_hash,
+                        hash_type="md5",
+                        modified_time=str(stat_info.st_mtime),
+                    )
+                else:
+                    # Cache miss - calculate hash
+                    cache_misses += 1
+                    calculated_hash = self.hash_calculator.calculate_md5(file_path)
+
+                    # Store in cache
+                    self._cache.set(
+                        file_path=relative_path,
+                        hash_md5=calculated_hash,
+                        size=stat_info.st_size,
+                        mtime=stat_info.st_mtime,
+                    )
+
+                    file_hash = FileHash(
+                        path=relative_path,
+                        size=stat_info.st_size,
+                        hash_md5=calculated_hash,
+                        hash_type="md5",
+                        modified_time=str(stat_info.st_mtime),
+                    )
+
+                file_hashes.append(file_hash)
+
+            except Exception as e:
+                self.logger.warning(f"Failed to hash {file_path}: {e}")
+
+        self.logger.info(
+            f"Hash calculation complete: {cache_hits} cache hits, "
+            f"{cache_misses} cache misses ({self._cache.stats.hit_rate:.1%} hit rate)"
+        )
+
+        return file_hashes
 
     def list_remote_files(self, remote_path: str | None = None) -> list[FileHash]:
         """List files in remote storage.
@@ -137,7 +288,7 @@ class Verifier:
         self.hash_calculator.progress_callback = callback
 
     # ==========================================================================
-    # Task 96: Hash Comparison
+    # Hash Comparison
     # ==========================================================================
 
     def compare_hashes(
@@ -147,7 +298,7 @@ class Verifier:
     ) -> ComparisonResult:
         """Compare local and remote file hashes to find differences.
 
-        Task 96: Hash Comparison implementation.
+        Hash Comparison implementation.
 
         This method matches files by their relative paths and compares their
         MD5 hashes to identify:
@@ -235,7 +386,7 @@ class Verifier:
         return result
 
     # ==========================================================================
-    # Task 97: Repair Function
+    # Repair Function
     # ==========================================================================
 
     def repair_files(
@@ -246,7 +397,7 @@ class Verifier:
     ) -> RepairResult:
         """Re-upload files that have mismatches or are missing on remote.
 
-        Task 97: Repair Function implementation.
+        Repair Function implementation.
 
         This method:
         1. Re-uploads files that have hash mismatches
@@ -459,7 +610,7 @@ class Verifier:
                 os.unlink(config_path)
 
     # ==========================================================================
-    # Task 98: Verification Report
+    # Verification Report
     # ==========================================================================
 
     def generate_report(
@@ -470,7 +621,7 @@ class Verifier:
     ) -> VerificationReport:
         """Generate a detailed verification report.
 
-        Task 98: Verification Report implementation.
+        Verification Report implementation.
 
         Args:
             comparison_result: Result from compare_hashes()

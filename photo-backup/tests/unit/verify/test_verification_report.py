@@ -1,5 +1,5 @@
 """
-Unit tests for verification report functionality (Task 98).
+Unit tests for verification report functionality.
 
 Tests the VerificationReport class and report generation.
 """

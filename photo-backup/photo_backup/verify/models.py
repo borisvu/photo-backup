@@ -94,7 +94,7 @@ class VerificationResult:
 class FileMismatch:
     """Represents a file with mismatched hashes between local and remote.
 
-    Task 96: Hash Comparison support dataclass.
+    Hash Comparison support dataclass.
     """
 
     path: str
@@ -112,7 +112,7 @@ class FileMismatch:
 class ComparisonResult:
     """Result of comparing local and remote file hashes.
 
-    Task 96: Hash Comparison result dataclass.
+    THash Comparison result dataclass.
     """
 
     # Files that match perfectly
@@ -163,7 +163,7 @@ class ComparisonResult:
 class RepairResult:
     """Result of a repair operation.
 
-    Task 97: Repair Function result dataclass.
+    Repair Function result dataclass.
     """
 
     # Successfully repaired files
@@ -209,7 +209,7 @@ class RepairResult:
 class VerificationReport:
     """Detailed verification report with all issues and statistics.
 
-    Task 98: Verification Report dataclass.
+    Verification Report dataclass.
     """
 
     # Report metadata
