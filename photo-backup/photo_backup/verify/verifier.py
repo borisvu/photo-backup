@@ -4,7 +4,6 @@ Core verifier for photo backup integrity checking.
 This module provides the main Verifier class that orchestrates
 hash calculation, remote listing, comparison, repair, and reporting.
 
-Tasks 93, 96-98: Verify Module, Hash Comparison, Repair Function, Verification Report
 """
 
 import contextlib

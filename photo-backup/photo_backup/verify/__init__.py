@@ -4,9 +4,6 @@ Verification module for photo backup system.
 This module provides functionality to verify the integrity of backed up files
 by comparing local and remote hashes, and supports repair operations.
 
-Tasks 93-95: Create Verify Module, Hash Calculation, Remote Listing
-Tasks 96-98: Hash Comparison, Repair Function, Verification Report
-
 Usage:
     from photo_backup.verify import Verifier, HashCalculator, RemoteLister
     from photo_backup.verify import FileHash, ComparisonResult, VerificationReport
