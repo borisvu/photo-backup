@@ -3,8 +3,6 @@ Remote file lister for S3-compatible storage.
 
 This module provides functionality to list files from remote storage
 using rclone, including their hashes for verification.
-
-Task 95: Remote Listing
 """
 
 import json

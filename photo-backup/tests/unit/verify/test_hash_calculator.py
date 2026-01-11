@@ -1,5 +1,5 @@
 """
-Unit tests for the HashCalculator class (Task 94).
+Unit tests for the HashCalculator class.
 
 Tests hash calculation with support for large files and progress reporting.
 """

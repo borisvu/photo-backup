@@ -1,5 +1,5 @@
 """
-Unit tests for repair functionality (Task 97).
+Unit tests for repair functionality.
 
 Tests the repair_files method and RepairResult dataclass.
 """

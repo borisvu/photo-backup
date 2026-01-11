@@ -282,7 +282,7 @@ class TestInstallScript:
 
 
 class TestPlistInstallation:
-    """Tests for Task 86: Plist Installation."""
+    """Tests for Plist Installation."""
 
     @pytest.fixture(autouse=True)
     def setup_and_teardown(self):
@@ -405,7 +405,7 @@ class TestPlistInstallation:
 
 
 class TestConfigSetup:
-    """Tests for Task 87: Configuration Setup."""
+    """Tests for Configuration Setup."""
 
     @pytest.fixture(autouse=True)
     def setup_and_teardown(self):
@@ -556,7 +556,7 @@ class TestConfigSetup:
 
 
 class TestUninstall:
-    """Tests for Task 88: Uninstall Script."""
+    """Tests for Uninstall Script."""
 
     @pytest.fixture(autouse=True)
     def setup_and_teardown(self):
@@ -719,7 +719,7 @@ class TestUninstall:
 
 
 class TestValidation:
-    """Tests for Task 89: Install Validation."""
+    """Tests for Install Validation."""
 
     @pytest.fixture(autouse=True)
     def setup_and_teardown(self):
@@ -879,7 +879,7 @@ class TestValidation:
 
 
 class TestUpgrade:
-    """Tests for Task 90: Upgrade Support."""
+    """Tests for Upgrade Support."""
 
     @pytest.fixture(autouse=True)
     def setup_and_teardown(self):

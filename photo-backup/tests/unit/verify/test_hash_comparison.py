@@ -1,5 +1,5 @@
 """
-Unit tests for hash comparison functionality (Task 96).
+Unit tests for hash comparison functionality.
 
 Tests the compare_hashes method and related dataclasses.
 """

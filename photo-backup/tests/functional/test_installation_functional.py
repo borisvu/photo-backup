@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Installation Functional Test (Task 92).
+Installation Functional Test.
 
 This test verifies the complete installation flow:
 - Fresh test install using install.py
@@ -73,7 +73,7 @@ class TestInstallationFunctional:
     ):
         """Test complete installation flow from fresh install to working sync.
 
-        This is the main test for Task 92 - verifies:
+        This is the main test - verifies:
         1. Fresh test install creates proper structure
         2. Configuration is ready for Minio
         3. Sync command runs successfully with Minio

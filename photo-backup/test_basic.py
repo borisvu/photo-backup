@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Basic functional test for Photo Backup System (Task 11)
+Basic functional test for Photo Backup System
 
 This test verifies that all foundation components work together:
 - CLI entry point

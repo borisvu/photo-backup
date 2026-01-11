@@ -9,8 +9,6 @@ This test verifies the entire backup cycle from start to finish:
 - File verification in Minio bucket
 - State persistence and statistics tracking
 - Error handling and cleanup
-
-This is Task 62: Backup Functional Test - the final test for Phase 6.
 """
 
 import contextlib

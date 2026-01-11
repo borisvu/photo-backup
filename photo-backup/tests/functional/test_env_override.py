@@ -1,7 +1,7 @@
 """
 Functional tests for environment variable override functionality.
 
-Tests Task 27: Environment Variable Override functionality including:
+Tests Environment Variable Override functionality including:
 - PHOTO_BACKUP_* variables override config values
 - PHOTO_BACKUP_TEST_MODE=1 enables test mode
 - Environment variables take priority over file config

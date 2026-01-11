@@ -2,7 +2,6 @@
 Comprehensive functional tests for the complete config system.
 
 These tests verify the entire config flow: load → override → validate → use with Minio.
-Task 32: Config Functional Test - Full config system test
 """
 
 import os

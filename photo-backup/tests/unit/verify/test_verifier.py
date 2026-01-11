@@ -1,5 +1,5 @@
 """
-Unit tests for the Verifier class (Task 93).
+Unit tests for the Verifier class.
 
 Tests verifier instantiation, job creation, and basic verification structure.
 """

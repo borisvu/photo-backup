@@ -4,7 +4,7 @@ Hash calculator for file integrity verification.
 This module provides functionality to calculate MD5 hashes for files,
 with support for large files and progress reporting.
 
-Task 94: Hash Calculation
+Hash Calculation
 """
 
 import hashlib

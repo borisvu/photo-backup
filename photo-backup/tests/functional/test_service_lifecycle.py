@@ -1,5 +1,5 @@
 """
-Comprehensive functional test for the complete service lifecycle (Task 82).
+Comprehensive functional test for the complete service lifecycle.
 
 This test verifies the full service workflow from start to finish:
 - Start service in test mode
@@ -7,8 +7,6 @@ This test verifies the full service workflow from start to finish:
 - Check service status
 - Stop service gracefully
 - Verify all files are backed up to Minio
-
-This is the integration point that tests the entire system working together.
 """
 
 import os

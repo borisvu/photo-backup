@@ -1,5 +1,5 @@
 """
-Unit tests for the RemoteLister class (Task 95).
+Unit tests for the RemoteLister class.
 
 Tests remote file listing using rclone lsjson.
 """

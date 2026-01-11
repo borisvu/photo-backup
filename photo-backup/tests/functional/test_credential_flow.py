@@ -2,7 +2,6 @@
 """
 Photo Backup System - Credential Flow Functional Tests
 
-Task 52: Credential Functional Test
 Tests the complete credential flow with Minio container.
 """
 
