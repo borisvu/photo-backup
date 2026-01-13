@@ -4,23 +4,62 @@ Photo fixtures for photo backup system tests.
 This module provides utilities for creating test photo data and managing test infrastructure.
 """
 
+import multiprocessing
 import random
 import shutil
 import string
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
 from pathlib import Path
 
 
+def _generate_single_file(args: tuple) -> Path:
+    """Worker function to generate a single test file (for parallel processing).
+
+    Args:
+        args: Tuple of (base_dir, file_index, year, month, ext, size_bytes, seed)
+
+    Returns:
+        Path to the created file
+    """
+    base_dir, file_index, year, month, ext, size_bytes, seed = args
+
+    # Set random seed for this worker to ensure reproducibility
+    random.seed(seed)
+
+    base_path = Path(base_dir)
+    photo_dir = base_path / str(year) / f"{month:02d}"
+    photo_dir.mkdir(parents=True, exist_ok=True)
+
+    filename = f"IMG_{file_index + 1:04d}{ext}"
+    file_path = photo_dir / filename
+
+    # Generate random content with specified size
+    content = _generate_random_content(size_bytes)
+
+    # Write file
+    file_path.write_text(content)
+
+    return file_path
+
+
 def generate_test_photos(
-    base_dir: str = "/tmp/photo-backup-test-photos", num_files: int = 20, min_size_mb: int = 1, max_size_mb: int = 10
+    base_dir: str = "/tmp/photo-backup-test-photos",
+    num_files: int = 20,
+    min_size_mb: int = 1,
+    max_size_mb: int = 10,
+    max_workers: int | None = None,
 ) -> Path:
     """Generate realistic test photo files with various formats and sizes.
+
+    Uses parallel processing to generate files across multiple CPU cores.
 
     Args:
         base_dir: Base directory for test photos
         num_files: Number of files to generate
         min_size_mb: Minimum file size in MB
         max_size_mb: Maximum file size in MB
+        max_workers: Maximum number of parallel workers (default: CPU count)
 
     Returns:
         Path to the created test photo directory
@@ -41,34 +80,33 @@ def generate_test_photos(
     years = [2023, 2024, 2025]
     months = list(range(1, 13))
 
-    files_created = []
-
+    # Prepare file generation tasks
+    tasks = []
     for i in range(num_files):
-        # Random year and month
         year = random.choice(years)
         month = random.choice(months)
-
-        # Create year/month directory
-        photo_dir = base_path / str(year) / f"{month:02d}"
-        photo_dir.mkdir(parents=True, exist_ok=True)
-
-        # Random file extension
         ext = random.choice(extensions)
-
-        # Generate filename
-        filename = f"IMG_{i + 1:04d}{ext}"
-        file_path = photo_dir / filename
-
-        # Generate random content with specified size
         file_size_mb = random.uniform(min_size_mb, max_size_mb)
         file_size_bytes = int(file_size_mb * 1024 * 1024)
+        # Use file index as seed (each process has its own random state)
+        seed = i
 
-        # Generate random text content
-        content = _generate_random_content(file_size_bytes)
+        tasks.append((base_dir, i, year, month, ext, file_size_bytes, seed))
 
-        # Write file
-        file_path.write_text(content)
-        files_created.append(file_path)
+    # Generate files in parallel
+    if max_workers is None:
+        max_workers = multiprocessing.cpu_count()
+
+    files_created = []
+    with ProcessPoolExecutor(max_workers=max_workers) as executor:
+        futures = [executor.submit(_generate_single_file, task) for task in tasks]
+        for future in as_completed(futures):
+            try:
+                file_path = future.result()
+                files_created.append(file_path)
+            except Exception as e:
+                # Log error but continue with other files
+                print(f"Warning: Failed to generate file: {e}")
 
     return base_path
 
