@@ -1125,15 +1125,15 @@ Split the file into several filed under a folder module.
 - Check no duplicates
   **Test**: Incremental backups work
 
-### Task 108: Test to Production Migration
+### Task 108: Initial Production Setup
 
-**Goal**: Document production setup
+**Goal**: Document production deployment for first release
 
-- Create migration guide
-- List config changes needed
-- Remove test dependencies
-- Production checklist
-  **Test**: Clear migration path
+- Create production setup guide (installation, config, permissions)
+- Document required config values (S3 bucket, credentials, paths)
+- Verify test dependencies are dev-only (not in runtime requirements)
+- Production readiness checklist (logging, error handling, backup verification)
+  **Test**: User can deploy following the guide
 
 ### Task 109: Documentation Review
 
