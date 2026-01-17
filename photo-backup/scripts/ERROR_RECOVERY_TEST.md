@@ -43,11 +43,16 @@ You'll need **3 terminals** open:
 
 ### Phase 1: Setup
 
-**Terminal 1 - Start Minio:**
+**Terminal 1 - Create volume and start Minio:**
 
 ```bash
+# Create a Docker volume for Minio data (prevents "no space left" errors)
+docker volume create photo-backup-chaos-test-data
+
+# Start Minio with the volume mounted
 docker run --name photo-backup-chaos-test \
   -p 9050:9000 -p 9140:9001 \
+  -v photo-backup-chaos-test-data:/data \
   -e MINIO_ROOT_USER=minioadmin \
   -e MINIO_ROOT_PASSWORD=minioadmin \
   minio/minio:latest server /data --console-address :9001
@@ -81,11 +86,14 @@ docker exec photo-backup-chaos-test mc mb test/my-photo-backup-bucket-test --ign
 **Terminal 2:**
 
 ```bash
-# Start sync with verbose logging
-PHOTO_BACKUP_TEST_MODE=1 \
-PHOTO_BACKUP_SOURCE_PATH="$TEST_PHOTO_PATH" \
-PHOTO_BACKUP_S3_ENDPOINT="http://localhost:9050" \
-photo-backup sync --verbose
+# Start sync with verbose logging and test mode
+PHOTO_BACKUP_BACKUP_SOURCE_PATH="$TEST_PHOTO_PATH" \
+PHOTO_BACKUP_STORAGE_ENDPOINT="localhost:9050" \
+PHOTO_BACKUP_STORAGE_ACCESS_KEY="minioadmin" \
+PHOTO_BACKUP_STORAGE_SECRET_KEY="minioadmin" \
+PHOTO_BACKUP_STORAGE_USE_SSL="false" \
+PHOTO_BACKUP_STORAGE_BUCKET="my-photo-backup-bucket-test" \
+photo-backup --test-mode sync --verbose
 ```
 
 ### Phase 3: Chaos Injection
@@ -95,8 +103,13 @@ photo-backup sync --verbose
 Watch Terminal 2 for transfer progress (e.g., "Transferring:" or progress percentage), then:
 
 ```bash
-# Wait 2-3 seconds after transfer starts, then:
+# Wait 2-3 seconds after transfer starts, then stop Minio
 docker stop photo-backup-chaos-test
+
+# IMPORTANT: Keep Minio stopped for at least 30-60 seconds
+# This ensures rclone exhausts retries and the backup fails completely
+# If Minio is restarted too quickly, rclone will retry and succeed,
+# resulting in consecutive_failures=0 (success after retries)
 ```
 
 ### Phase 4: Observe Failure
@@ -110,11 +123,15 @@ docker stop photo-backup-chaos-test
 **Verify state was saved:**
 
 ```bash
-# Check state file for failure tracking
-cat ~/.local/state/photo-backup-test/backup_state.json | grep -E '"consecutive_failures"|"last_error"'
+# Check state file for failure tracking (test mode uses /tmp)
+cat /tmp/photo-backup-test/state/backup_state.json | grep -E '"consecutive_failures"|"last_error"|"error_history"'
 ```
 
-Expected: `consecutive_failures` should be > 0
+**Expected results:**
+- If backup **completely failed** (rclone return code != 0): `consecutive_failures` > 0, `last_error` contains error message
+- If backup **succeeded after retries** (rclone return code = 0): `consecutive_failures` = 0, but `error_history` may contain intermediate errors
+
+**Note:** If Minio is restarted too quickly, rclone's retry mechanism may succeed, resulting in `consecutive_failures=0`. For a proper failure test, keep Minio stopped for 30-60 seconds to exhaust retries.
 
 ### Phase 5: Recovery
 
@@ -131,10 +148,13 @@ docker exec photo-backup-chaos-test mc alias set test http://localhost:9000 mini
 **Terminal 2 - Run sync again:**
 
 ```bash
-PHOTO_BACKUP_TEST_MODE=1 \
-PHOTO_BACKUP_SOURCE_PATH="$TEST_PHOTO_PATH" \
-PHOTO_BACKUP_S3_ENDPOINT="http://localhost:9050" \
-photo-backup sync --verbose
+PHOTO_BACKUP_BACKUP_SOURCE_PATH="$TEST_PHOTO_PATH" \
+PHOTO_BACKUP_STORAGE_ENDPOINT="localhost:9050" \
+PHOTO_BACKUP_STORAGE_ACCESS_KEY="minioadmin" \
+PHOTO_BACKUP_STORAGE_SECRET_KEY="minioadmin" \
+PHOTO_BACKUP_STORAGE_USE_SSL="false" \
+PHOTO_BACKUP_STORAGE_BUCKET="my-photo-backup-bucket-test" \
+photo-backup --test-mode sync --verbose
 ```
 
 ### Phase 6: Verify Data Integrity
@@ -152,10 +172,13 @@ find "$TEST_PHOTO_PATH" -type f \( -iname "*.jpg" -o -iname "*.jpeg" -o -iname "
 **Terminal 2 - Run verification:**
 
 ```bash
-PHOTO_BACKUP_TEST_MODE=1 \
-PHOTO_BACKUP_SOURCE_PATH="$TEST_PHOTO_PATH" \
-PHOTO_BACKUP_S3_ENDPOINT="http://localhost:9050" \
-photo-backup verify --verbose
+PHOTO_BACKUP_BACKUP_SOURCE_PATH="$TEST_PHOTO_PATH" \
+PHOTO_BACKUP_STORAGE_ENDPOINT="localhost:9050" \
+PHOTO_BACKUP_STORAGE_ACCESS_KEY="minioadmin" \
+PHOTO_BACKUP_STORAGE_SECRET_KEY="minioadmin" \
+PHOTO_BACKUP_STORAGE_USE_SSL="false" \
+PHOTO_BACKUP_STORAGE_BUCKET="my-photo-backup-bucket-test" \
+photo-backup --test-mode verify --verbose
 ```
 
 ---
@@ -165,19 +188,29 @@ photo-backup verify --verbose
 | Check           | Expected Outcome                         | Status |
 | --------------- | ---------------------------------------- | ------ |
 | Error detection | "Connection refused" or similar logged   | ☐      |
-| State tracking  | `consecutive_failures` > 0 after failure | ☐      |
+| State tracking  | Either `consecutive_failures` > 0 (complete failure) OR `error_history` contains errors (success after retries) | ☐      |
 | Recovery sync   | Completes successfully                   | ☐      |
 | File count      | Matches source count                     | ☐      |
 | Verification    | Passes with no mismatches                | ☐      |
+
+**Note:** The test validates error handling in two scenarios:
+1. **Complete failure:** Minio stays down long enough that backup fails → `consecutive_failures` > 0
+2. **Recovery after retries:** Minio restarts during retries → backup succeeds but `error_history` shows intermediate errors
 
 ---
 
 ## Cleanup
 
 ```bash
+# Stop and remove container
 docker stop photo-backup-chaos-test
 docker rm photo-backup-chaos-test
+
+# Remove the volume (optional - only if you want to start completely fresh)
+docker volume rm photo-backup-chaos-test-data
 ```
+
+**Note:** If you want to keep the data for future tests, skip the volume removal step. The volume will persist and can be reused.
 
 ---
 
@@ -195,15 +228,38 @@ If you can't stop Minio in time:
 
 ```bash
 docker rm -f photo-backup-chaos-test
-# Then start fresh from Phase 1
+# Then start fresh from Phase 1 (volume will be reused if it exists)
+```
+
+### "No space left on device" error
+
+If you see storage errors:
+
+```bash
+# Check volume usage
+docker system df -v
+
+# Remove old volume and create fresh one
+docker volume rm photo-backup-chaos-test-data
+docker volume create photo-backup-chaos-test-data
+
+# Restart container with the new volume
+docker run --name photo-backup-chaos-test \
+  -p 9050:9000 -p 9140:9001 \
+  -v photo-backup-chaos-test-data:/data \
+  -e MINIO_ROOT_USER=minioadmin \
+  -e MINIO_ROOT_PASSWORD=minioadmin \
+  minio/minio:latest server /data --console-address :9001
 ```
 
 ### State file not found
 
 The state file location in test mode:
 
-- macOS: `~/.local/state/photo-backup-test/backup_state.json`
-- Linux: `~/.local/state/photo-backup-test/backup_state.json`
+- **Test mode:** `/tmp/photo-backup-test/state/backup_state.json`
+- **Production mode:** `~/Library/Application Support/photo-backup/state/backup_state.json` (macOS) or `~/.local/share/photo-backup/state/backup_state.json` (Linux)
+
+**Note:** If the state file doesn't exist yet, it will be created after the first backup operation completes (successfully or with failure).
 
 ---
 
