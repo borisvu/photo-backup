@@ -128,6 +128,13 @@ make test-integration  # Integration tests only
 make test-functional   # Functional tests only
 ```
 
+## Documentation
+
+- **[User Guide](USER_GUIDE.md)** - Everyday usage, commands, and workflows
+- **[Production Setup](PRODUCTION_SETUP.md)** - Installation and configuration for production
+- **[Architecture](../architecture.md)** - System design and technical details
+- **[Tasks](../tasks.md)** - Implementation roadmap and task breakdown
+
 ## Contributing
 
 1. Fork the repository

@@ -209,21 +209,25 @@ class BackupEngine:
         """
         credentials = self.credential_manager.get_credentials()
 
-        # Ensure endpoint has proper scheme
+        # For S3-compatible providers, endpoint should NOT have scheme prefix
+        # rclone handles SSL based on use_ssl setting
         endpoint = credentials["endpoint"]
-        if not endpoint.startswith(("http://", "https://")):
-            endpoint = f"https://{endpoint}" if credentials["use_ssl"] else f"http://{endpoint}"
+        if endpoint.startswith("https://"):
+            endpoint = endpoint[8:]
+        elif endpoint.startswith("http://"):
+            endpoint = endpoint[7:]
 
         # Use 'test' as remote name for both test and production modes
         # This matches the pattern used in credential validation
+        # Use 'Wasabi' provider for proper Wasabi S3 compatibility
         config = f"""[test]
 type = s3
-provider = Other
+provider = Wasabi
 access_key_id = {credentials["access_key"]}
 secret_access_key = {credentials["secret_key"]}
 endpoint = {endpoint}
 region = {credentials["region"]}
-use_ssl = {str(credentials["use_ssl"]).lower()}
+no_check_bucket = true
 """
         return config
 

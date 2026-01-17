@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1] - 2026-01-17
+
+### Fixed
+
+- **Wasabi S3 Compatibility**: Fixed backup engine to use `provider = Wasabi` instead of `provider = Other` for proper S3 API compatibility
+- **Endpoint Handling**: Strip `https://` prefix from endpoints as rclone handles SSL internally
+- **Bucket Checking**: Added `no_check_bucket = true` to avoid permission errors on restricted IAM policies
+
+### Added
+
+- **User Guide**: New comprehensive user guide (`USER_GUIDE.md`) with everyday usage instructions, command reference, and troubleshooting
+- **Documentation Links**: Updated READMEs to link to the new User Guide
+
 ## [0.1.0] - 2026-01-17
 
 ### Added
@@ -76,4 +89,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - docker >= 6.0 (test infrastructure)
 - pytest >= 7.0 (testing)
 
+[0.1.1]: https://github.com/yourusername/backup-to-s3/releases/tag/v0.1.1
 [0.1.0]: https://github.com/yourusername/backup-to-s3/releases/tag/v0.1.0

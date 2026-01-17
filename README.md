@@ -98,6 +98,10 @@ Development setup, code quality tools, and project structure.
 
 Complete guide for deploying the system in production with Wasabi S3.
 
+### 👤 [User Guide](photo-backup/USER_GUIDE.md)
+
+Practical guide for everyday operations - commands, workflows, and troubleshooting.
+
 ## Project Structure
 
 ```
