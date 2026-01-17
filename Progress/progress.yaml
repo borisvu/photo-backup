@@ -74,9 +74,9 @@ phases:
   final_testing:
     name: "Final MVP Testing"
     tasks_total: 7
-    tasks_completed: 3
+    tasks_completed: 4
     status: "in_progress"
-    notes: "Task 106: Error Recovery Test - is complete"
+    notes: "Task 107: Multi-Run Test - complete (tests/functional/test_multi_run_backup.py)"
 
 # Current state summary
 current_state:
@@ -102,10 +102,13 @@ current_state:
 # Next steps
 next_steps:
   immediate:
-    - "Final MVP Testing - IN PROGRESS (1/7)"
+    - "Final MVP Testing - IN PROGRESS (4/7)"
     - "Task 104: End-to-End Test - COMPLETED"
+    - "Task 105: Performance Test - COMPLETED"
+    - "Task 106: Error Recovery Test - COMPLETED"
+    - "Task 107: Multi-Run Test - COMPLETED"
 
   upcoming:
-    - "Task 105: Performance Test"
-    - "Task 106: Error Recovery Test"
-    - "Task 107: Multi-Run Test"
+    - "Task 108: Test to Production Migration"
+    - "Task 109: Documentation Review"
+    - "Task 110: Release Preparation"
