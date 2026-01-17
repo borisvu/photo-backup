@@ -445,16 +445,29 @@ class HashCache:
         return file_path in self.entries
 
 
-def get_default_cache_path(test_mode: bool = False) -> Path:
+def get_default_cache_path(test_mode: bool = False, state_directory: str | None = None) -> Path:
     """Get the default cache file path.
 
     Args:
         test_mode: Whether in test mode
+        state_directory: Optional state directory path from config. If provided, cache
+                        will be stored in a 'cache' subdirectory of this path.
 
     Returns:
         Path to the default cache file
     """
-    base_dir = Path.home() / ".photo-backup"
-    if test_mode:
-        base_dir = base_dir / "test"
-    return base_dir / "cache" / "hash_cache.json"
+    if state_directory:
+        # Use the configured state directory
+        import os
+
+        expanded_dir = os.path.expanduser(state_directory)
+        base_dir = Path(expanded_dir)
+        # Create cache subdirectory in state directory
+        cache_dir = base_dir / "cache"
+        return cache_dir / "hash_cache.json"
+    else:
+        # Fallback to old hardcoded path for backward compatibility
+        base_dir = Path.home() / ".photo-backup"
+        if test_mode:
+            base_dir = base_dir / "test"
+        return base_dir / "cache" / "hash_cache.json"

@@ -51,6 +51,10 @@ class Verifier:
         self.config = config or Config(test_mode=test_mode)
         self.test_mode = test_mode or self.config.is_test_mode()
         self.logger = logging.getLogger(__name__)
+
+        # Load configuration early so it's available for cache initialization
+        self.config.load_config()
+
         self.credential_manager = CredentialManager(self.config)
         self.hash_calculator = HashCalculator()
         self.remote_lister = RemoteLister(self.config, self.credential_manager)
@@ -61,16 +65,15 @@ class Verifier:
         if use_cache:
             self._init_cache()
 
-        # Load configuration
-        self.config.load_config()
-
         self.logger.info(f"Verifier initialized in {'test' if self.test_mode else 'production'} mode")
         if use_cache:
             self.logger.info(f"Hash cache enabled with {len(self._cache) if self._cache else 0} entries")
 
     def _init_cache(self) -> None:
         """Initialize the hash cache."""
-        cache_path = get_default_cache_path(self.test_mode)
+        # Get state directory from config if available
+        state_directory = self.config.get("state.directory")
+        cache_path = get_default_cache_path(self.test_mode, state_directory=state_directory)
         source_path = self.config.get("backup.source_path", "")
 
         self._cache = HashCache.create(
