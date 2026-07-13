@@ -104,6 +104,18 @@ def status(ctx: click.Context, verbose: bool, json: bool) -> None:
 
     # Set up logger with job context
     logger = _get_logger(config_obj)
+
+    # In JSON mode, keep stdout clean for machine parsing: send console log
+    # output to stderr so it doesn't corrupt the emitted JSON document. Walk the
+    # logger and its ancestors to catch any inherited stdout handlers.
+    if json:
+        _logger: logging.Logger | None = logger
+        while _logger is not None:
+            for handler in _logger.handlers:
+                if isinstance(handler, logging.StreamHandler) and getattr(handler, "stream", None) is sys.stdout:
+                    handler.setStream(sys.stderr)
+            _logger = _logger.parent
+
     logger.info("Status command started")
     logger.debug(f"Test mode: {test_mode}, Dry run: {dry_run}, Verbose: {verbose}, JSON: {json}")
 
@@ -135,7 +147,7 @@ def status(ctx: click.Context, verbose: bool, json: bool) -> None:
                 "system_health": {
                     "config_loaded": True,
                     "backup_engine_ready": True,
-                    "credentials_available": credential_status.get("available", False),
+                    "credentials_available": credential_status.get("has_credentials", False),
                 },
             }
             click.echo(json_module.dumps(status_data, indent=2, default=str))
@@ -160,17 +172,26 @@ def status(ctx: click.Context, verbose: bool, json: bool) -> None:
         click.echo(f"  State Directory: {backup_info.get('state_directory', 'N/A')}")
         click.echo()
 
-        # Credential status
+        # Credential status. Note: this reflects the CURRENT process's
+        # environment. The background service loads WASABI_* keys from its own
+        # launchd environment, so an interactive run can legitimately show creds
+        # as "not in this environment" while the service has them (see
+        # KEY_ROTATION.md). credential_info holds the real details when present.
+        creds_available = credential_status.get("has_credentials", False)
+        cred_info = credential_status.get("credential_info") or {}
         click.echo("🔐 Credentials:")
-        click.echo(f"  Status: {'✅ Available' if credential_status.get('available') else '❌ Not Available'}")
-        if credential_status.get("available"):
-            click.echo(f"  Source: {credential_status.get('source', 'Unknown')}")
-            click.echo(f"  Endpoint: {credential_status.get('endpoint', 'N/A')}")
+        click.echo(f"  Status: {'✅ Available' if creds_available else '❌ Not in this environment'}")
+        if creds_available:
+            click.echo(f"  Source: {cred_info.get('credential_source', 'Unknown')}")
+            click.echo(f"  Endpoint: {cred_info.get('endpoint', 'N/A')}")
             if verbose:
-                click.echo(f"  Access Key: {credential_status.get('access_key', 'N/A')}")
-                click.echo(f"  Region: {credential_status.get('region', 'N/A')}")
+                click.echo(f"  Access Key: {cred_info.get('access_key_preview', 'N/A')}")
+                click.echo(f"  Region: {cred_info.get('region', 'N/A')}")
         else:
-            click.echo(f"  Error: {credential_status.get('error', 'Unknown error')}")
+            click.echo("  Note: not found in the current shell — the background service")
+            click.echo("        supplies them from its launchd environment (see KEY_ROTATION.md).")
+            if verbose and credential_status.get("error"):
+                click.echo(f"  Detail: {credential_status.get('error')}")
         click.echo()
 
         # Backup state
@@ -303,8 +324,13 @@ def status(ctx: click.Context, verbose: bool, json: bool) -> None:
         # Recommendations
         recommendations = []
 
-        if not credential_status.get("available"):
-            recommendations.append("Configure credentials using environment variables or 1Password")
+        # Only flag credentials when they're missing AND nothing has ever
+        # succeeded — otherwise it's just this shell lacking the service's env.
+        if not creds_available and backup_state.last_successful_sync is None:
+            recommendations.append(
+                "No credentials in this environment and no successful backup on record — "
+                "verify the service's WASABI_* keys (see KEY_ROTATION.md)"
+            )
 
         if backup_state.consecutive_failures > 0:
             recommendations.append(f"Address {backup_state.consecutive_failures} consecutive backup failures")
@@ -321,13 +347,25 @@ def status(ctx: click.Context, verbose: bool, json: bool) -> None:
                 click.echo(f"  {i}. {rec}")
             click.echo()
 
-        # Summary
-        if backup_state.consecutive_failures == 0 and credential_status.get("available") and rclone_available:
+        # Summary. The verdict reflects ACTUAL backup health (sync history, drive,
+        # rclone, source) rather than whether this shell can see credentials —
+        # the service loads those from its own environment.
+        healthy = (
+            backup_state.consecutive_failures == 0
+            and backup_state.last_successful_sync is not None
+            and rclone_available
+            and source_path.exists()
+        )
+        if healthy:
             click.echo("✅ System Status: Healthy")
+            if not creds_available:
+                click.echo("   (credentials not visible in this shell — supplied by the service; this is normal)")
         elif backup_state.consecutive_failures > 0:
             click.echo("⚠️  System Status: Issues detected (consecutive failures)")
-        else:
+        elif not rclone_available or not source_path.exists():
             click.echo("⚠️  System Status: Configuration issues")
+        else:
+            click.echo("⏳ System Status: No successful backup recorded yet")
 
         logger.info("Status command completed successfully")
 
