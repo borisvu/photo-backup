@@ -76,10 +76,13 @@ class Verifier:
         cache_path = get_default_cache_path(self.test_mode, state_directory=state_directory)
         source_path = self.config.get("backup.source_path", "")
 
+        # auto_save is intentionally disabled: saving the entire cache after
+        # every set()/get() turns a hash pass into O(n^2) full-file rewrites.
+        # The hash loop flushes periodically and once at the end instead.
         self._cache = HashCache.create(
             cache_file=cache_path,
             source_path=source_path,
-            auto_save=True,
+            auto_save=False,
         )
 
         # Try to load existing cache
@@ -242,6 +245,11 @@ class Verifier:
                         mtime=stat_info.st_mtime,
                     )
 
+                    # Periodically flush the cache so progress survives an
+                    # interruption without re-writing the whole file per entry.
+                    if cache_misses % 1000 == 0:
+                        self._cache.save()
+
                     file_hash = FileHash(
                         path=relative_path,
                         size=stat_info.st_size,
@@ -254,6 +262,10 @@ class Verifier:
 
             except Exception as e:
                 self.logger.warning(f"Failed to hash {file_path}: {e}")
+
+        # Final flush to persist any entries added/invalidated since the last
+        # periodic save (auto_save is off; see initialization).
+        self._cache.save()
 
         self.logger.info(
             f"Hash calculation complete: {cache_hits} cache hits, "
