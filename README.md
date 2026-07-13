@@ -102,6 +102,10 @@ Complete guide for deploying the system in production with Wasabi S3.
 
 Practical guide for everyday operations - commands, workflows, and troubleshooting.
 
+### 🔑 [Key Rotation Guide](photo-backup/KEY_ROTATION.md)
+
+How to rotate the Wasabi S3 access key/secret, where credentials are stored, and how to reload the service.
+
 ## Project Structure
 
 ```
