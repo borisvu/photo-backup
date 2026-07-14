@@ -95,8 +95,14 @@ class DetailedFormatter(logging.Formatter):
 
         parts.extend(["%(name)s", "%(levelname)s"])
 
-        # Only include job_id if it's provided or exists in record
-        if self.job_id or hasattr(record, "job_id"):
+        # Include job_id if the formatter has one or the record carries one.
+        # Records that propagate up from child loggers never run the parent
+        # logger's JobContextFilter, so they lack record.job_id — fall back to
+        # self.job_id and stamp it onto the record, otherwise the "%(job_id)s"
+        # substitution below raises KeyError on every such log call.
+        job_id = getattr(record, "job_id", None) or self.job_id
+        if job_id is not None:
+            record.job_id = job_id
             parts.append("[%(job_id)s]")
 
         if hasattr(record, "operation"):
