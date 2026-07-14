@@ -44,6 +44,36 @@ The project uses a comprehensive test mode with Minio for S3 simulation:
 - `photo-backup sync --test-mode` - Run backup sync in test mode
 - `photo-backup logs --tail 50` - View recent log entries
 
+## Production Runtime (this machine)
+
+How the system actually runs in production on the owner's Mac — this is operational
+reality not otherwise derivable from the code:
+
+- **Service:** runs as a launchd agent `com.example.photo-backup`
+  (`~/Library/LaunchAgents/com.example.photo-backup.plist`, `KeepAlive=true`, so
+  killing the process auto-respawns it). Installed as an **editable pip install**
+  pointing at this repo, so source edits take effect on the next process restart.
+- **Restart to load code changes:** `launchctl kickstart -k gui/$(id -u)/com.example.photo-backup`
+- **Credentials:** Wasabi keys are env vars `WASABI_ACCESS_KEY` / `WASABI_SECRET_KEY`
+  in the plist's `EnvironmentVariables` (**not** 1Password here; `config.yaml` keys
+  are null). Because they live only in the service's environment, `photo-backup status`
+  run from a normal shell may falsely report credentials unavailable. Rotation and
+  the exact storage locations are documented in `photo-backup/KEY_ROTATION.md`.
+- **Quick health check (no code reading):** `./check-status.sh` (repo root) or
+  `photo-backup status` — shows whether the service is alive, whether rclone is
+  transferring, and last-sync/verify state.
+- **Paths:** logs `~/Library/Logs/photo-backup/`; state & hash cache
+  `~/Library/Application Support/photo-backup/`; source `/Volumes/4TB-SSD/Photo`;
+  dest bucket `my-photo-backup-bucket` (Wasabi, eu-central-2).
+- **Verification listing gotcha:** the remote lister must use
+  `rclone lsf --format sp` with `provider = Wasabi`. Do **not** use `rclone lsjson`
+  or `--hash` or `provider = Other` — each triggers a per-object HEAD request that
+  makes listing ~200k objects take >30 min (vs ~30s). Verification compares by
+  **size + existence**, not MD5.
+- **Commits are signed** via 1Password SSH (`op-ssh-sign`); the 1Password app must
+  be unlocked or `git commit` fails. Pre-commit runs ruff + mypy. Never commit
+  `.claude/settings.local.json`.
+
 ## Architecture Overview
 
 ### Core System Structure
