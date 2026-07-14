@@ -128,13 +128,13 @@ def verify(
             click.echo(f"Credential Status: {verify_info['credential_status']}")
         click.echo()
 
-        # Step 1: Calculate local hashes
-        click.echo("📊 Calculating local file hashes...")
-        local_files = verifier.calculate_local_hashes()
+        # Step 1: Scan local files (size + existence; no hashing)
+        click.echo("📊 Scanning local files (size + existence)...")
+        local_files = verifier.scan_local_files()
         local_count = len(local_files)
         total_bytes = sum(f.size for f in local_files)
         click.echo(f"   Found {local_count} local files ({_format_bytes(total_bytes)})")
-        logger.info(f"Calculated hashes for {local_count} local files")
+        logger.info(f"Scanned {local_count} local files")
 
         # Step 2: List remote files
         click.echo("🌐 Listing remote files...")
@@ -143,8 +143,8 @@ def verify(
         click.echo(f"   Found {remote_count} remote files")
         logger.info(f"Listed {remote_count} remote files")
 
-        # Step 3: Compare hashes
-        click.echo("🔄 Comparing file hashes...")
+        # Step 3: Compare by size + existence
+        click.echo("🔄 Comparing files (size + existence)...")
         comparison_result = verifier.compare_hashes(local_files, remote_files)
 
         # Display comparison results

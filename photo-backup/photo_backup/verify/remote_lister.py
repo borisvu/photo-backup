@@ -5,7 +5,6 @@ This module provides functionality to list files from remote storage
 using rclone, including their hashes for verification.
 """
 
-import json
 import logging
 import os
 import subprocess
@@ -45,7 +44,7 @@ class RemoteLister:
 
         config = f"""[test]
 type = s3
-provider = Other
+provider = Wasabi
 access_key_id = {credentials["access_key"]}
 secret_access_key = {credentials["secret_key"]}
 endpoint = {endpoint}
@@ -54,11 +53,20 @@ use_ssl = {str(credentials["use_ssl"]).lower()}
 """
         return config
 
-    def list_remote_files(self, remote_path: str) -> list[FileHash]:
-        """List files in remote storage with their hashes.
+    # Separator between size and path in `rclone lsf --format sp` output. Size
+    # is always the first (numeric) field, so splitting on the FIRST occurrence
+    # is safe even if a path itself contains this character.
+    _LSF_SEP = "|"
 
-        Uses rclone lsjson with --hash flag to get file information
-        including MD5 hashes.
+    def list_remote_files(self, remote_path: str) -> list[FileHash]:
+        """List files in remote storage with their sizes.
+
+        Uses `rclone lsf --format sp` (size + path only). This deliberately
+        avoids `lsjson` and per-object hash/modtime, all of which trigger a
+        HEAD request per object on S3/Wasabi and make listing ~200k objects take
+        >30 minutes. The plain size+path listing completes in ~30s. Verification
+        compares by size + existence (see verifier.compare_hashes); returned
+        FileHash objects have hash_md5=None.
 
         Args:
             remote_path: Remote path (e.g., 'bucket/prefix')
@@ -69,15 +77,25 @@ use_ssl = {str(credentials["use_ssl"]).lower()}
         Raises:
             RuntimeError: If rclone command fails
         """
-        # Build rclone command
-        # Format: rclone lsjson --hash test:bucket/path --config config.conf
         cmd = [
             "rclone",
-            "lsjson",
-            "--hash",
+            "lsf",
+            "--files-only",
             "--recursive",
+            # --fast-list collapses the slow directory-style walk into one flat
+            # recursive listing, cutting S3 API calls on many-object buckets.
+            "--fast-list",
+            # "sp" = size then path; nothing that requires per-object metadata.
+            "--format",
+            "sp",
+            "--separator",
+            self._LSF_SEP,
             f"test:{remote_path}",
         ]
+
+        # Even the fast listing can grow with bucket size, so the timeout is
+        # configurable (default is generous relative to the ~30s typical).
+        timeout_seconds = float(self.config.get("verification.remote_list_timeout_seconds", 1800))
 
         # Create temporary config file
         with tempfile.NamedTemporaryFile(mode="w", suffix=".conf", delete=False) as config_file:
@@ -90,13 +108,13 @@ use_ssl = {str(credentials["use_ssl"]).lower()}
             # Add config file to command
             cmd.extend(["--config", config_path])
 
-            self.logger.info(f"Listing remote files: rclone lsjson test:{remote_path}")
+            self.logger.info(f"Listing remote files: rclone lsf test:{remote_path}")
 
             result = subprocess.run(
                 cmd,
                 capture_output=True,
                 text=True,
-                timeout=300.0,  # 5 minute timeout
+                timeout=timeout_seconds,
             )
 
             if result.returncode != 0:
@@ -105,15 +123,15 @@ use_ssl = {str(credentials["use_ssl"]).lower()}
                 if "directory not found" in error_msg.lower():
                     self.logger.info(f"Remote path is empty or does not exist: {remote_path}")
                     return []
-                raise RuntimeError(f"rclone lsjson failed: {error_msg}")
+                raise RuntimeError(f"rclone lsf failed: {error_msg}")
 
-            # Parse JSON output
-            return self._parse_lsjson_output(result.stdout)
+            return self._parse_lsf_output(result.stdout)
 
         except subprocess.TimeoutExpired as e:
-            raise RuntimeError("rclone lsjson timed out after 5 minutes") from e
-        except json.JSONDecodeError as e:
-            raise RuntimeError(f"Failed to parse rclone output as JSON: {e}") from e
+            raise RuntimeError(
+                f"rclone lsf timed out after {timeout_seconds:.0f}s "
+                f"(raise verification.remote_list_timeout_seconds if the bucket is very large)"
+            ) from e
         finally:
             # Clean up temp config file
             try:
@@ -121,43 +139,33 @@ use_ssl = {str(credentials["use_ssl"]).lower()}
             except Exception as e:
                 self.logger.warning(f"Failed to clean up config file: {e}")
 
-    def _parse_lsjson_output(self, output: str) -> list[FileHash]:
-        """Parse rclone lsjson output into FileHash objects.
+    def _parse_lsf_output(self, output: str) -> list[FileHash]:
+        """Parse `rclone lsf --format sp` output into FileHash objects.
+
+        Each non-empty line is ``<size><sep><path>``. Split on the first
+        separator only, so paths containing the separator are preserved.
 
         Args:
-            output: JSON output from rclone lsjson
+            output: Text output from rclone lsf
 
         Returns:
-            List of FileHash objects
+            List of FileHash objects (path + size; hash_md5 is None)
         """
-        if not output.strip():
-            return []
-
-        try:
-            items = json.loads(output)
-        except json.JSONDecodeError:
-            self.logger.error(f"Invalid JSON output: {output[:200]}...")
-            return []
-
         file_hashes = []
 
-        for item in items:
-            # Skip directories
-            if item.get("IsDir", False):
+        for line in output.splitlines():
+            if not line:
                 continue
-
-            # Extract hash - rclone returns hashes in "Hashes" dict
-            hashes = item.get("Hashes", {})
-            md5_hash = hashes.get("MD5") or hashes.get("md5")
-
-            file_hash = FileHash(
-                path=item.get("Path", ""),
-                size=item.get("Size", 0),
-                hash_md5=md5_hash,
-                hash_type="md5",
-                modified_time=item.get("ModTime"),
-            )
-            file_hashes.append(file_hash)
+            size_str, sep, path = line.partition(self._LSF_SEP)
+            if not sep or not path:
+                self.logger.warning(f"Skipping unparseable lsf line: {line[:120]!r}")
+                continue
+            try:
+                size = int(size_str)
+            except ValueError:
+                self.logger.warning(f"Skipping lsf line with non-numeric size: {line[:120]!r}")
+                continue
+            file_hashes.append(FileHash(path=path, size=size, hash_md5=None))
 
         self.logger.info(f"Found {len(file_hashes)} files in remote storage")
         return file_hashes

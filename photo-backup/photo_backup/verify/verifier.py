@@ -173,6 +173,47 @@ class Verifier:
 
         return self.hash_calculator.calculate_directory_hashes(source_path)
 
+    def scan_local_files(self, source_path: str | None = None) -> list[FileHash]:
+        """Scan local files recording path and size only (no hashing).
+
+        Used for size + existence verification, which avoids the expensive
+        per-file MD5 pass entirely. Exclusions mirror the backup and the remote
+        listing (dotfiles, Thumbs.db, .DS_Store). Returned FileHash objects have
+        hash_md5 set to None.
+
+        Args:
+            source_path: Path to local directory (uses config if None)
+
+        Returns:
+            List of FileHash objects (path + size) for local files
+        """
+        if source_path is None:
+            source_path = self.config.get("backup.source_path")
+        if not source_path:
+            raise ValueError("No source path configured")
+
+        source_dir = Path(source_path)
+        if not source_dir.exists():
+            raise FileNotFoundError(f"Directory not found: {source_dir}")
+
+        self.logger.info(f"Scanning local files (size only) in: {source_path}")
+
+        exclude_patterns = [".*", "Thumbs.db", ".DS_Store"]
+        files: list[FileHash] = []
+        for file_path in source_dir.rglob("*"):
+            if not file_path.is_file():
+                continue
+            if any(file_path.match(pattern) for pattern in exclude_patterns):
+                continue
+            try:
+                relative_path = str(file_path.relative_to(source_dir))
+                files.append(FileHash(path=relative_path, size=file_path.stat().st_size))
+            except OSError as e:
+                self.logger.warning(f"Failed to stat {file_path}: {e}")
+
+        self.logger.info(f"Scanned {len(files)} local files")
+        return files
+
     def _calculate_hashes_with_cache(self, source_path: str) -> list[FileHash]:
         """Calculate hashes using cache for speedup.
 
@@ -347,36 +388,24 @@ class Verifier:
             if path in remote_by_path:
                 remote_fh = remote_by_path[path]
 
-                # Compare hashes
-                if local_fh.hash_md5 and remote_fh.hash_md5:
-                    if local_fh.hash_md5 == remote_fh.hash_md5:
-                        matched_files.append(path)
-                    else:
-                        # Determine mismatch type
-                        hash_mismatch = local_fh.hash_md5 != remote_fh.hash_md5
-                        size_mismatch = local_fh.size != remote_fh.size
-
-                        if hash_mismatch and size_mismatch:
-                            mismatch_type = "both"
-                        elif hash_mismatch:
-                            mismatch_type = "hash"
-                        else:
-                            mismatch_type = "size"
-
-                        mismatched_files.append(
-                            FileMismatch(
-                                path=path,
-                                local_hash=local_fh.hash_md5,
-                                remote_hash=remote_fh.hash_md5,
-                                local_size=local_fh.size,
-                                remote_size=remote_fh.size,
-                                mismatch_type=mismatch_type,
-                            )
-                        )
-                else:
-                    # Can't compare if hash is missing - assume match for now
-                    self.logger.warning(f"Missing hash for comparison: {path}")
+                # Size + existence verification: a matching size means the
+                # object exists remotely and the upload is complete (not
+                # truncated). Full per-object hash comparison was removed because
+                # fetching checksums from S3/Wasabi is prohibitively slow at
+                # scale (see remote_lister for the measurement).
+                if local_fh.size == remote_fh.size:
                     matched_files.append(path)
+                else:
+                    mismatched_files.append(
+                        FileMismatch(
+                            path=path,
+                            local_hash=local_fh.hash_md5,
+                            remote_hash=remote_fh.hash_md5,
+                            local_size=local_fh.size,
+                            remote_size=remote_fh.size,
+                            mismatch_type="size",
+                        )
+                    )
             else:
                 # File exists locally but not on remote
                 missing_remote.append(local_fh)
@@ -708,11 +737,11 @@ class Verifier:
 
         # Step 1: Calculate local hashes
         try:
-            self.logger.info("Calculating local file hashes...")
-            local_files = self.calculate_local_hashes()
+            self.logger.info("Scanning local files (size + existence)...")
+            local_files = self.scan_local_files()
             self.logger.info(f"Found {len(local_files)} local files")
         except Exception as e:
-            errors.append(f"Failed to calculate local hashes: {e}")
+            errors.append(f"Failed to scan local files: {e}")
             self.logger.error(errors[-1])
             # Return error report
             return VerificationReport(
