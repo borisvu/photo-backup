@@ -21,15 +21,13 @@ This system provides:
 # Navigate to the project directory
 cd /Users/you/git/backup-to-s3/photo-backup
 
-# Create virtual environment
-python3 -m venv venv
+# Create the virtual environment and install all dependencies (uv reads
+# pyproject.toml + uv.lock and installs the project itself as editable).
+uv sync
 
-# Activate virtual environment
-source venv/bin/activate
-
-# Install dependencies
-pip install -r requirements.txt
-pip install -r requirements-dev.txt
+# Commands can then be run via `uv run <cmd>` without activating anything,
+# or activate the env explicitly:
+source .venv/bin/activate
 ```
 
 ### 2. Set Up Minio for Testing
@@ -118,8 +116,8 @@ backup-to-s3/
 │   │   ├── logger/           # Logging system
 │   │   └── main.py           # CLI entry point
 │   ├── tests/                # Comprehensive test suite
-│   ├── requirements.txt      # Production dependencies
-│   ├── requirements-dev.txt  # Development dependencies
+│   ├── pyproject.toml        # Project metadata, deps & tool config
+│   ├── uv.lock               # Locked dependency versions (uv)
 │   └── README.md            # Development documentation
 ├── architecture.md           # System architecture
 ├── instructions.md           # Implementation guide
@@ -130,12 +128,10 @@ backup-to-s3/
 ## Development Commands
 
 ```bash
-# Activate virtual environment
-source photo-backup/venv/bin/activate
-
-# Install dependencies
 cd photo-backup
-make install-dev
+
+# Install all dependencies (creates .venv from uv.lock)
+make install-dev   # == uv sync
 
 # Run tests
 make test
@@ -152,37 +148,37 @@ make help
 
 ## Virtual Environment Management
 
+The environment is managed by [uv](https://docs.astral.sh/uv/). `uv sync` creates
+`.venv/` from `pyproject.toml` + `uv.lock` and installs the project as editable.
+You rarely need to activate it — `uv run <cmd>` uses the env automatically.
+
 ### Check Status
 
 ```bash
-# Check if you're in a virtual environment
-echo $VIRTUAL_ENV
+# Show the resolved environment / installed packages
+uv pip list
 
-# Check which Python you're using
-which python
-
-# Check installed packages
-pip list
+# Which Python uv is using
+uv run python -V
 ```
 
-### Create New Environment
+### Create / Refresh Environment
 
 ```bash
-# Create virtual environment
-python3 -m venv venv
+# Create .venv and install everything from the lockfile
+uv sync
 
-# Activate it
-source venv/bin/activate
+# Production deps only (no dev group)
+uv sync --no-dev
 
-# Install dependencies
-pip install -r requirements.txt
-pip install -r requirements-dev.txt
+# Update the lockfile after changing dependencies in pyproject.toml
+uv lock
 ```
 
-### Deactivate
+### Activate (optional)
 
 ```bash
-deactivate
+source .venv/bin/activate   # then run tools directly; `deactivate` to exit
 ```
 
 ## Testing
@@ -327,9 +323,8 @@ sudo usermod -aG docker $USER
 - Restart Minio container if needed
 
 **Import errors:**
-- Ensure virtual environment is activated: `echo $VIRTUAL_ENV`
-- Reinstall dependencies: `pip install -r requirements-dev.txt`
-- Check Python version: `python --version` (requires 3.13+)
+- Reinstall dependencies: `uv sync`
+- Check Python version: `uv run python -V` (requires 3.13+)
 
 **Permission errors:**
 - Check file permissions on test directories
@@ -343,13 +338,11 @@ sudo usermod -aG docker $USER
 
 ### Development Issues
 
-**Virtual environment not activating:**
+**Virtual environment problems:**
 ```bash
-# Recreate virtual environment
-rm -rf venv
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements-dev.txt
+# Recreate the environment from scratch
+rm -rf .venv
+uv sync
 ```
 
 **Make commands not working:**

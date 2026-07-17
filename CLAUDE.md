@@ -19,6 +19,10 @@ This is a comprehensive Python-based photo backup system that automatically sync
 
 ## Development Commands
 
+Dependencies and the virtualenv are managed by **uv** (`pyproject.toml` + `uv.lock`).
+Run `uv sync` once to create `.venv/`; the `make` targets below wrap `uv run`, or
+invoke tools ad hoc with `uv run <cmd>` (e.g. `uv run pytest tests/unit -q`).
+
 ### Core Development Tasks
 - `make test` - Run all tests (unit, functional, integration)
 - `make test-unit` - Run only unit tests
@@ -34,7 +38,7 @@ The project uses a comprehensive test mode with Minio for S3 simulation:
 - Tests require Docker for Minio containers
 - Test mode uses `/tmp/photo-backup-test/` directories
 - Production mode uses `~/Library/Application Support/photo-backup/`
-- Run tests with: `pytest tests/ -v`
+- Run tests with: `uv run pytest tests/ -v`
 
 ### Application Commands
 - `photo-backup --help` - Show all available commands
@@ -51,8 +55,12 @@ reality not otherwise derivable from the code:
 
 - **Service:** runs as a launchd agent `com.example.photo-backup`
   (`~/Library/LaunchAgents/com.example.photo-backup.plist`, `KeepAlive=true`, so
-  killing the process auto-respawns it). Installed as an **editable pip install**
-  pointing at this repo, so source edits take effect on the next process restart.
+  killing the process auto-respawns it). The plist runs the console script from
+  the **uv-managed editable venv**:
+  `/Users/you/git/backup-to-s3/photo-backup/.venv/bin/photo-backup`
+  (created by `uv sync`; project installed editable, so source edits take effect
+  on the next process restart). If `.venv` is ever deleted, re-run `uv sync` in
+  `photo-backup/` to recreate it or the service will crash-loop.
 - **Restart to load code changes:** `launchctl kickstart -k gui/$(id -u)/com.example.photo-backup`
 - **Credentials:** Wasabi keys are env vars `WASABI_ACCESS_KEY` / `WASABI_SECRET_KEY`
   in the plist's `EnvironmentVariables` (**not** 1Password here; `config.yaml` keys

@@ -15,38 +15,38 @@ help:
 	@echo "  test-functional - Run functional tests only"
 	@echo "  test-integration - Run integration tests only"
 
-# Install production dependencies
+# Install production dependencies only (no dev group)
 install:
-	pip install -r requirements.txt
+	uv sync --no-dev
 
-# Install development dependencies
+# Install all dependencies including the dev group
 install-dev:
-	pip install -r requirements-dev.txt
+	uv sync
 
 # Run all linting tools
 lint:
 	@echo "Running ruff..."
-	ruff check photo_backup/ tests/
+	uv run ruff check photo_backup/ tests/
 	@echo "Running mypy..."
-	mypy photo_backup/
+	uv run mypy photo_backup/
 	@echo "✅ Linting completed successfully!"
 
 # Auto-fix linting issues with ruff
 lint-fix:
 	@echo "Auto-fixing linting issues with ruff..."
-	ruff check --fix photo_backup/ tests/
+	uv run ruff check --fix photo_backup/ tests/
 	@echo "✅ Linting auto-fix completed!"
 
 # Format code with ruff
 format:
 	@echo "Running ruff format..."
-	ruff format photo_backup/ tests/
+	uv run ruff format photo_backup/ tests/
 	@echo "✅ Code formatting completed successfully!"
 
 # Check if code needs formatting (for CI)
 check:
 	@echo "Checking code formatting..."
-	ruff format --check photo_backup/ tests/
+	uv run ruff format --check photo_backup/ tests/
 	@echo "✅ Code formatting check passed!"
 
 # Clean up cache and build files
@@ -62,19 +62,19 @@ clean:
 
 # Run all tests
 test:
-	python -m pytest tests/ -v
+	uv run pytest tests/ -v
 
 # Run unit tests only
 test-unit:
-	python -m pytest tests/unit/ -v
+	uv run pytest tests/unit/ -v
 
 # Run functional tests only
 test-functional:
-	python -m pytest tests/functional/ -v
+	uv run pytest tests/functional/ -v
 
 # Run integration tests only
 test-integration:
-	python -m pytest tests/integration/ -v
+	uv run pytest tests/integration/ -v
 
 # Pre-commit hook: run all checks
 pre-commit: format lint test
