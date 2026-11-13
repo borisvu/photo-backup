@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  RCLONE_VERSION: v1.76.0
+
+jobs:
+  lint:
+    name: Lint and type-check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - name: Install dependencies
+        run: uv sync --locked
+      - name: ruff check
+        run: uv run ruff check .
+      - name: ruff format --check
+        run: uv run ruff format --check .
+      - name: mypy
+        run: uv run mypy photo_backup
+
+  test:
+    name: Tests (${{ matrix.suite }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [unit, integration, functional]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - name: Install rclone ${{ env.RCLONE_VERSION }}
+        run: |
+          curl -fsSLo /tmp/rclone.zip "https://downloads.rclone.org/${RCLONE_VERSION}/rclone-${RCLONE_VERSION}-linux-amd64.zip"
+          unzip -q /tmp/rclone.zip -d /tmp
+          sudo install -m 0755 "/tmp/rclone-${RCLONE_VERSION}-linux-amd64/rclone" /usr/local/bin/rclone
+          rclone version
+      - name: Install dependencies
+        run: uv sync --locked
+      - name: Pull MinIO image
+        if: matrix.suite == 'functional'
+        run: docker pull "$(uv run python -c 'from tests.fixtures.minio import MINIO_IMAGE; print(MINIO_IMAGE)')"
+      - name: pytest tests/${{ matrix.suite }}
+        run: uv run pytest tests/${{ matrix.suite }} -p no:sugar -o addopts= -q --tb=short

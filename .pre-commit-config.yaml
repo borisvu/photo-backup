@@ -1,13 +1,21 @@
+# Same tools and versions as CI (.github/workflows/ci.yml): everything runs from uv.lock.
+# Install with: uv run pre-commit install
 repos:
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.12.4
+  - repo: local
     hooks:
       - id: ruff
-        args: [--fix]
+        name: ruff check
+        entry: uv run ruff check --fix --force-exclude
+        language: system
+        types: [python]
       - id: ruff-format
-
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.17.0
-    hooks:
+        name: ruff format
+        entry: uv run ruff format --force-exclude
+        language: system
+        types: [python]
       - id: mypy
-        additional_dependencies: [types-PyYAML]
+        name: mypy
+        entry: uv run mypy photo_backup
+        language: system
+        pass_filenames: false
+        files: ^(photo_backup/.*\.py|pyproject\.toml)$

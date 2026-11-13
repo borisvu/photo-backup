@@ -12,7 +12,7 @@
 # Note: the "Credentials: Not Available" line from `photo-backup status` is a
 # false alarm when run from a normal shell — the real keys live in the launchd
 # service's environment, not your terminal. Ignore it unless the service itself
-# is failing (see KEY_ROTATION.md).
+# is failing (see docs/KEY_ROTATION.md).
 
 set -u
 
