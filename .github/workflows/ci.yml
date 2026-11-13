@@ -14,7 +14,8 @@ permissions:
   contents: read
 
 env:
-  RCLONE_VERSION: v1.76.0
+  # Not RCLONE_*VERSION: rclone reads RCLONE_<FLAG> env vars as flags (RCLONE_VERSION = --version).
+  RCLONE_RELEASE: v1.76.0
 
 jobs:
   lint:
@@ -48,11 +49,11 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
-      - name: Install rclone ${{ env.RCLONE_VERSION }}
+      - name: Install rclone ${{ env.RCLONE_RELEASE }}
         run: |
-          curl -fsSLo /tmp/rclone.zip "https://downloads.rclone.org/${RCLONE_VERSION}/rclone-${RCLONE_VERSION}-linux-amd64.zip"
+          curl -fsSLo /tmp/rclone.zip "https://downloads.rclone.org/${RCLONE_RELEASE}/rclone-${RCLONE_RELEASE}-linux-amd64.zip"
           unzip -q /tmp/rclone.zip -d /tmp
-          sudo install -m 0755 "/tmp/rclone-${RCLONE_VERSION}-linux-amd64/rclone" /usr/local/bin/rclone
+          sudo install -m 0755 "/tmp/rclone-${RCLONE_RELEASE}-linux-amd64/rclone" /usr/local/bin/rclone
           rclone version
       - name: Install dependencies
         run: uv sync --locked
