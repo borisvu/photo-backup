@@ -72,6 +72,18 @@ class MinioTestUtils:
             pytest.fail("Minio container failed to start within timeout")
 
     @staticmethod
+    def _wait_until_gone(client: docker.DockerClient, container_name: str, timeout: float = 30.0) -> None:
+        """Block until no container named ``container_name`` exists."""
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            try:
+                client.containers.get(container_name)
+            except docker.errors.NotFound:
+                return
+            time.sleep(0.5)
+        pytest.fail(f"Container {container_name} still exists after {timeout:.0f}s")
+
+    @staticmethod
     def start_or_reuse_minio(
         client: docker.DockerClient, container_name: str, port: int = 9000, console_port: int | None = None
     ):
@@ -95,10 +107,12 @@ class MinioTestUtils:
             existing = client.containers.get(container_name)
             if existing.status == "running":
                 return existing
-            else:
-                # remove stopped container to avoid conflicts
-                with contextlib.suppress(Exception):
-                    existing.remove()
+            # A stopped (or still auto-removing, remove=True) container keeps the
+            # name reserved: force-remove it and wait until the name is free, or
+            # the create below fails with 409 Conflict.
+            with contextlib.suppress(Exception):
+                existing.remove(force=True)
+            MinioTestUtils._wait_until_gone(client, container_name)
         except docker.errors.NotFound:
             pass
 
