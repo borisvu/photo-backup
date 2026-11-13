@@ -81,6 +81,14 @@ jobs:
           unzip -q /tmp/rclone.zip -d /tmp
           sudo install -m 0755 "/tmp/rclone-${RCLONE_RELEASE}-osx-${arch}/rclone" /usr/local/bin/rclone
           rclone version
+      - name: Install Docker CLI
+        # `install.py install --test` requires `docker --version` (CLI only; these tests need no daemon).
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+          HOMEBREW_NO_INSTALL_CLEANUP: "1"
+        run: |
+          command -v docker || brew install docker
+          docker --version
       - name: Install dependencies
         run: uv sync --locked
       - name: pytest -m launchd
