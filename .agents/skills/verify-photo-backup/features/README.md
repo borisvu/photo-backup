@@ -5,7 +5,7 @@ daemon reacts), or the owner running a CLI command. Every recipe below was obser
 
 Service paths: ["photo_backup/**", "pyproject.toml", "uv.lock", "install.py", "config.yaml.example"]
 
-Verified: daemon-change-backup.md 8ea4e968a62323dcd68935a304f79046292aa06e
+Verified: daemon-change-backup.md 285182113ca12d0cd1abb416bf9116ba289894f7
 Verified: manual-sync.md 8ea4e968a62323dcd68935a304f79046292aa06e
 Verified: verify-repair.md 8ea4e968a62323dcd68935a304f79046292aa06e
 Verified: status.md 8ea4e968a62323dcd68935a304f79046292aa06e
@@ -49,7 +49,7 @@ results are the observed ones. Only a VERIFIED live drive advances that feature'
 
 ## Features
 
-- [daemon-change-backup.md](daemon-change-backup.md) — daemon detects add/modify/delete in the source and syncs; boot-time scheduled verification. Evidence: runs 20261113-190938 (probe + smoke), 20261113-191349 (green smoke), red 20261113-191248.
+- [daemon-change-backup.md](daemon-change-backup.md) — daemon detects add/modify/delete in the source and syncs; boot-time scheduled verification. Evidence: runs 20261113-190938 (probe + smoke), 20261113-191349 (green smoke), red 20261113-191248; 20261113-202823 (smoke 12/12 at 2851821, repo-root layout, use_ssl fix).
 - [manual-sync.md](manual-sync.md) — `photo-backup sync` and `--dry-run sync`. Evidence: run 20261113-190938 files 027–031.
 - [verify-repair.md](verify-repair.md) — `photo-backup verify`, `--repair`. Evidence: run 20261113-190938 files 015–025.
 - [status.md](status.md) — `photo-backup status --json`. Evidence: run 20261113-190938 file 026, run 20261113-191349.

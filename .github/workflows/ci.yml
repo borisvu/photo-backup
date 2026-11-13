@@ -62,3 +62,26 @@ jobs:
         run: docker pull "$(uv run python -c 'from tests.fixtures.minio import MINIO_IMAGE; print(MINIO_IMAGE)')"
       - name: pytest tests/${{ matrix.suite }}
         run: uv run pytest tests/${{ matrix.suite }} -p no:sugar -o addopts= -q --tb=short
+
+  installer-macos:
+    # install.py manages a launchd agent; these tests are skipped on Linux (no launchctl).
+    # They need no Docker, which macOS runners lack.
+    name: Installer tests (macOS)
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - name: Install rclone ${{ env.RCLONE_RELEASE }}
+        run: |
+          case "$(uname -m)" in arm64) arch=arm64 ;; *) arch=amd64 ;; esac
+          curl -fsSLo /tmp/rclone.zip "https://downloads.rclone.org/${RCLONE_RELEASE}/rclone-${RCLONE_RELEASE}-osx-${arch}.zip"
+          unzip -q /tmp/rclone.zip -d /tmp
+          sudo install -m 0755 "/tmp/rclone-${RCLONE_RELEASE}-osx-${arch}/rclone" /usr/local/bin/rclone
+          rclone version
+      - name: Install dependencies
+        run: uv sync --locked
+      - name: pytest -m launchd
+        run: uv run pytest tests/functional -m launchd -p no:sugar -o addopts= -q --tb=short

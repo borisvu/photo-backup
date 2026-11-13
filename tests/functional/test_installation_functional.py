@@ -251,6 +251,7 @@ class TestInstallationFunctional:
         assert not test_base_dir.exists(), "Uninstall should remove test directories"
 
     @pytest.mark.functional
+    @pytest.mark.launchd
     def test_installation_upgrade_preserves_config(self, clean_test_installation):
         """Test that upgrade preserves existing configuration."""
         test_base_dir = clean_test_installation

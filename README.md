@@ -90,7 +90,7 @@ Any tool can be run ad hoc with `uv run`, e.g. `uv run pytest tests/unit -q` or 
 - **Integration** (`tests/integration/`) — component interactions, no external services.
 - **Functional** (`tests/functional/`) — end-to-end against a real S3 server. **Needs Docker and `rclone` on `PATH`.** The tests start and stop their own MinIO container using the digest-pinned image in `tests/fixtures/minio.py` (`pgsty/minio@sha256:…`, since the official MinIO image is no longer pullable from Docker Hub). Override with `MINIO_TEST_IMAGE=<image>`.
 
-CI (`.github/workflows/ci.yml`) runs `ruff check`, `ruff format --check` and `mypy`, then the unit, integration and functional suites on Ubuntu with Docker and rclone.
+CI (`.github/workflows/ci.yml`) runs `ruff check`, `ruff format --check` and `mypy`, then the unit, integration and functional suites on Ubuntu with Docker and rclone. Installer tests (`-m launchd`, which need `launchctl`) are skipped there and run in a separate macOS job.
 
 ### Test mode and a manual MinIO
 

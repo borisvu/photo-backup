@@ -30,7 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **CI**: GitHub Actions workflow (ruff check, ruff format check, mypy; unit, integration and functional tests with Docker + rclone)
+- **CI**: GitHub Actions workflow (ruff check, ruff format check, mypy; unit, integration and functional tests with Docker + rclone on Ubuntu; launchd installer tests on macOS)
 - **verify-photo-backup skill**: Repo-local agent skill (`.agents/skills/verify-photo-backup/`) for end-to-end verification against a TLS MinIO stand-in
 - `check-status.sh` health-check script and Wasabi key rotation guide (`docs/KEY_ROTATION.md`)
 - MIT `LICENSE` file

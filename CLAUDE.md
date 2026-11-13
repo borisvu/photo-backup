@@ -20,8 +20,9 @@ tools ad hoc with `uv run <cmd>` (e.g. `uv run pytest tests/unit -q`).
 - `make clean`
 
 CI (`.github/workflows/ci.yml`) runs `ruff check`, `ruff format --check`, `mypy photo_backup`
-and the unit, integration and functional suites on every push to `master` and every PR. Keep all
-of them green.
+and the unit, integration and functional suites on every push to `master` and every PR. Tests
+marked `launchd` (the macOS installer) are skipped where `launchctl` is missing and run in a
+separate `macos-latest` job (no Docker there). Keep all of them green.
 
 ### Testing Infrastructure
 - Functional tests need **Docker** and **rclone**. They start MinIO from the pinned image in

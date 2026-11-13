@@ -14,6 +14,9 @@ import sys
 import pytest
 from pathlib import Path
 
+# install.py manages a launchd agent: macOS only.
+pytestmark = pytest.mark.launchd
+
 
 class TestInstallScript:
     """Functional tests for install.py script."""

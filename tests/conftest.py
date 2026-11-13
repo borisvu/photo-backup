@@ -262,6 +262,16 @@ def cleanup_orphaned_containers() -> list[str]:
     return cleaned_containers
 
 
+def pytest_collection_modifyitems(config, items):
+    """Skip launchd-dependent tests (the macOS installer) where launchctl is missing."""
+    if shutil.which("launchctl"):
+        return
+    skip = pytest.mark.skip(reason="needs macOS launchd (launchctl)")
+    for item in items:
+        if "launchd" in item.keywords:
+            item.add_marker(skip)
+
+
 def pytest_sessionfinish(session, exitstatus):
     """Pytest hook called after whole test run finished, right before returning exit status.
 
